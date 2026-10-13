@@ -4,6 +4,7 @@ import '../../../core/ids/identifiers.dart';
 import 'numeric_grid_spec.dart';
 import 'question_type.dart';
 import 'template_option.dart';
+import 'value_equality.dart';
 
 /// One immutable semantic question, independent of page geometry.
 final class TemplateQuestion {
@@ -66,15 +67,44 @@ final class TemplateQuestion {
     String? prompt,
     Iterable<TemplateOption>? options,
     bool? required,
-    String? description,
-    NumericGridSpec? numericGridSpec,
+    Object? description = _unchanged,
+    Object? numericGridSpec = _unchanged,
   }) => TemplateQuestion(
     id: id,
     type: type ?? this.type,
     prompt: prompt ?? this.prompt,
     options: options ?? this.options,
     required: required ?? this.required,
-    description: description ?? this.description,
-    numericGridSpec: numericGridSpec ?? this.numericGridSpec,
+    description: identical(description, _unchanged)
+        ? this.description
+        : description as String?,
+    numericGridSpec: identical(numericGridSpec, _unchanged)
+        ? this.numericGridSpec
+        : numericGridSpec as NumericGridSpec?,
   );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TemplateQuestion &&
+          other.id == id &&
+          other.type == type &&
+          other.prompt == prompt &&
+          listEqualsByValue(other.options, options) &&
+          other.required == required &&
+          other.description == description &&
+          other.numericGridSpec == numericGridSpec;
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    type,
+    prompt,
+    Object.hashAll(options),
+    required,
+    description,
+    numericGridSpec,
+  );
+
+  static const Object _unchanged = Object();
 }

@@ -3,6 +3,7 @@ import 'dart:collection';
 import '../../../core/ids/identifiers.dart';
 import 'template_section.dart';
 import 'template_status.dart';
+import 'value_equality.dart';
 
 /// One exact, immutable semantic version of a template.
 final class TemplateDefinition {
@@ -27,11 +28,10 @@ final class TemplateDefinition {
   /// Published versions cannot be copied in place; use [createDraftRevision].
   TemplateDefinition copyWith({
     String? name,
-    String? description,
-    TemplateStatus? status,
+    Object? description = _unchanged,
     Iterable<TemplateSection>? sections,
   }) {
-    if (this.status == TemplateStatus.published) {
+    if (status == TemplateStatus.published) {
       throw StateError(
         'Published templates require a new version via createDraftRevision.',
       );
@@ -40,8 +40,10 @@ final class TemplateDefinition {
       id: id,
       version: version,
       name: name ?? this.name,
-      description: description ?? this.description,
-      status: status ?? this.status,
+      description: identical(description, _unchanged)
+          ? this.description
+          : description as String?,
+      status: status,
       sections: sections ?? this.sections,
     );
   }
@@ -67,4 +69,27 @@ final class TemplateDefinition {
       sections: sections,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TemplateDefinition &&
+          other.id == id &&
+          other.version == version &&
+          other.name == name &&
+          other.description == description &&
+          other.status == status &&
+          listEqualsByValue(other.sections, sections);
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    version,
+    name,
+    description,
+    status,
+    Object.hashAll(sections),
+  );
+
+  static const Object _unchanged = Object();
 }

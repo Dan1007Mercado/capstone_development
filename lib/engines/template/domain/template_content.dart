@@ -4,4 +4,14 @@ final class HumanReadableTextField {
 
   final String label;
   final String? instruction;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is HumanReadableTextField &&
+          other.label == label &&
+          other.instruction == instruction;
+
+  @override
+  int get hashCode => Object.hash(label, instruction);
 }

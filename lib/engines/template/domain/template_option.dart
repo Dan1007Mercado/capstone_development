@@ -39,5 +39,16 @@ final class TemplateOption {
         value: identical(value, _unchanged) ? this.value : value,
       );
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TemplateOption &&
+          other.id == id &&
+          other.label == label &&
+          other.value == value;
+
+  @override
+  int get hashCode => Object.hash(id, label, value);
+
   static const Object _unchanged = Object();
 }

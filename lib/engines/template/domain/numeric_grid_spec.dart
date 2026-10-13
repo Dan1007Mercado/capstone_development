@@ -1,5 +1,7 @@
 import 'dart:collection';
 
+import 'value_equality.dart';
+
 /// Semantic configuration for a numeric-grid response.
 ///
 /// Validation is intentionally performed by `TemplateValidator` so invalid
@@ -12,4 +14,14 @@ final class NumericGridSpec {
 
   final int columnCount;
   final List<int> allowedDigits;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NumericGridSpec &&
+          other.columnCount == columnCount &&
+          listEqualsByValue(other.allowedDigits, allowedDigits);
+
+  @override
+  int get hashCode => Object.hash(columnCount, Object.hashAll(allowedDigits));
 }
