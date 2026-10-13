@@ -71,6 +71,27 @@ final class TemplateIdentityRegion {
   int get hashCode => Object.hash(physicalBounds, normalizedBounds);
 }
 
+/// Immutable geometry for non-scannable content rendered within a page.
+final class ContentRegion {
+  const ContentRegion({
+    required this.physicalBounds,
+    required this.normalizedBounds,
+  });
+
+  final PhysicalRect physicalBounds;
+  final NormalizedRect normalizedBounds;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ContentRegion &&
+          other.physicalBounds == physicalBounds &&
+          other.normalizedBounds == normalizedBounds;
+
+  @override
+  int get hashCode => Object.hash(physicalBounds, normalizedBounds);
+}
+
 /// Scanner-target geometry for either an option or one numeric-grid cell.
 final class BubbleRegion {
   const BubbleRegion._({
@@ -216,12 +237,20 @@ final class SectionRegion {
     required this.sectionId,
     required this.physicalBounds,
     required this.normalizedBounds,
+    required this.titleRegion,
+    required this.instructionRegion,
+    required this.humanReadableFieldRegion,
     required Iterable<QuestionRegion> questionRegions,
   }) : questionRegions = UnmodifiableListView(List.of(questionRegions));
 
   final SectionId sectionId;
   final PhysicalRect physicalBounds;
   final NormalizedRect normalizedBounds;
+
+  /// Null only on a continuation fragment, where headings are not repeated.
+  final ContentRegion? titleRegion;
+  final ContentRegion? instructionRegion;
+  final ContentRegion? humanReadableFieldRegion;
   final List<QuestionRegion> questionRegions;
 
   @override
@@ -231,6 +260,9 @@ final class SectionRegion {
           other.sectionId == sectionId &&
           other.physicalBounds == physicalBounds &&
           other.normalizedBounds == normalizedBounds &&
+          other.titleRegion == titleRegion &&
+          other.instructionRegion == instructionRegion &&
+          other.humanReadableFieldRegion == humanReadableFieldRegion &&
           layoutListEquals(other.questionRegions, questionRegions);
 
   @override
@@ -238,6 +270,9 @@ final class SectionRegion {
     sectionId,
     physicalBounds,
     normalizedBounds,
+    titleRegion,
+    instructionRegion,
+    humanReadableFieldRegion,
     Object.hashAll(questionRegions),
   );
 }

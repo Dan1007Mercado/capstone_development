@@ -25,6 +25,7 @@ final class PageLayout {
     required this.normalizedSafeBounds,
     required Iterable<MarkerRegion> markerRegions,
     required this.templateIdentityRegion,
+    required this.headerRegion,
     required Iterable<SectionRegion> sectionRegions,
     required Iterable<QuestionRegion> questionRegions,
     required Iterable<BubbleRegion> bubbleRegions,
@@ -50,6 +51,7 @@ final class PageLayout {
   final NormalizedRect normalizedSafeBounds;
   final List<MarkerRegion> markerRegions;
   final TemplateIdentityRegion templateIdentityRegion;
+  final ContentRegion headerRegion;
   final List<SectionRegion> sectionRegions;
   final List<QuestionRegion> questionRegions;
   final List<BubbleRegion> bubbleRegions;
@@ -73,6 +75,7 @@ final class PageLayout {
           other.normalizedSafeBounds == normalizedSafeBounds &&
           layoutListEquals(other.markerRegions, markerRegions) &&
           other.templateIdentityRegion == templateIdentityRegion &&
+          other.headerRegion == headerRegion &&
           layoutListEquals(other.sectionRegions, sectionRegions) &&
           layoutListEquals(other.questionRegions, questionRegions) &&
           layoutListEquals(other.bubbleRegions, bubbleRegions);
@@ -94,6 +97,7 @@ final class PageLayout {
     normalizedSafeBounds,
     Object.hashAll(markerRegions),
     templateIdentityRegion,
+    headerRegion,
     Object.hashAll(sectionRegions),
     Object.hashAll(questionRegions),
     Object.hashAll(bubbleRegions),

@@ -311,10 +311,13 @@ final class LayoutEngine {
       width: safeBounds.width.millimeters,
       height: config.identityRegionHeightMm,
     );
-    final contentTop =
-        identityBounds.bottom.millimeters +
-        config.minimumContentGapMm +
-        config.headerHeightMm;
+    final headerBounds = PhysicalRect.millimeters(
+      left: safeLeft,
+      top: identityBounds.bottom.millimeters + config.minimumContentGapMm,
+      width: safeBounds.width.millimeters,
+      height: config.headerHeightMm,
+    );
+    final contentTop = headerBounds.bottom.millimeters;
 
     return _StaticPageGeometry(
       physicalPageBounds: physicalPageBounds,
@@ -340,6 +343,13 @@ final class LayoutEngine {
           pageSize,
         ),
       ),
+      headerRegion: ContentRegion(
+        physicalBounds: headerBounds,
+        normalizedBounds: GeometryConverter.physicalRectToNormalized(
+          headerBounds,
+          pageSize,
+        ),
+      ),
       contentTop: contentTop,
       contentBottom: safeBounds.bottom.millimeters,
     );
@@ -356,7 +366,7 @@ final class LayoutEngine {
     final contentHeight = geometry.contentBottom - geometry.contentTop;
 
     for (final section in template.sections) {
-      final leadHeight = _sectionLeadHeight(section, config);
+      final leadPlan = _planSectionLead(section, config);
       final firstPlan = section.questions.isEmpty
           ? null
           : _planQuestion(
@@ -369,13 +379,13 @@ final class LayoutEngine {
       }
       final sectionGap = page.hasContent ? config.sectionGapMm : 0;
       final preferredInitialHeight =
-          sectionGap + leadHeight + (firstPlan?.height ?? 0);
+          sectionGap + leadPlan.height + (firstPlan?.height ?? 0);
       if (page.cursorY + preferredInitialHeight > geometry.contentBottom &&
           page.hasContent) {
         page = _newPage(template, pages.length, geometry);
         pages.add(page);
       }
-      if (leadHeight > contentHeight) {
+      if (leadPlan.height > contentHeight) {
         return EngineResult.failure(
           EngineError(
             code: 'LAYOUT_OVERFLOW',
@@ -386,8 +396,17 @@ final class LayoutEngine {
       }
 
       if (page.hasContent) page.cursorY += config.sectionGapMm;
-      var sectionDraft = page.startSection(section.id, page.cursorY);
-      page.cursorY += leadHeight;
+      var sectionDraft = page.startSection(
+        section.id,
+        page.cursorY,
+        leadPlacement: _placeSectionLead(
+          leadPlan,
+          geometry.safeBounds.left.millimeters,
+          page.cursorY,
+          geometry.safeBounds.width.millimeters,
+        ),
+      );
+      page.cursorY += leadPlan.height;
       sectionDraft.endY = page.cursorY;
 
       for (final question in section.questions) {
@@ -447,23 +466,78 @@ final class LayoutEngine {
     cursorY: geometry.contentTop,
   );
 
-  double _sectionLeadHeight(TemplateSection section, LayoutConfig config) {
-    var height = _estimateTextHeight(section.title, config);
+  _SectionLeadPlan _planSectionLead(
+    TemplateSection section,
+    LayoutConfig config,
+  ) {
+    final titleHeight = _estimateTextHeight(section.title, config);
+    var cursor = titleHeight;
+    double? instructionTop;
+    double? instructionHeight;
     if (section.instruction != null) {
-      height += config.minimumContentGapMm;
-      height += _estimateTextHeight(section.instruction!, config);
+      cursor += config.minimumContentGapMm;
+      instructionTop = cursor;
+      instructionHeight = _estimateTextHeight(section.instruction!, config);
+      cursor += instructionHeight;
     }
+    double? humanReadableFieldTop;
+    double? humanReadableFieldHeight;
     final textField = section.humanReadableTextField;
     if (textField != null) {
-      height += config.minimumContentGapMm;
-      height += _estimateTextHeight(textField.label, config);
+      cursor += config.minimumContentGapMm;
+      humanReadableFieldTop = cursor;
+      humanReadableFieldHeight = _estimateTextHeight(textField.label, config);
       if (textField.instruction != null) {
-        height += _estimateTextHeight(textField.instruction!, config);
+        humanReadableFieldHeight += _estimateTextHeight(
+          textField.instruction!,
+          config,
+        );
       }
-      height += config.humanReadableFieldHeightMm;
+      humanReadableFieldHeight += config.humanReadableFieldHeightMm;
+      cursor += humanReadableFieldHeight;
     }
-    return height + config.minimumContentGapMm;
+    return _SectionLeadPlan(
+      height: cursor + config.minimumContentGapMm,
+      titleHeight: titleHeight,
+      instructionTop: instructionTop,
+      instructionHeight: instructionHeight,
+      humanReadableFieldTop: humanReadableFieldTop,
+      humanReadableFieldHeight: humanReadableFieldHeight,
+    );
   }
+
+  _SectionLeadPlacement _placeSectionLead(
+    _SectionLeadPlan plan,
+    double left,
+    double top,
+    double width,
+  ) => _SectionLeadPlacement(
+    titleBounds: PhysicalRect.millimeters(
+      left: left,
+      top: top,
+      width: width,
+      height: plan.titleHeight,
+    ),
+    instructionBounds:
+        plan.instructionTop == null || plan.instructionHeight == null
+        ? null
+        : PhysicalRect.millimeters(
+            left: left,
+            top: top + plan.instructionTop!,
+            width: width,
+            height: plan.instructionHeight!,
+          ),
+    humanReadableFieldBounds:
+        plan.humanReadableFieldTop == null ||
+            plan.humanReadableFieldHeight == null
+        ? null
+        : PhysicalRect.millimeters(
+            left: left,
+            top: top + plan.humanReadableFieldTop!,
+            width: width,
+            height: plan.humanReadableFieldHeight!,
+          ),
+  );
 
   _QuestionPlan _planQuestion(
     TemplateQuestion question,
@@ -650,6 +724,18 @@ final class LayoutEngine {
               bounds,
               config.pageSpec.size,
             ),
+            titleRegion: _materializeContentRegion(
+              section.leadPlacement?.titleBounds,
+              config,
+            ),
+            instructionRegion: _materializeContentRegion(
+              section.leadPlacement?.instructionBounds,
+              config,
+            ),
+            humanReadableFieldRegion: _materializeContentRegion(
+              section.leadPlacement?.humanReadableFieldBounds,
+              config,
+            ),
             questionRegions: section.questionRegions,
           );
         })
@@ -677,11 +763,25 @@ final class LayoutEngine {
       normalizedSafeBounds: geometry.normalizedSafeBounds,
       markerRegions: geometry.markerRegions,
       templateIdentityRegion: geometry.identityRegion,
+      headerRegion: geometry.headerRegion,
       sectionRegions: sections,
       questionRegions: questions,
       bubbleRegions: bubbles,
     );
   }
+
+  ContentRegion? _materializeContentRegion(
+    PhysicalRect? bounds,
+    LayoutConfig config,
+  ) => bounds == null
+      ? null
+      : ContentRegion(
+          physicalBounds: bounds,
+          normalizedBounds: GeometryConverter.physicalRectToNormalized(
+            bounds,
+            config.pageSpec.size,
+          ),
+        );
 
   EngineError? _validateGeneratedGeometry(List<PageLayout> pages) {
     for (final page in pages) {
@@ -694,6 +794,35 @@ final class LayoutEngine {
           code: 'GEOMETRY_INVALID',
           message: 'Template identity region intersects a marker region.',
         );
+      }
+      if (!page.safeBounds.containsRect(page.headerRegion.physicalBounds) ||
+          page.templateIdentityRegion.physicalBounds.intersects(
+            page.headerRegion.physicalBounds,
+          )) {
+        return EngineError(
+          code: 'GEOMETRY_INVALID',
+          message: 'Header region is outside safe bounds or overlaps identity.',
+        );
+      }
+
+      for (final section in page.sectionRegions) {
+        final leadRegions = [
+          section.titleRegion,
+          section.instructionRegion,
+          section.humanReadableFieldRegion,
+        ].whereType<ContentRegion>();
+        for (final region in leadRegions) {
+          if (!section.physicalBounds.containsRect(region.physicalBounds) ||
+              page.bubbleRegions.any(
+                (bubble) =>
+                    region.physicalBounds.intersects(bubble.physicalBounds),
+              )) {
+            return EngineError(
+              code: 'GEOMETRY_INVALID',
+              message: 'Section lead geometry is invalid.',
+            );
+          }
+        }
       }
 
       for (var index = 0; index < page.bubbleRegions.length; index++) {
@@ -758,6 +887,36 @@ final class _QuestionPlan {
   final bool isTooWide;
 }
 
+final class _SectionLeadPlan {
+  const _SectionLeadPlan({
+    required this.height,
+    required this.titleHeight,
+    required this.instructionTop,
+    required this.instructionHeight,
+    required this.humanReadableFieldTop,
+    required this.humanReadableFieldHeight,
+  });
+
+  final double height;
+  final double titleHeight;
+  final double? instructionTop;
+  final double? instructionHeight;
+  final double? humanReadableFieldTop;
+  final double? humanReadableFieldHeight;
+}
+
+final class _SectionLeadPlacement {
+  const _SectionLeadPlacement({
+    required this.titleBounds,
+    required this.instructionBounds,
+    required this.humanReadableFieldBounds,
+  });
+
+  final PhysicalRect titleBounds;
+  final PhysicalRect? instructionBounds;
+  final PhysicalRect? humanReadableFieldBounds;
+}
+
 final class _StaticPageGeometry {
   const _StaticPageGeometry({
     required this.physicalPageBounds,
@@ -768,6 +927,7 @@ final class _StaticPageGeometry {
     required this.normalizedSafeBounds,
     required this.markerRegions,
     required this.identityRegion,
+    required this.headerRegion,
     required this.contentTop,
     required this.contentBottom,
   });
@@ -780,6 +940,7 @@ final class _StaticPageGeometry {
   final NormalizedRect normalizedSafeBounds;
   final List<MarkerRegion> markerRegions;
   final TemplateIdentityRegion identityRegion;
+  final ContentRegion headerRegion;
   final double contentTop;
   final double contentBottom;
 }
@@ -798,11 +959,16 @@ final class _PageDraft {
 
   bool get hasContent => sections.isNotEmpty;
 
-  _SectionDraft startSection(SectionId sectionId, double startY) {
+  _SectionDraft startSection(
+    SectionId sectionId,
+    double startY, {
+    _SectionLeadPlacement? leadPlacement,
+  }) {
     final section = _SectionDraft(
       sectionId: sectionId,
       startY: startY,
       endY: startY,
+      leadPlacement: leadPlacement,
     );
     sections.add(section);
     return section;
@@ -814,10 +980,12 @@ final class _SectionDraft {
     required this.sectionId,
     required this.startY,
     required this.endY,
+    required this.leadPlacement,
   });
 
   final SectionId sectionId;
   final double startY;
   double endY;
+  final _SectionLeadPlacement? leadPlacement;
   final List<QuestionRegion> questionRegions = [];
 }
