@@ -1,0 +1,243 @@
+import 'dart:collection';
+
+import '../../../core/geometry/normalized_geometry.dart';
+import '../../../core/geometry/physical_geometry.dart';
+import '../../../core/ids/identifiers.dart';
+import '../../template/domain/question_type.dart';
+import 'layout_value_equality.dart';
+
+enum MarkerRole { topLeft, topRight, bottomLeft, bottomRight }
+
+/// Registration marker geometry.
+///
+/// The registration point is deliberately explicit. The initial convention
+/// uses the marker corner facing the page interior, not the marker center.
+final class MarkerRegion {
+  const MarkerRegion({
+    required this.markerId,
+    required this.role,
+    required this.physicalBounds,
+    required this.normalizedBounds,
+    required this.physicalRegistrationPoint,
+    required this.normalizedRegistrationPoint,
+  });
+
+  final int markerId;
+  final MarkerRole role;
+  final PhysicalRect physicalBounds;
+  final NormalizedRect normalizedBounds;
+  final PhysicalPoint physicalRegistrationPoint;
+  final NormalizedPoint normalizedRegistrationPoint;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MarkerRegion &&
+          other.markerId == markerId &&
+          other.role == role &&
+          other.physicalBounds == physicalBounds &&
+          other.normalizedBounds == normalizedBounds &&
+          other.physicalRegistrationPoint == physicalRegistrationPoint &&
+          other.normalizedRegistrationPoint == normalizedRegistrationPoint;
+
+  @override
+  int get hashCode => Object.hash(
+    markerId,
+    role,
+    physicalBounds,
+    normalizedBounds,
+    physicalRegistrationPoint,
+    normalizedRegistrationPoint,
+  );
+}
+
+final class TemplateIdentityRegion {
+  const TemplateIdentityRegion({
+    required this.physicalBounds,
+    required this.normalizedBounds,
+  });
+
+  final PhysicalRect physicalBounds;
+  final NormalizedRect normalizedBounds;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TemplateIdentityRegion &&
+          other.physicalBounds == physicalBounds &&
+          other.normalizedBounds == normalizedBounds;
+
+  @override
+  int get hashCode => Object.hash(physicalBounds, normalizedBounds);
+}
+
+/// Scanner-target geometry for either an option or one numeric-grid cell.
+final class BubbleRegion {
+  const BubbleRegion._({
+    required this.pageId,
+    required this.questionId,
+    required this.optionId,
+    required this.numericColumnIndex,
+    required this.numericDigitValue,
+    required this.physicalBounds,
+    required this.normalizedBounds,
+    required this.physicalCenter,
+    required this.normalizedCenter,
+    required this.physicalDiameter,
+  });
+
+  factory BubbleRegion.option({
+    required PageId pageId,
+    required QuestionId questionId,
+    required OptionId optionId,
+    required PhysicalRect physicalBounds,
+    required NormalizedRect normalizedBounds,
+    required PhysicalPoint physicalCenter,
+    required NormalizedPoint normalizedCenter,
+    required PhysicalLength physicalDiameter,
+  }) => BubbleRegion._(
+    pageId: pageId,
+    questionId: questionId,
+    optionId: optionId,
+    numericColumnIndex: null,
+    numericDigitValue: null,
+    physicalBounds: physicalBounds,
+    normalizedBounds: normalizedBounds,
+    physicalCenter: physicalCenter,
+    normalizedCenter: normalizedCenter,
+    physicalDiameter: physicalDiameter,
+  );
+
+  factory BubbleRegion.numericCell({
+    required PageId pageId,
+    required QuestionId questionId,
+    required int columnIndex,
+    required int digitValue,
+    required PhysicalRect physicalBounds,
+    required NormalizedRect normalizedBounds,
+    required PhysicalPoint physicalCenter,
+    required NormalizedPoint normalizedCenter,
+    required PhysicalLength physicalDiameter,
+  }) => BubbleRegion._(
+    pageId: pageId,
+    questionId: questionId,
+    optionId: null,
+    numericColumnIndex: columnIndex,
+    numericDigitValue: digitValue,
+    physicalBounds: physicalBounds,
+    normalizedBounds: normalizedBounds,
+    physicalCenter: physicalCenter,
+    normalizedCenter: normalizedCenter,
+    physicalDiameter: physicalDiameter,
+  );
+
+  final PageId pageId;
+  final QuestionId questionId;
+  final OptionId? optionId;
+  final int? numericColumnIndex;
+  final int? numericDigitValue;
+  final PhysicalRect physicalBounds;
+  final NormalizedRect normalizedBounds;
+  final PhysicalPoint physicalCenter;
+  final NormalizedPoint normalizedCenter;
+  final PhysicalLength physicalDiameter;
+
+  bool get isOptionTarget => optionId != null;
+  bool get isNumericCellTarget =>
+      numericColumnIndex != null && numericDigitValue != null;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BubbleRegion &&
+          other.pageId == pageId &&
+          other.questionId == questionId &&
+          other.optionId == optionId &&
+          other.numericColumnIndex == numericColumnIndex &&
+          other.numericDigitValue == numericDigitValue &&
+          other.physicalBounds == physicalBounds &&
+          other.normalizedBounds == normalizedBounds &&
+          other.physicalCenter == physicalCenter &&
+          other.normalizedCenter == normalizedCenter &&
+          other.physicalDiameter == physicalDiameter;
+
+  @override
+  int get hashCode => Object.hashAll([
+    pageId,
+    questionId,
+    optionId,
+    numericColumnIndex,
+    numericDigitValue,
+    physicalBounds,
+    normalizedBounds,
+    physicalCenter,
+    normalizedCenter,
+    physicalDiameter,
+  ]);
+}
+
+final class QuestionRegion {
+  QuestionRegion({
+    required this.questionId,
+    required this.questionType,
+    required this.physicalBounds,
+    required this.normalizedBounds,
+    required Iterable<BubbleRegion> bubbleRegions,
+  }) : bubbleRegions = UnmodifiableListView(List.of(bubbleRegions));
+
+  final QuestionId questionId;
+  final QuestionType questionType;
+  final PhysicalRect physicalBounds;
+  final NormalizedRect normalizedBounds;
+  final List<BubbleRegion> bubbleRegions;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is QuestionRegion &&
+          other.questionId == questionId &&
+          other.questionType == questionType &&
+          other.physicalBounds == physicalBounds &&
+          other.normalizedBounds == normalizedBounds &&
+          layoutListEquals(other.bubbleRegions, bubbleRegions);
+
+  @override
+  int get hashCode => Object.hash(
+    questionId,
+    questionType,
+    physicalBounds,
+    normalizedBounds,
+    Object.hashAll(bubbleRegions),
+  );
+}
+
+final class SectionRegion {
+  SectionRegion({
+    required this.sectionId,
+    required this.physicalBounds,
+    required this.normalizedBounds,
+    required Iterable<QuestionRegion> questionRegions,
+  }) : questionRegions = UnmodifiableListView(List.of(questionRegions));
+
+  final SectionId sectionId;
+  final PhysicalRect physicalBounds;
+  final NormalizedRect normalizedBounds;
+  final List<QuestionRegion> questionRegions;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SectionRegion &&
+          other.sectionId == sectionId &&
+          other.physicalBounds == physicalBounds &&
+          other.normalizedBounds == normalizedBounds &&
+          layoutListEquals(other.questionRegions, questionRegions);
+
+  @override
+  int get hashCode => Object.hash(
+    sectionId,
+    physicalBounds,
+    normalizedBounds,
+    Object.hashAll(questionRegions),
+  );
+}
