@@ -126,6 +126,15 @@ void main() {
       PhysicalRect.millimeters(left: 10, top: 10, width: 14, height: 14),
     );
     expect(
+      page.markerRegions.first.physicalMarkerBounds,
+      PhysicalRect.millimeters(
+        left: 11.75,
+        top: 11.75,
+        width: 10.5,
+        height: 10.5,
+      ),
+    );
+    expect(
       page.questionRegions.single.physicalBounds,
       PhysicalRect.millimeters(left: 28, top: 63, width: 154, height: 14),
     );

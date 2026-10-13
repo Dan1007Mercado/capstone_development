@@ -39,6 +39,14 @@ final class PdfEngine {
   ) {
     final identityError = _validateIdentity(template, layout);
     if (identityError != null) return EngineResult.failure(identityError);
+    if (!style.optionLabelGapMm.isFinite || style.optionLabelGapMm < 0) {
+      return EngineResult.failure(
+        EngineError(
+          code: 'PDF_RENDER_STYLE_INVALID',
+          message: 'Option label gap must be finite and non-negative.',
+        ),
+      );
+    }
 
     try {
       final sectionsById = {
@@ -80,6 +88,18 @@ final class PdfEngine {
                   'requested': region.markerId,
                   'encoded': marker.markerId,
                 },
+              ),
+            );
+          }
+          if (marker.quietZoneModules !=
+                  ArucoMarkerPrintContract.quietZoneModules ||
+              marker.markerModules != ArucoMarkerPrintContract.markerModules ||
+              marker.totalModules != ArucoMarkerPrintContract.totalModules) {
+            return EngineResult.failure(
+              EngineError(
+                code: 'PDF_MARKER_ENCODING_FAILED',
+                message: 'Marker encoder returned incompatible print geometry.',
+                details: {'markerId': region.markerId},
               ),
             );
           }
@@ -243,6 +263,7 @@ final class PdfEngine {
       page.templateIdentityRegion.physicalBounds,
       page.headerRegion.physicalBounds,
       ...page.markerRegions.map((region) => region.physicalBounds),
+      ...page.markerRegions.map((region) => region.physicalMarkerBounds),
       ...page.sectionRegions.map((region) => region.physicalBounds),
       ...page.sectionRegions.expand(
         (section) => [
@@ -260,6 +281,25 @@ final class PdfEngine {
         message: 'A supplied region lies outside the physical page.',
         details: {'pageId': page.pageId.value},
       );
+    }
+    for (final marker in page.markerRegions) {
+      final expectedBounds = ArucoMarkerPrintContract.detectableMarkerBounds(
+        marker.physicalBounds,
+      );
+      final expectedPoint =
+          ArucoMarkerPrintContract.pageFacingRegistrationPoint(
+            marker.role,
+            marker.physicalMarkerBounds,
+          );
+      if (!marker.physicalBounds.containsRect(marker.physicalMarkerBounds) ||
+          marker.physicalMarkerBounds != expectedBounds ||
+          marker.physicalRegistrationPoint != expectedPoint) {
+        return EngineError(
+          code: 'PDF_INVALID_LAYOUT',
+          message: 'Marker print and detection geometry are inconsistent.',
+          details: {'pageId': page.pageId.value},
+        );
+      }
     }
     return null;
   }
@@ -381,7 +421,6 @@ final class PdfEngine {
   }
 
   PhysicalRect _labelBounds(QuestionRegion question, BubbleRegion bubble) {
-    const labelGapMm = 1.0;
     final bounds = bubble.physicalBounds;
     var right = question.physicalBounds.right.millimeters;
     for (final other in question.bubbleRegions) {
@@ -395,7 +434,7 @@ final class PdfEngine {
         right = otherBounds.left.millimeters;
       }
     }
-    final left = bounds.right.millimeters + labelGapMm;
+    final left = bounds.right.millimeters + style.optionLabelGapMm;
     final width = right - left;
     if (width <= 0) {
       throw ArgumentError('No safe label area adjacent to bubble.');

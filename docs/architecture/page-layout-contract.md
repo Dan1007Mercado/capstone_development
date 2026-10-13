@@ -14,15 +14,23 @@ increasing down.
 
 ## Markers
 
-Four configurable marker IDs map to semantic corner roles. Homography reference
-points use each marker's page-facing inner corner:
+Four configurable marker IDs map to semantic corner roles. A marker's
+`physicalBounds`/`normalizedBounds` describe the complete printable 8x8 region,
+including one quiet-zone module on every edge. Its
+`physicalMarkerBounds`/`normalizedMarkerBounds` describe the inner detectable
+6x6 ArUco marker. The quiet-zone inset is exactly one eighth of the printable
+region width on each edge.
+
+Homography reference points use the detectable marker's page-facing corner:
 
 - top-left: bottom-right corner
 - top-right: bottom-left corner
 - bottom-left: top-right corner
 - bottom-right: top-left corner
 
-The marker center is not the registration point.
+The printable quiet-zone corner and marker center are not registration points.
+`ArucoMarkerPrintContract` owns the module counts, bounds conversion, and role
+to registration-point mapping shared with PDF rendering.
 
 ## Page Identity
 

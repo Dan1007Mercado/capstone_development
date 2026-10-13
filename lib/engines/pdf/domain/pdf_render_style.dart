@@ -8,6 +8,7 @@ final class PdfRenderStyle {
     this.bubbleStrokeWidthPoints = 0.8,
     this.fieldStrokeWidthPoints = 0.6,
     this.diagnosticStrokeWidthPoints = 0.25,
+    this.optionLabelGapMm = 1.0,
     this.debugOverlays = false,
   });
 
@@ -18,5 +19,6 @@ final class PdfRenderStyle {
   final double bubbleStrokeWidthPoints;
   final double fieldStrokeWidthPoints;
   final double diagnosticStrokeWidthPoints;
+  final double optionLabelGapMm;
   final bool debugOverlays;
 }

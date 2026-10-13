@@ -8,16 +8,61 @@ import 'layout_value_equality.dart';
 
 enum MarkerRole { topLeft, topRight, bottomLeft, bottomRight }
 
+/// Shared print/detection geometry for an ArUco marker with its quiet zone.
+abstract final class ArucoMarkerPrintContract {
+  static const int quietZoneModules = 1;
+  static const int markerBorderModules = 1;
+  static const int payloadModules = 4;
+  static const int markerModules = payloadModules + markerBorderModules * 2;
+  static const int totalModules = markerModules + quietZoneModules * 2;
+
+  static PhysicalRect detectableMarkerBounds(PhysicalRect printableBounds) {
+    final quietZoneInset =
+        printableBounds.width.millimeters * quietZoneModules / totalModules;
+    return PhysicalRect.millimeters(
+      left: printableBounds.left.millimeters + quietZoneInset,
+      top: printableBounds.top.millimeters + quietZoneInset,
+      width: printableBounds.width.millimeters - quietZoneInset * 2,
+      height: printableBounds.height.millimeters - quietZoneInset * 2,
+    );
+  }
+
+  static PhysicalPoint pageFacingRegistrationPoint(
+    MarkerRole role,
+    PhysicalRect detectableBounds,
+  ) => switch (role) {
+    MarkerRole.topLeft => PhysicalPoint(
+      x: detectableBounds.right,
+      y: detectableBounds.bottom,
+    ),
+    MarkerRole.topRight => PhysicalPoint(
+      x: detectableBounds.left,
+      y: detectableBounds.bottom,
+    ),
+    MarkerRole.bottomLeft => PhysicalPoint(
+      x: detectableBounds.right,
+      y: detectableBounds.top,
+    ),
+    MarkerRole.bottomRight => PhysicalPoint(
+      x: detectableBounds.left,
+      y: detectableBounds.top,
+    ),
+  };
+}
+
 /// Registration marker geometry.
 ///
-/// The registration point is deliberately explicit. The initial convention
-/// uses the marker corner facing the page interior, not the marker center.
+/// [physicalBounds] includes the printable quiet zone. [physicalMarkerBounds]
+/// is the inner detectable marker. The registration point is the detectable
+/// marker corner facing the page interior, not the quiet-zone corner or center.
 final class MarkerRegion {
   const MarkerRegion({
     required this.markerId,
     required this.role,
     required this.physicalBounds,
     required this.normalizedBounds,
+    required this.physicalMarkerBounds,
+    required this.normalizedMarkerBounds,
     required this.physicalRegistrationPoint,
     required this.normalizedRegistrationPoint,
   });
@@ -26,6 +71,8 @@ final class MarkerRegion {
   final MarkerRole role;
   final PhysicalRect physicalBounds;
   final NormalizedRect normalizedBounds;
+  final PhysicalRect physicalMarkerBounds;
+  final NormalizedRect normalizedMarkerBounds;
   final PhysicalPoint physicalRegistrationPoint;
   final NormalizedPoint normalizedRegistrationPoint;
 
@@ -37,6 +84,8 @@ final class MarkerRegion {
           other.role == role &&
           other.physicalBounds == physicalBounds &&
           other.normalizedBounds == normalizedBounds &&
+          other.physicalMarkerBounds == physicalMarkerBounds &&
+          other.normalizedMarkerBounds == normalizedMarkerBounds &&
           other.physicalRegistrationPoint == physicalRegistrationPoint &&
           other.normalizedRegistrationPoint == normalizedRegistrationPoint;
 
@@ -46,6 +95,8 @@ final class MarkerRegion {
     role,
     physicalBounds,
     normalizedBounds,
+    physicalMarkerBounds,
+    normalizedMarkerBounds,
     physicalRegistrationPoint,
     normalizedRegistrationPoint,
   );

@@ -55,7 +55,7 @@ void main() {
     final markers = buildLayout(fullTemplate()).pages.first.markerRegions;
 
     for (final marker in markers) {
-      final bounds = marker.physicalBounds;
+      final bounds = marker.physicalMarkerBounds;
       final point = marker.physicalRegistrationPoint;
       switch (marker.role) {
         case MarkerRole.topLeft:
@@ -74,6 +74,32 @@ void main() {
     }
   });
 
+  test('detectable marker bounds exclude one quiet-zone module per edge', () {
+    final markers = buildLayout(fullTemplate()).pages.first.markerRegions;
+
+    for (final marker in markers) {
+      final outer = marker.physicalBounds;
+      final inner = marker.physicalMarkerBounds;
+      final expectedInset =
+          outer.width.millimeters / ArucoMarkerPrintContract.totalModules;
+
+      expect(outer.containsRect(inner), isTrue);
+      expect(inner.left.millimeters - outer.left.millimeters, expectedInset);
+      expect(inner.top.millimeters - outer.top.millimeters, expectedInset);
+      expect(outer.right.millimeters - inner.right.millimeters, expectedInset);
+      expect(
+        outer.bottom.millimeters - inner.bottom.millimeters,
+        expectedInset,
+      );
+      expect(
+        inner.width.millimeters,
+        outer.width.millimeters *
+            ArucoMarkerPrintContract.markerModules /
+            ArucoMarkerPrintContract.totalModules,
+      );
+    }
+  });
+
   test('marker normalized geometry is converted from physical geometry', () {
     final page = buildLayout(fullTemplate()).pages.first;
 
@@ -82,6 +108,13 @@ void main() {
         marker.normalizedBounds,
         GeometryConverter.physicalRectToNormalized(
           marker.physicalBounds,
+          page.pageSpec.size,
+        ),
+      );
+      expect(
+        marker.normalizedMarkerBounds,
+        GeometryConverter.physicalRectToNormalized(
+          marker.physicalMarkerBounds,
           page.pageSpec.size,
         ),
       );
@@ -130,6 +163,7 @@ void main() {
         page.normalizedSafeBounds,
         page.templateIdentityRegion.normalizedBounds,
         ...page.markerRegions.map((marker) => marker.normalizedBounds),
+        ...page.markerRegions.map((marker) => marker.normalizedMarkerBounds),
         ...page.questionRegions.map((question) => question.normalizedBounds),
         ...page.bubbleRegions.map((bubble) => bubble.normalizedBounds),
       ];

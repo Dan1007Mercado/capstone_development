@@ -246,30 +246,25 @@ final class LayoutEngine {
     final markerRegions = markerDefinitions
         .map((definition) {
           final bounds = definition.$3;
-          final registrationPoint = switch (definition.$2) {
-            MarkerRole.topLeft => PhysicalPoint(
-              x: bounds.right,
-              y: bounds.bottom,
-            ),
-            MarkerRole.topRight => PhysicalPoint(
-              x: bounds.left,
-              y: bounds.bottom,
-            ),
-            MarkerRole.bottomLeft => PhysicalPoint(
-              x: bounds.right,
-              y: bounds.top,
-            ),
-            MarkerRole.bottomRight => PhysicalPoint(
-              x: bounds.left,
-              y: bounds.top,
-            ),
-          };
+          final markerBounds = ArucoMarkerPrintContract.detectableMarkerBounds(
+            bounds,
+          );
+          final registrationPoint =
+              ArucoMarkerPrintContract.pageFacingRegistrationPoint(
+                definition.$2,
+                markerBounds,
+              );
           return MarkerRegion(
             markerId: definition.$1,
             role: definition.$2,
             physicalBounds: bounds,
             normalizedBounds: GeometryConverter.physicalRectToNormalized(
               bounds,
+              pageSize,
+            ),
+            physicalMarkerBounds: markerBounds,
+            normalizedMarkerBounds: GeometryConverter.physicalRectToNormalized(
+              markerBounds,
               pageSize,
             ),
             physicalRegistrationPoint: registrationPoint,
@@ -785,6 +780,25 @@ final class LayoutEngine {
 
   EngineError? _validateGeneratedGeometry(List<PageLayout> pages) {
     for (final page in pages) {
+      for (final marker in page.markerRegions) {
+        final expectedMarkerBounds =
+            ArucoMarkerPrintContract.detectableMarkerBounds(
+              marker.physicalBounds,
+            );
+        final expectedRegistrationPoint =
+            ArucoMarkerPrintContract.pageFacingRegistrationPoint(
+              marker.role,
+              marker.physicalMarkerBounds,
+            );
+        if (!marker.physicalBounds.containsRect(marker.physicalMarkerBounds) ||
+            marker.physicalMarkerBounds != expectedMarkerBounds ||
+            marker.physicalRegistrationPoint != expectedRegistrationPoint) {
+          return EngineError(
+            code: 'GEOMETRY_INVALID',
+            message: 'Marker print and detection geometry are inconsistent.',
+          );
+        }
+      }
       if (page.markerRegions.any(
         (marker) => page.templateIdentityRegion.physicalBounds.intersects(
           marker.physicalBounds,

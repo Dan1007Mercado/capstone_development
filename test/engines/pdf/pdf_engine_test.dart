@@ -113,6 +113,10 @@ void main() {
         layout.pages.single.markerRegions[index].physicalBounds,
       );
       expect(
+        plan.markers[index].region.physicalMarkerBounds,
+        layout.pages.single.markerRegions[index].physicalMarkerBounds,
+      );
+      expect(
         plan.markers[index].region.physicalRegistrationPoint,
         layout.pages.single.markerRegions[index].physicalRegistrationPoint,
       );
@@ -189,6 +193,32 @@ void main() {
       layout.pages.single.bubbleRegions.map(
         (bubble) => bubble.physicalDiameter,
       ),
+    );
+  });
+
+  test('custom label gap changes labels without changing bubble geometry', () {
+    final template = templateWithQuestions([choiceQuestion('q1')]);
+    final layout = buildLayout(template);
+    final originalBubbles = layout.pages.single.bubbleRegions
+        .map((bubble) => bubble.physicalBounds)
+        .toList();
+    final plan = PdfEngine(
+      style: const PdfRenderStyle(optionLabelGapMm: 2.5),
+    ).buildPlan(template, layout).value.pages.single;
+    final label = plan.text.firstWhere(
+      (command) => command.role == PdfTextRole.optionLabel,
+    );
+    final bubble = plan.bubbles.singleWhere(
+      (candidate) => candidate.optionId == label.optionId,
+    );
+
+    expect(
+      label.bounds.left.millimeters,
+      bubble.physicalBounds.right.millimeters + 2.5,
+    );
+    expect(
+      plan.bubbles.map((candidate) => candidate.physicalBounds),
+      originalBubbles,
     );
   });
 

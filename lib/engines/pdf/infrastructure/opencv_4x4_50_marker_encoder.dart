@@ -1,4 +1,5 @@
 import '../domain/aruco_marker_encoder.dart';
+import '../../layout/domain/layout_regions.dart';
 
 /// Pure-Dart encoder for OpenCV's stable DICT_4X4_50 dictionary.
 ///
@@ -25,29 +26,40 @@ final class OpenCvDictionary4x4MarkerEncoder implements ArucoMarkerEncoder {
 
     final codeword = _canonicalCodewords[markerId];
     final modules = List.generate(
-      8,
-      (_) => List<bool>.filled(8, false),
+      ArucoMarkerPrintContract.totalModules,
+      (_) => List<bool>.filled(ArucoMarkerPrintContract.totalModules, false),
       growable: false,
     );
 
-    for (var index = 1; index <= 6; index++) {
-      modules[1][index] = true;
-      modules[6][index] = true;
-      modules[index][1] = true;
-      modules[index][6] = true;
+    const markerStart = ArucoMarkerPrintContract.quietZoneModules;
+    const markerEnd = markerStart + ArucoMarkerPrintContract.markerModules - 1;
+    for (var index = markerStart; index <= markerEnd; index++) {
+      modules[markerStart][index] = true;
+      modules[markerEnd][index] = true;
+      modules[index][markerStart] = true;
+      modules[index][markerEnd] = true;
     }
 
-    for (var bitIndex = 0; bitIndex < 16; bitIndex++) {
+    const payloadStart =
+        markerStart + ArucoMarkerPrintContract.markerBorderModules;
+    const payloadModuleCount = ArucoMarkerPrintContract.payloadModules;
+    for (
+      var bitIndex = 0;
+      bitIndex < payloadModuleCount * payloadModuleCount;
+      bitIndex++
+    ) {
       final byte = codeword[bitIndex ~/ 8];
       final isWhite = byte & (0x80 >> (bitIndex % 8)) != 0;
-      final row = bitIndex ~/ 4 + 2;
-      final column = bitIndex % 4 + 2;
+      final row = bitIndex ~/ payloadModuleCount + payloadStart;
+      final column = bitIndex % payloadModuleCount + payloadStart;
       modules[row][column] = !isWhite;
     }
 
     return ArucoMarkerMatrix(
       dictionary: dictionary,
       markerId: markerId,
+      quietZoneModules: ArucoMarkerPrintContract.quietZoneModules,
+      markerModules: ArucoMarkerPrintContract.markerModules,
       modules: modules,
     );
   }

@@ -23,13 +23,60 @@ void main() {
     expect(second, first);
   });
 
+  test('identity codec round-trips delimiters, spaces, and Unicode', () {
+    const codec = TemplatePageIdentityCodec();
+    final original = TemplatePageIdentity(
+      templateId: TemplateId('survey | pagsusulit 日本'),
+      templateVersion: TemplateVersion(7),
+      pageId: PageId('page | two 📍'),
+    );
+
+    final encoded = codec.encode(
+      templateId: original.templateId,
+      templateVersion: original.templateVersion,
+      pageId: original.pageId,
+    );
+    final decoded = codec.decode(encoded);
+
+    expect(encoded.split('|'), hasLength(4));
+    expect(encoded, contains('%7C'));
+    expect(encoded, isNot(contains('日本')));
+    expect(decoded.isSuccess, isTrue);
+    expect(decoded.value, original);
+  });
+
+  test(
+    'identity codec rejects malformed payloads with structured failures',
+    () {
+      const codec = TemplatePageIdentityCodec();
+      const malformed = [
+        '',
+        'TS2|survey|1|page',
+        'TS1|survey|1',
+        'TS1|survey|not-a-version|page',
+        'TS1||1|page',
+        'TS1|survey|0|page',
+        'TS1|survey|1|%ZZ',
+        'TS1|survey|1|page|extra',
+      ];
+
+      for (final payload in malformed) {
+        final result = codec.decode(payload);
+        expect(result.isFailure, isTrue, reason: payload);
+        expect(result.error.code, 'TEMPLATE_PAGE_IDENTITY_INVALID');
+      }
+    },
+  );
+
   test('OpenCV DICT_4X4_50 encoder emits stable marker semantics', () {
     const encoder = OpenCvDictionary4x4MarkerEncoder();
     final marker = encoder.encode(10);
 
     expect(marker.dictionary, ArucoDictionary.openCv4x4_50);
     expect(marker.markerId, 10);
-    expect(marker.moduleCount, 8);
+    expect(marker.quietZoneModules, 1);
+    expect(marker.markerModules, 6);
+    expect(marker.totalModules, 8);
     expect(marker.modules.first, everyElement(isFalse));
     expect(marker.modules.last, everyElement(isFalse));
     expect([
@@ -38,6 +85,31 @@ void main() {
     expect([for (final row in marker.modules) row.last], everyElement(isFalse));
     expect(marker.modules[1].sublist(1, 7), everyElement(isTrue));
     expect(marker.modules[6].sublist(1, 7), everyElement(isTrue));
+  });
+
+  test('only the inner six-module range contains the detectable marker', () {
+    final marker = const OpenCvDictionary4x4MarkerEncoder().encode(10);
+    final quiet = marker.quietZoneModules;
+    final markerEnd = quiet + marker.markerModules;
+
+    for (var row = 0; row < marker.totalModules; row++) {
+      for (var column = 0; column < marker.totalModules; column++) {
+        final inQuietZone =
+            row < quiet ||
+            column < quiet ||
+            row >= markerEnd ||
+            column >= markerEnd;
+        if (inQuietZone) expect(marker.modules[row][column], isFalse);
+      }
+    }
+    expect(
+      marker.modules[quiet].sublist(quiet, markerEnd),
+      everyElement(isTrue),
+    );
+    expect(
+      marker.modules[markerEnd - 1].sublist(quiet, markerEnd),
+      everyElement(isTrue),
+    );
   });
 
   test('marker payload matches OpenCV canonical codeword for ID 10', () {
