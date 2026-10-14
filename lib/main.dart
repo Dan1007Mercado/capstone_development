@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+
+import 'debug/p5_native_validation_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -109,6 +112,17 @@ class _MyHomePageState extends State<MyHomePage> {
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
+            if (kDebugMode) ...[
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const P5NativeValidationScreen(),
+                  ),
+                ),
+                child: const Text('Open P5 Native OpenCV Validation'),
+              ),
+            ],
           ],
         ),
       ),
