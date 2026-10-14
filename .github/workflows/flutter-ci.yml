@@ -2,18 +2,18 @@ name: Flutter CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   test:
+    name: Format, Analyze, Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Flutter
@@ -25,7 +25,7 @@ jobs:
       - name: Flutter version
         run: flutter --version
 
-      - name: Install dependencies
+      - name: Get dependencies
         run: flutter pub get
 
       - name: Check formatting
@@ -34,5 +34,5 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Run tests
+      - name: Test
         run: flutter test
