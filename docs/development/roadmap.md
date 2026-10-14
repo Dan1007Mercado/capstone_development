@@ -146,6 +146,10 @@ Still no live camera dependency required.
 
 ## Phase 10 — Camera Engine
 
+Development gate: before Phase 10 camera integration, the Phase 5 native
+OpenCV integration tests must run successfully on at least one supported target
+environment.
+
 Implement separately:
 
 - rear camera selection
