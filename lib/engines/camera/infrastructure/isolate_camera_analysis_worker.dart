@@ -1,21 +1,15 @@
 import 'dart:async';
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:typed_data';
-
-import 'package:image/image.dart' as image;
 
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
-import '../../aruco/application/marker_correspondence_service.dart';
-import '../../aruco/domain/aruco_alignment_config.dart';
-import '../../aruco/domain/detected_marker.dart';
 import '../../aruco/domain/image_geometry.dart';
-import '../../aruco/infrastructure/opencv_aruco_vision_backend.dart';
-import '../../layout/domain/layout_regions.dart';
+import '../../aruco/infrastructure/opencv_aruco_detector.dart';
 import '../domain/camera_backend.dart';
 import '../domain/camera_engine_config.dart';
 import '../domain/camera_models.dart';
+import 'camera_analysis_geometry.dart';
 
 final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
   Isolate? _isolate;
@@ -43,10 +37,8 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
         'height': frame.height,
         'bytesPerRow': frame.bytesPerRow,
         'bytesPerPixel': frame.bytesPerPixel,
+        'analysisMaxDimension': config.analysisMaxDimension,
         'markerIds': config.markerIds.values,
-        'minimumMarkerSidePixels': config.minimumMarkerSidePixels,
-        'minimumPageAreaRatio': config.minimumPageAreaRatio,
-        'maximumPerspectiveRatio': config.maximumPerspectiveRatio,
       });
       final message = await response.first as Map<Object?, Object?>;
       response.close();
@@ -72,6 +64,12 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
           brightness: message['brightness']! as double,
           sharpness: message['sharpness']! as double,
           frameSize: ImageSize(width: frame.width, height: frame.height),
+          analysisFrameSize: ImageSize(
+            width: message['analysisWidth']! as int,
+            height: message['analysisHeight']! as int,
+          ),
+          analysisScaleX: message['analysisScaleX']! as double,
+          analysisScaleY: message['analysisScaleY']! as double,
         ),
       );
     } on Object catch (error) {
@@ -148,117 +146,57 @@ Map<Object?, Object?> _analyzeInWorker(Map<Object?, Object?> task) {
   final source = (task['luma']! as TransferableTypedData)
       .materialize()
       .asUint8List();
-  final compact = Uint8List(width * height);
-  var sum = 0.0;
-  for (var y = 0; y < height; y++) {
-    final sourceRow = y * bytesPerRow;
-    final destinationRow = y * width;
-    for (var x = 0; x < width; x++) {
-      final value = source[sourceRow + x * bytesPerPixel];
-      compact[destinationRow + x] = value;
-      sum += value;
-    }
-  }
-  final brightness = sum / compact.length;
-  final sharpness = _laplacianVariance(compact, width, height);
-  final grayscale = image.Image.fromBytes(
+  final prepared = prepareCameraAnalysisImage(
+    source: source,
     width: width,
     height: height,
-    bytes: compact.buffer,
-    numChannels: 1,
+    bytesPerRow: bytesPerRow,
+    bytesPerPixel: bytesPerPixel,
+    maximumDimension: task['analysisMaxDimension']! as int,
   );
-  final pngBytes = Uint8List.fromList(image.encodePng(grayscale));
-  final backendResult = const OpenCvArucoVisionBackend().open(
-    pngBytes,
-    ArucoAlignmentConfig(
-      minimumMarkerSidePixels: task['minimumMarkerSidePixels']! as double,
-      minimumRegistrationAreaRatio: task['minimumPageAreaRatio']! as double,
-      maximumExtremePerspectiveRatio:
-          task['maximumPerspectiveRatio']! as double,
-    ),
+  final sharpness = _laplacianVariance(
+    prepared.pixels,
+    prepared.analysisSize.width,
+    prepared.analysisSize.height,
   );
-  if (backendResult.isFailure) {
+  final detectionResult = const OpenCvArucoDetector().detectGray(
+    pixels: prepared.pixels,
+    width: prepared.analysisSize.width,
+    height: prepared.analysisSize.height,
+  );
+  if (detectionResult.isFailure) {
     return {
       'ok': false,
-      'code': backendResult.error.code,
-      'message': backendResult.error.message,
-      'cause': backendResult.error.details,
+      'code': detectionResult.error.code,
+      'message': detectionResult.error.message,
+      'cause': detectionResult.error.details,
     };
   }
 
-  final session = backendResult.value;
-  try {
-    final markers = session.detection.markers;
-    final detectedIds = markers.map((marker) => marker.id).toList()..sort();
-    final markerIds = (task['markerIds']! as List<Object?>).cast<int>();
-    final rolesById = <int, MarkerRole>{
-      markerIds[0]: MarkerRole.topLeft,
-      markerIds[1]: MarkerRole.topRight,
-      markerIds[2]: MarkerRole.bottomLeft,
-      markerIds[3]: MarkerRole.bottomRight,
-    };
-    final detectedById = <int, List<DetectedMarker>>{};
-    for (final marker in markers) {
-      detectedById.putIfAbsent(marker.id, () => []).add(marker);
-    }
-    const roleOrder = [
-      MarkerRole.topLeft,
-      MarkerRole.topRight,
-      MarkerRole.bottomRight,
-      MarkerRole.bottomLeft,
-    ];
-    final idByRole = {
-      for (final entry in rolesById.entries) entry.value: entry.key,
-    };
-    final requiredMarkers = <DetectedMarker>[];
-    final registrationPoints = <ImagePoint>[];
-    for (final role in roleOrder) {
-      final matches = detectedById[idByRole[role]];
-      if (matches == null || matches.length != 1) {
-        requiredMarkers.clear();
-        registrationPoints.clear();
-        break;
-      }
-      final marker = matches.single;
-      requiredMarkers.add(marker);
-      registrationPoints.add(
-        marker.corner(DetectedRegistrationCorner.forRole(role)),
-      );
-    }
-
-    double? areaRatio;
-    double? perspectiveRatio;
-    double? minimumMarkerSide;
-    if (registrationPoints.length == 4) {
-      areaRatio = _polygonArea(registrationPoints).abs() / (width * height);
-      final spans = <double>[
-        for (var index = 0; index < 4; index++)
-          registrationPoints[index].distanceTo(
-            registrationPoints[(index + 1) % 4],
-          ),
-        registrationPoints[0].distanceTo(registrationPoints[2]),
-        registrationPoints[1].distanceTo(registrationPoints[3]),
-      ];
-      perspectiveRatio = spans.reduce(math.max) / spans.reduce(math.min);
-      minimumMarkerSide = requiredMarkers
-          .map((marker) => marker.minimumSideLength)
-          .reduce(math.min);
-    }
-    return {
-      'ok': true,
-      'detectedMarkerIds': detectedIds,
-      'registrationPoints': [
-        for (final point in registrationPoints) [point.x, point.y],
-      ],
-      'pageAreaRatio': areaRatio,
-      'perspectiveRatio': perspectiveRatio,
-      'minimumMarkerSidePixels': minimumMarkerSide,
-      'brightness': brightness,
-      'sharpness': sharpness,
-    };
-  } finally {
-    session.dispose();
-  }
+  final sourceDetection = remapArucoDetectionToSource(
+    detectionResult.value,
+    prepared.sourceSize,
+  );
+  final geometry = calculateCameraMarkerGeometry(
+    sourceDetection: sourceDetection,
+    markerIds: (task['markerIds']! as List<Object?>).cast<int>(),
+  );
+  return {
+    'ok': true,
+    'detectedMarkerIds': geometry.detectedMarkerIds,
+    'registrationPoints': [
+      for (final point in geometry.registrationPoints) [point.x, point.y],
+    ],
+    'pageAreaRatio': geometry.pageAreaRatio,
+    'perspectiveRatio': geometry.perspectiveRatio,
+    'minimumMarkerSidePixels': geometry.minimumMarkerSidePixels,
+    'brightness': prepared.brightness,
+    'sharpness': sharpness,
+    'analysisWidth': prepared.analysisSize.width,
+    'analysisHeight': prepared.analysisSize.height,
+    'analysisScaleX': prepared.analysisScaleX,
+    'analysisScaleY': prepared.analysisScaleY,
+  };
 }
 
 double _laplacianVariance(Uint8List pixels, int width, int height) {
@@ -282,14 +220,4 @@ double _laplacianVariance(Uint8List pixels, int width, int height) {
     }
   }
   return count > 1 ? squaredDifferenceSum / (count - 1) : 0;
-}
-
-double _polygonArea(List<ImagePoint> points) {
-  var twiceArea = 0.0;
-  for (var index = 0; index < points.length; index++) {
-    final current = points[index];
-    final next = points[(index + 1) % points.length];
-    twiceArea += current.x * next.y - next.x * current.y;
-  }
-  return twiceArea / 2;
 }

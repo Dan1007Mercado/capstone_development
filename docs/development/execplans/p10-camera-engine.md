@@ -28,9 +28,11 @@ The app currently contains only debug access to the P5 native harness.
 diagnostics, readiness, and auto-capture requests. `CameraBackend` abstracts
 camera initialization, image streaming, and still capture. The Flutter camera
 adapter exposes a native preview controller only to the diagnostics widget.
-A persistent worker isolate converts luma frames to PNG and runs P5 OpenCV
-marker detection plus lightweight quality measurements. Fake backends and
-analyzers drive deterministic CI tests.
+A persistent worker isolate downsamples accepted luma frames into a compact
+grayscale buffer, constructs a native OpenCV grayscale Mat directly, and runs
+the shared P5 ArUco detector plus lightweight quality measurements. Detected
+geometry is remapped to source-frame coordinates before it reaches the engine.
+Fake backends and analyzers drive deterministic CI tests.
 
 The official Flutter `camera` package is selected. Native preview uses
 `CameraPreview`; streamed analysis frames use latest-frame delivery; stills use
@@ -42,7 +44,11 @@ dependent. Automatic focus/exposure and flash-off are requested when supported.
 - `lib/engines/camera/domain/`
 - `lib/engines/camera/application/camera_engine.dart`
 - `lib/engines/camera/infrastructure/`
+- `lib/engines/aruco/infrastructure/opencv_aruco_detector.dart`
 - `lib/debug/p10_camera_diagnostics_screen.dart`
+- `lib/debug/p10_camera_test_sheet.dart`
+- `tool/generate_p10_camera_test_sheet.dart`
+- `debug_output/p10_camera_test_sheet.pdf`
 - `test/engines/camera/`
 - `docs/development/p10-camera-android-validation.md`
 - `lib/main.dart`, `pubspec.yaml`, and resolved dependency metadata
@@ -51,7 +57,8 @@ dependent. Automatic focus/exposure and flash-off are requested when supported.
 
 Use fake camera and analyzer implementations for lifecycle, failures,
 throttling, busy-frame drops, readiness reasons, stability, cooldown, capture,
-disposal, deterministic sequences, and diagnostics counters. Hardware and
+disposal, deterministic sequences, diagnostics counters, analysis resizing,
+source-coordinate remapping, and printable marker geometry. Hardware and
 native camera permission are not required in CI.
 
 ## Performance
@@ -59,8 +66,12 @@ native camera permission are not required in CI.
 Default analysis target is 10 FPS. The preview is never reconstructed from
 analysis frames. One worker task is allowed at a time, with drop-while-busy and
 no pending frame queue. Diagnostics expose processed/dropped frames, estimated
-analysis FPS, and average analysis duration. Device performance remains a
-manual measurement.
+analysis FPS, and average analysis duration. The native preview resolution is
+unchanged while analysis defaults to a maximum 960-pixel long edge. The former
+accepted-frame path allocated a compact full-size buffer, image package object,
+PNG bytes, and an OpenCV-decoded Mat. P10.2 keeps one compact/downscaled
+analysis buffer before direct Mat construction. Device performance and GC
+behavior remain manual measurements.
 
 ## Risks
 

@@ -11,10 +11,13 @@ import '../domain/aruco_vision_backend.dart';
 import '../domain/detected_marker.dart';
 import '../domain/image_geometry.dart';
 import '../domain/page_alignment_result.dart';
+import 'opencv_aruco_detector.dart';
 
 /// Native OpenCV backend. Returned sessions own one decoded Mat until disposed.
 final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
-  const OpenCvArucoVisionBackend();
+  const OpenCvArucoVisionBackend({this.detector = const OpenCvArucoDetector()});
+
+  final OpenCvArucoDetector detector;
 
   @override
   EngineResult<ArucoImageSession> open(
@@ -29,12 +32,6 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
     }
 
     cv.Mat? image;
-    cv.ArucoDictionary? dictionary;
-    cv.ArucoDetectorParameters? parameters;
-    cv.ArucoDetector? detector;
-    cv.VecVecPoint2f? corners;
-    cv.VecI32? ids;
-    cv.VecVecPoint2f? rejected;
     var transferImageOwnership = false;
     try {
       final decoded = image_codec.decodeImage(encodedImage);
@@ -52,82 +49,30 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
       );
       image = decodedMat;
 
-      dictionary = cv.ArucoDictionary.predefined(
-        cv.PredefinedDictionaryType.DICT_4X4_50,
-      );
-      parameters = cv.ArucoDetectorParameters.empty();
-      detector = cv.ArucoDetector.create(dictionary, parameters);
-      final detection = detector.detectMarkers(decodedMat);
-      corners = detection.$1;
-      ids = detection.$2;
-      rejected = detection.$3;
-      if (corners.length != ids.length) {
-        return _failure(
-          'ARUCO_DETECTION_FAILED',
-          'OpenCV returned inconsistent marker IDs and corners.',
-        );
-      }
-
-      final idValues = ids.toList();
-      final markers = <DetectedMarker>[];
-      for (var index = 0; index < idValues.length; index++) {
-        final points = corners[index];
-        if (points.length != 4) {
-          return _failure(
-            'ARUCO_DETECTION_FAILED',
-            'OpenCV returned a marker without four corners.',
-            {'markerId': idValues[index]},
-          );
-        }
-        markers.add(
-          DetectedMarker(
-            id: idValues[index],
-            topLeft: ImagePoint(points[0].x, points[0].y),
-            topRight: ImagePoint(points[1].x, points[1].y),
-            bottomRight: ImagePoint(points[2].x, points[2].y),
-            bottomLeft: ImagePoint(points[3].x, points[3].y),
-          ),
-        );
+      final detection = detector.detectMat(decodedMat);
+      if (detection.isFailure) {
+        return EngineResult.failure(detection.error);
       }
 
       final session = _OpenCvArucoImageSession(
         image: image,
-        detection: ArucoDetection(
-          sourceSize: ImageSize(
-            width: decodedMat.width,
-            height: decodedMat.height,
-          ),
-          markers: markers,
-        ),
+        detection: detection.value,
       );
       transferImageOwnership = true;
       return EngineResult.success(session);
     } on Object catch (error) {
       return _failure(
-        _isBackendUnavailable(error)
+        OpenCvArucoDetector.isBackendUnavailable(error)
             ? 'ARUCO_BACKEND_UNAVAILABLE'
             : 'ARUCO_DETECTION_FAILED',
-        _isBackendUnavailable(error)
+        OpenCvArucoDetector.isBackendUnavailable(error)
             ? 'OpenCV ArUco native symbols are unavailable.'
             : 'OpenCV could not detect markers in the source image.',
         {'cause': error.toString()},
       );
     } finally {
-      rejected?.dispose();
-      ids?.dispose();
-      corners?.dispose();
-      detector?.dispose();
-      parameters?.dispose();
-      dictionary?.dispose();
       if (!transferImageOwnership) image?.dispose();
     }
-  }
-
-  static bool _isBackendUnavailable(Object error) {
-    final text = error.toString().toLowerCase();
-    return text.contains('symbol') ||
-        text.contains('dynamic library') ||
-        text.contains('failed to load');
   }
 
   EngineResult<ArucoImageSession> _failure(

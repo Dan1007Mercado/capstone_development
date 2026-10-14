@@ -13,6 +13,7 @@ final class CameraEngineConfig {
         CameraResolutionPreference.veryHigh,
     int? preferredPreviewFps = 60,
     double targetAnalysisFps = 10,
+    int analysisMaxDimension = 960,
     int minimumStableFrames = 3,
     int stabilityWindowSize = 5,
     double maximumMotionThreshold = 0.015,
@@ -37,6 +38,9 @@ final class CameraEngineConfig {
         targetAnalysisFps <= 0 ||
         targetAnalysisFps > 60) {
       throw ArgumentError.value(targetAnalysisFps, 'targetAnalysisFps');
+    }
+    if (analysisMaxDimension <= 0) {
+      throw ArgumentError.value(analysisMaxDimension, 'analysisMaxDimension');
     }
     if (minimumStableFrames <= 0 || stabilityWindowSize < minimumStableFrames) {
       throw ArgumentError(
@@ -75,6 +79,7 @@ final class CameraEngineConfig {
       preferredResolution: preferredResolution,
       preferredPreviewFps: preferredPreviewFps,
       targetAnalysisFps: targetAnalysisFps,
+      analysisMaxDimension: analysisMaxDimension,
       minimumStableFrames: minimumStableFrames,
       stabilityWindowSize: stabilityWindowSize,
       maximumMotionThreshold: maximumMotionThreshold,
@@ -97,6 +102,7 @@ final class CameraEngineConfig {
     required this.preferredResolution,
     required this.preferredPreviewFps,
     required this.targetAnalysisFps,
+    required this.analysisMaxDimension,
     required this.minimumStableFrames,
     required this.stabilityWindowSize,
     required this.maximumMotionThreshold,
@@ -117,6 +123,7 @@ final class CameraEngineConfig {
   final CameraResolutionPreference preferredResolution;
   final int? preferredPreviewFps;
   final double targetAnalysisFps;
+  final int analysisMaxDimension;
   final int minimumStableFrames;
   final int stabilityWindowSize;
   final double maximumMotionThreshold;

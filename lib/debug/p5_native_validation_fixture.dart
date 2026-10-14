@@ -17,26 +17,7 @@ const p5NativeValidationExpectedMarkerIds = <int>[10, 11, 12, 13];
 
 /// Builds the authoritative layout used to render and validate the test page.
 PageLayout buildP5NativeValidationPage() {
-  final template = TemplateDefinition(
-    id: TemplateId('p5-native-validation'),
-    version: TemplateVersion(1),
-    name: 'P5 Native Validation',
-    status: TemplateStatus.draft,
-    sections: [
-      TemplateSection(
-        id: SectionId('validation-section'),
-        title: 'Native validation',
-        questions: [
-          TemplateQuestion.yesNo(
-            id: QuestionId('native-runtime-ready'),
-            prompt: 'Did the native validation complete?',
-            yesOptionId: OptionId('yes'),
-            noOptionId: OptionId('no'),
-          ),
-        ],
-      ),
-    ],
-  );
+  final template = buildP5NativeValidationTemplate();
   final result = LayoutEngine().build(template, LayoutConfig.a4Default());
   if (result.isFailure) {
     throw StateError(
@@ -58,6 +39,30 @@ PageLayout buildP5NativeValidationPage() {
   }
   return page;
 }
+
+/// Builds the semantic fixture paired with [buildP5NativeValidationPage].
+TemplateDefinition buildP5NativeValidationTemplate({
+  String name = 'P5 Native Validation',
+}) => TemplateDefinition(
+  id: TemplateId('p5-native-validation'),
+  version: TemplateVersion(1),
+  name: name,
+  status: TemplateStatus.draft,
+  sections: [
+    TemplateSection(
+      id: SectionId('validation-section'),
+      title: 'Native validation',
+      questions: [
+        TemplateQuestion.yesNo(
+          id: QuestionId('native-runtime-ready'),
+          prompt: 'Did the native validation complete?',
+          yesOptionId: OptionId('yes'),
+          noOptionId: OptionId('no'),
+        ),
+      ],
+    ),
+  ],
+);
 
 /// Renders a clean canonical page using the repository marker print contract.
 Uint8List renderP5NativeValidationPng(PageLayout page) {

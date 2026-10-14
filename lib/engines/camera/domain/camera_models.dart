@@ -102,7 +102,11 @@ final class CameraFrameObservation {
     required this.brightness,
     required this.sharpness,
     required this.frameSize,
-  }) : detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
+    ImageSize? analysisFrameSize,
+    this.analysisScaleX = 1,
+    this.analysisScaleY = 1,
+  }) : analysisFrameSize = analysisFrameSize ?? frameSize,
+       detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        registrationPoints = UnmodifiableListView(List.of(registrationPoints));
 
   final List<int> detectedMarkerIds;
@@ -113,6 +117,9 @@ final class CameraFrameObservation {
   final double brightness;
   final double sharpness;
   final ImageSize frameSize;
+  final ImageSize analysisFrameSize;
+  final double analysisScaleX;
+  final double analysisScaleY;
 }
 
 final class FrameQuality {
@@ -166,6 +173,10 @@ final class CameraAnalysisState {
     required this.readiness,
     required this.stabilityScore,
     required this.processingDuration,
+    required this.sourceFrameSize,
+    required this.analysisFrameSize,
+    required this.analysisScaleX,
+    required this.analysisScaleY,
   });
 
   final MarkerTrackingState tracking;
@@ -173,6 +184,10 @@ final class CameraAnalysisState {
   final CaptureReadiness readiness;
   final double stabilityScore;
   final Duration processingDuration;
+  final ImageSize sourceFrameSize;
+  final ImageSize analysisFrameSize;
+  final double analysisScaleX;
+  final double analysisScaleY;
 }
 
 final class CameraDiagnostics {

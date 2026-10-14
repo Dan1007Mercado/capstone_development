@@ -122,6 +122,15 @@ class _P10CameraDiagnosticsScreenState extends State<P10CameraDiagnosticsScreen>
             'Analysis FPS: ${diagnostics.estimatedAnalysisFps.toStringAsFixed(1)}',
           ),
           Text(
+            'Source frame: ${analysis == null ? 'unavailable' : '${analysis.sourceFrameSize.width}x${analysis.sourceFrameSize.height}'}',
+          ),
+          Text(
+            'Analysis image: ${analysis == null ? 'unavailable' : '${analysis.analysisFrameSize.width}x${analysis.analysisFrameSize.height}'}',
+          ),
+          Text(
+            'Resize scale: ${analysis == null ? 'unavailable' : '${analysis.analysisScaleX.toStringAsFixed(3)}x${analysis.analysisScaleY.toStringAsFixed(3)}'}',
+          ),
+          Text(
             'Processing: ${analysis?.processingDuration.inMilliseconds ?? 0} ms '
             '(average ${diagnostics.averageAnalysisDuration.inMilliseconds} ms)',
           ),

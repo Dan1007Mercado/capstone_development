@@ -106,6 +106,11 @@ void main() {
       () => CameraEngineConfig(targetAnalysisFps: 61),
       throwsArgumentError,
     );
+    expect(
+      () => CameraEngineConfig(analysisMaxDimension: 0),
+      throwsArgumentError,
+    );
+    expect(CameraEngineConfig().analysisMaxDimension, 960);
   });
 
   test('detected marker IDs are preserved in engine state', () async {
