@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import 'debug/p5_native_validation_screen.dart';
+import 'debug/p10_camera_diagnostics_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -121,6 +122,15 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 child: const Text('Open P5 Native OpenCV Validation'),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const P10CameraDiagnosticsScreen(),
+                  ),
+                ),
+                child: const Text('Open P10 Camera Diagnostics'),
               ),
             ],
           ],
