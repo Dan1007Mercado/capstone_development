@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/services.dart' show DeviceOrientation;
 
@@ -109,19 +107,22 @@ final class FlutterCameraBackend implements CameraBackend {
     try {
       await controller.startImageStream((image) {
         if (image.planes.isEmpty) return;
-        final luma = image.planes.first;
-        onFrame(
-          CameraAnalysisFrame(
-            lumaBytes: Uint8List.fromList(luma.bytes),
+        final timestamp = DateTime.now();
+        onFrame(timestamp, () {
+          final luma = image.planes.first;
+          return CameraAnalysisFrame(
+            // CameraAnalysisFrame takes the single owned copy needed after
+            // this native image callback returns.
+            lumaBytes: luma.bytes,
             width: image.width,
             height: image.height,
             bytesPerRow: luma.bytesPerRow,
             bytesPerPixel: luma.bytesPerPixel ?? 1,
-            timestamp: DateTime.now(),
+            timestamp: timestamp,
             sensorOrientationDegrees: controller.description.sensorOrientation,
             deviceOrientation: _orientation(controller.value.deviceOrientation),
-          ),
-        );
+          );
+        });
       });
       return EngineResult.success(true);
     } on camera.CameraException catch (error) {

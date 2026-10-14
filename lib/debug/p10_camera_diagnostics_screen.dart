@@ -125,6 +125,8 @@ class _P10CameraDiagnosticsScreenState extends State<P10CameraDiagnosticsScreen>
             'Processing: ${analysis?.processingDuration.inMilliseconds ?? 0} ms '
             '(average ${diagnostics.averageAnalysisDuration.inMilliseconds} ms)',
           ),
+          Text('Received frames: ${diagnostics.receivedFrameCount}'),
+          Text('Accepted frames: ${diagnostics.acceptedFrameCount}'),
           Text('Processed frames: ${diagnostics.processedFrameCount}'),
           Text('Dropped frames: ${diagnostics.droppedFrameCount}'),
           Text(

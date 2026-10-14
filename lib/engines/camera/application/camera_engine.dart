@@ -31,12 +31,14 @@ final class CameraEngine {
   double? _previousAreaRatio;
   int _stableFrameCount = 0;
   int _receivedFrames = 0;
+  int _acceptedFrames = 0;
   int _processedFrames = 0;
   int _droppedFrames = 0;
   Duration _totalAnalysisDuration = Duration.zero;
   final Queue<DateTime> _processedFrameTimes = Queue<DateTime>();
 
   CameraEngineState get state => _state;
+  CameraDiagnostics get diagnostics => _diagnostics;
   Stream<CameraEngineState> get states => _states.stream;
 
   Future<EngineResult<bool>> initialize() async {
@@ -171,20 +173,38 @@ final class CameraEngine {
 
   Future<EngineResult<bool>> resume() => initialize();
 
-  void _onFrame(CameraAnalysisFrame frame) {
+  void _onFrame(DateTime timestamp, CameraFrameMaterializer materialize) {
     if (_disposed || _state.lifecycle != CameraLifecycleState.analyzing) return;
     _receivedFrames++;
     final lastAccepted = _lastAcceptedFrameAt;
     if (_analysisBusy ||
         (lastAccepted != null &&
-            frame.timestamp.difference(lastAccepted) <
-                config.analysisInterval)) {
+            timestamp.difference(lastAccepted) < config.analysisInterval)) {
       _droppedFrames++;
-      _emit(_copyState(diagnostics: _diagnostics));
       return;
     }
     _analysisBusy = true;
-    _lastAcceptedFrameAt = frame.timestamp;
+    _lastAcceptedFrameAt = timestamp;
+    _acceptedFrames++;
+    late final CameraAnalysisFrame frame;
+    try {
+      // This must remain synchronous so native CameraImage resources are not
+      // retained beyond the plugin callback that owns them.
+      frame = materialize();
+    } on Object catch (error) {
+      _analysisBusy = false;
+      _emit(
+        _copyState(
+          lifecycle: CameraLifecycleState.error,
+          error: EngineError(
+            code: 'CAMERA_FRAME_MATERIALIZATION_FAILED',
+            message: 'An accepted camera frame could not be materialized.',
+            details: {'cause': error.toString()},
+          ),
+        ),
+      );
+      return;
+    }
     unawaited(_analyze(frame));
   }
 
@@ -345,6 +365,7 @@ final class CameraEngine {
     }
     return CameraDiagnostics(
       receivedFrameCount: _receivedFrames,
+      acceptedFrameCount: _acceptedFrames,
       processedFrameCount: _processedFrames,
       droppedFrameCount: _droppedFrames,
       estimatedAnalysisFps: estimatedFps,

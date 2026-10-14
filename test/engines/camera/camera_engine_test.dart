@@ -64,6 +64,7 @@ void main() {
       await _settle();
       expect(fixture.analyzer.calls, 2);
       expect(fixture.engine.state.diagnostics.droppedFrameCount, 1);
+      expect(fixture.backend.materializeCalls, 2);
       await fixture.dispose();
     },
   );
@@ -75,7 +76,8 @@ void main() {
     fixture.emitAt(0);
     await _settle();
     fixture.emitAt(200);
-    expect(fixture.engine.state.diagnostics.droppedFrameCount, 1);
+    expect(fixture.engine.diagnostics.droppedFrameCount, 1);
+    expect(fixture.backend.materializeCalls, 1);
     analyzer.gate!.complete();
     await _settle();
     expect(analyzer.calls, 1);
@@ -91,7 +93,8 @@ void main() {
     }
     await _settle();
     expect(analyzer.calls, 1);
-    expect(fixture.engine.state.diagnostics.droppedFrameCount, 99);
+    expect(fixture.engine.diagnostics.droppedFrameCount, 99);
+    expect(fixture.backend.materializeCalls, 1);
     analyzer.gate!.complete();
     await _settle();
     await fixture.dispose();
@@ -358,6 +361,7 @@ void main() {
     await fixture.emitAndSettle(0);
     await fixture.emitAndSettle(200);
     expect(fixture.engine.state.diagnostics.receivedFrameCount, 2);
+    expect(fixture.engine.state.diagnostics.acceptedFrameCount, 2);
     expect(fixture.engine.state.diagnostics.processedFrameCount, 2);
     expect(
       fixture.engine.state.diagnostics.estimatedAnalysisFps,
@@ -373,8 +377,34 @@ void main() {
     fixture.emitAt(20);
     fixture.emitAt(40);
     fixture.emitAt(60);
-    expect(fixture.engine.state.diagnostics.droppedFrameCount, 3);
-    expect(fixture.engine.state.diagnostics.receivedFrameCount, 4);
+    expect(fixture.engine.diagnostics.droppedFrameCount, 3);
+    expect(fixture.engine.diagnostics.receivedFrameCount, 4);
+    expect(fixture.engine.diagnostics.acceptedFrameCount, 1);
+    expect(fixture.backend.materializeCalls, 1);
+    await fixture.dispose();
+  });
+
+  test('rejected frames do not emit one state update per frame', () async {
+    final analyzer = _FakeAnalyzer()..gate = Completer<void>();
+    final fixture = _Fixture(analyzer: analyzer);
+    var stateEmissions = 0;
+    final subscription = fixture.engine.states.listen((_) => stateEmissions++);
+    await fixture.initializeAndStart();
+    fixture.emitAt(0);
+    await _settle();
+    final emissionsBeforeDrops = stateEmissions;
+
+    for (var index = 1; index <= 100; index++) {
+      fixture.emitAt(index * 200);
+    }
+    await _settle();
+
+    expect(stateEmissions, emissionsBeforeDrops);
+    expect(fixture.engine.diagnostics.droppedFrameCount, 100);
+    expect(fixture.backend.materializeCalls, 1);
+    analyzer.gate!.complete();
+    await _settle();
+    await subscription.cancel();
     await fixture.dispose();
   });
 
@@ -429,7 +459,10 @@ final class _Fixture {
   }
 
   void emitAt(int milliseconds) {
-    backend.emit(_frame(milliseconds));
+    final timestamp = DateTime.utc(
+      2026,
+    ).add(Duration(milliseconds: milliseconds));
+    backend.emit(timestamp, () => _frame(milliseconds));
   }
 
   Future<void> emitAndSettle(int milliseconds) async {
@@ -467,6 +500,7 @@ final class _FakeCameraBackend implements CameraBackend {
   int startCalls = 0;
   int stopCalls = 0;
   int captureCalls = 0;
+  int materializeCalls = 0;
   bool disposed = false;
 
   @override
@@ -494,7 +528,12 @@ final class _FakeCameraBackend implements CameraBackend {
     return captureResult;
   }
 
-  void emit(CameraAnalysisFrame frame) => callback?.call(frame);
+  void emit(DateTime timestamp, CameraFrameMaterializer materialize) {
+    callback?.call(timestamp, () {
+      materializeCalls++;
+      return materialize();
+    });
+  }
 
   @override
   Future<void> dispose() async {

@@ -178,6 +178,7 @@ final class CameraAnalysisState {
 final class CameraDiagnostics {
   const CameraDiagnostics({
     this.receivedFrameCount = 0,
+    this.acceptedFrameCount = 0,
     this.processedFrameCount = 0,
     this.droppedFrameCount = 0,
     this.estimatedAnalysisFps = 0,
@@ -185,6 +186,7 @@ final class CameraDiagnostics {
   });
 
   final int receivedFrameCount;
+  final int acceptedFrameCount;
   final int processedFrameCount;
   final int droppedFrameCount;
   final double estimatedAnalysisFps;
