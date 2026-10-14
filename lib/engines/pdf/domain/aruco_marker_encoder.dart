@@ -1,6 +1,8 @@
 import 'dart:collection';
 
-enum ArucoDictionary { openCv4x4_50 }
+import '../../../core/protocol/aruco_dictionary.dart';
+
+export '../../../core/protocol/aruco_dictionary.dart';
 
 /// Pure data consumed by the PDF painter; true cells are printed black.
 final class ArucoMarkerMatrix {
