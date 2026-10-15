@@ -219,7 +219,8 @@ final class CameraScannerCoordinator {
       loadStopwatch.stop();
       byteLoadDuration = loadStopwatch.elapsed;
       if (_disposed) return EngineResult.failure(_disposedError());
-      if (loaded.isFailure || loaded.valueOrNull!.isEmpty) {
+      final encodedImage = loaded.valueOrNull;
+      if (loaded.isFailure || encodedImage == null || encodedImage.isEmpty) {
         final cause = loaded.isFailure
             ? loaded.error
             : EngineError(
@@ -272,7 +273,7 @@ final class CameraScannerCoordinator {
       );
       final scannerStopwatch = Stopwatch()..start();
       final scan = await scanner.scan(
-        encodedImage: loaded.value,
+        encodedImage: encodedImage,
         context: _context,
       );
       scannerStopwatch.stop();

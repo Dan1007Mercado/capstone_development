@@ -8,6 +8,7 @@ import '../application/camera_scanner/domain/detected_page_geometry.dart';
 import '../application/camera_scanner/domain/preview_coordinate_mapper.dart';
 import '../application/real_scanner/published_scanner_resolver.dart';
 import '../application/real_scanner/real_scanner_runtime.dart';
+import '../application/real_scanner/scanner_validation_flow.dart';
 import '../application/real_scanner/scanner_validation_session.dart';
 import '../core/errors/engine_error.dart';
 import '../engines/aruco/domain/image_geometry.dart';
@@ -84,6 +85,7 @@ class _RealScannerSelectionScreenState
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
+    final error = _error;
     return Scaffold(
       appBar: AppBar(title: const Text('Real Scanner Validation')),
       body: Padding(
@@ -129,9 +131,9 @@ class _RealScannerSelectionScreenState
               for (final page in selected.layout.pages)
                 Text('Page ${page.pageIndex + 1}: ${page.pageId.value}'),
             ],
-            if (_error != null) ...[
+            if (error != null) ...[
               const SizedBox(height: 12),
-              SelectableText('${_error!.code}: ${_error!.message}'),
+              SelectableText('${error.code}: ${error.message}'),
             ],
             const Spacer(),
             FilledButton.icon(
@@ -161,42 +163,40 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     with WidgetsBindingObserver {
   static const _coordinateMapper = PreviewCoordinateMapper();
 
-  late ScannerValidationSession _session;
   late final RealScannerRuntime _runtime;
+  late final ScannerValidationFlowController _flow;
   late final StreamSubscription<CameraScanState> _subscription;
-  late CameraScanState _state;
-  EngineError? _sessionError;
   bool _showDiagnostics = false;
+  bool _disposing = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _session = widget.session;
-    _runtime = createRealScannerRuntime(_session);
-    _state = _runtime.coordinator.state;
+    _runtime = createRealScannerRuntime(widget.session);
+    _flow = ScannerValidationFlowController(
+      session: widget.session,
+      initialCameraState: _runtime.coordinator.state,
+    );
     _subscription = _runtime.coordinator.states.listen(_onCoordinatorState);
     unawaited(_runtime.coordinator.initialize());
   }
 
   void _onCoordinatorState(CameraScanState state) {
-    if (!mounted) return;
-    if (state.phase == CameraScanPhase.scanCompleted && state.result != null) {
-      final recorded = _session.recordResult(state.result!);
-      setState(() {
-        _state = state;
-        _session = recorded.valueOrNull ?? _session;
-        _sessionError = recorded.errorOrNull;
-      });
-      if (recorded.isSuccess) {
-        _runtime.coordinator.updateCompletedPages(
-          recorded.value.resultsByPageId.keys,
-        );
-      }
-      if (recorded.isFailure) _runtime.coordinator.reset();
-      return;
+    if (!mounted || _disposing) return;
+    final action = _flow.handleCoordinatorState(state);
+    setState(() {});
+    switch (action) {
+      case ScannerValidationFlowAction.resultRecorded:
+        _runtime.coordinator.updateCompletedPages(_flow.completedPageIds);
+        break;
+      case ScannerValidationFlowAction.resultRejected:
+        _runtime.coordinator.reset();
+        break;
+      case ScannerValidationFlowAction.stateUpdated:
+      case ScannerValidationFlowAction.completionIgnored:
+        break;
     }
-    setState(() => _state = state);
   }
 
   @override
@@ -211,28 +211,23 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
   }
 
   void _continue() {
-    final advanced = _session.continueAfterReview();
+    final advanced = _flow.continueAfterReview();
     if (advanced.isFailure) {
-      setState(() => _sessionError = advanced.error);
+      setState(() {});
       return;
     }
     final next = advanced.value;
     if (next.state == ScannerValidationSessionState.complete) {
-      setState(() {
-        _session = next;
-        _sessionError = null;
-      });
+      setState(() {});
       return;
     }
     _runtime.coordinator.reset();
-    setState(() {
-      _session = next;
-      _sessionError = null;
-    });
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _disposing = true;
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_subscription.cancel());
     unawaited(_runtime.coordinator.dispose());
@@ -241,30 +236,33 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_session.state == ScannerValidationSessionState.reviewing) {
-      return ScannerPageResultScreen(
-        session: _session,
-        result: _state.result!,
+    final session = _flow.session;
+    final state = _flow.latestCameraState;
+    if (session.state == ScannerValidationSessionState.reviewing) {
+      return ScannerReviewStateView(
+        session: session,
+        reviewResult: _flow.reviewResult,
         onContinue: _continue,
       );
     }
-    if (_session.state == ScannerValidationSessionState.complete) {
-      return _ScannerCompleteScreen(session: _session);
+    if (session.state == ScannerValidationSessionState.complete) {
+      return _ScannerCompleteScreen(session: session);
     }
     final controller = _runtime.backend.controller;
-    final detectedPageId = _state.cameraState.analysis?.tracking.resolvedPageId;
+    final detectedPageId = state.cameraState.analysis?.tracking.resolvedPageId;
     final detectedPage = detectedPageId == null
         ? null
-        : _session.pages
+        : session.pages
               .where((page) => page.pageId == detectedPageId)
               .firstOrNull;
     final pageNumber =
-        (detectedPage?.pageIndex ?? _session.currentPageIndex) + 1;
-    final pageCount = _session.pages.length;
+        (detectedPage?.pageIndex ?? session.currentPageIndex) + 1;
+    final pageCount = session.pages.length;
+    final displayedError = _flow.sessionError ?? state.error;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text('Scan ${_session.artifact.template.name}'),
+        title: Text('Scan ${session.artifact.template.name}'),
         actions: [
           IconButton(
             tooltip: 'Show diagnostics',
@@ -280,7 +278,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
             child: controller != null && controller.value.isInitialized
                 ? LayoutBuilder(
                     builder: (context, constraints) {
-                      final points = _mappedPoints(constraints.biggest, _state);
+                      final points = _mappedPoints(constraints.biggest, state);
                       final previewAspect = 1 / controller.value.aspectRatio;
                       return ClipRect(
                         child: Stack(
@@ -297,23 +295,23 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                             IgnorePointer(
                               child: ScannerDetectionOverlay(
                                 points: points,
-                                state: scannerOverlayState(_state),
+                                state: scannerOverlayState(state),
                               ),
                             ),
                             Align(
                               alignment: Alignment.topCenter,
                               child: ScannerStatusBanner(
                                 text: scannerStatusText(
-                                  _state,
+                                  state,
                                   pageNumber: pageNumber,
                                   pageCount: pageCount,
                                   pageDetected: detectedPage != null,
                                   pageAlreadyCompleted:
                                       detectedPageId != null &&
-                                      _session.isPageCompleted(detectedPageId),
+                                      session.isPageCompleted(detectedPageId),
                                 ),
                                 progress:
-                                    '${_session.completedPageCount} of $pageCount completed',
+                                    '${session.completedPageCount} of $pageCount completed',
                               ),
                             ),
                           ],
@@ -323,7 +321,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                   )
                 : const Center(child: CircularProgressIndicator()),
           ),
-          if (_sessionError != null || _state.error != null)
+          if (displayedError != null)
             Container(
               width: double.infinity,
               color: Colors.red.shade900,
@@ -332,16 +330,16 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                 children: [
                   Expanded(
                     child: Text(
-                      '${(_sessionError ?? _state.error)!.code}: '
-                      '${(_sessionError ?? _state.error)!.message}',
+                      '${displayedError.code}: ${displayedError.message}',
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-                  if (_state.phase == CameraScanPhase.scanFailed)
+                  if (state.phase == CameraScanPhase.scanFailed)
                     TextButton(
                       onPressed: () {
                         _runtime.coordinator.reset();
-                        setState(() => _sessionError = null);
+                        _flow.clearSessionError();
+                        setState(() {});
                       },
                       child: const Text(
                         'Retry',
@@ -358,7 +356,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(12),
                 child: P11CameraScannerDiagnosticsPanel(
-                  state: _state,
+                  state: state,
                   expectedPage:
                       detectedPage ??
                       _runtime.coordinator.activeContext.pageLayout,
@@ -389,6 +387,42 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
       deviceOrientation: analysis.deviceOrientation,
       mirrored:
           state.cameraState.previewInfo?.lens == CameraLensPreference.front,
+    );
+  }
+}
+
+class ScannerReviewStateView extends StatelessWidget {
+  const ScannerReviewStateView({
+    required this.session,
+    required this.reviewResult,
+    required this.onContinue,
+    super.key,
+  });
+
+  final ScannerValidationSession session;
+  final ScanResult? reviewResult;
+  final VoidCallback onContinue;
+
+  @override
+  Widget build(BuildContext context) {
+    final result = reviewResult;
+    if (result == null) {
+      final error = scannerReviewResultMissingError();
+      return Scaffold(
+        key: const Key('scanner-review-result-missing'),
+        appBar: AppBar(title: const Text('Scanner state error')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: SelectableText('${error.code}: ${error.message}'),
+          ),
+        ),
+      );
+    }
+    return ScannerPageResultScreen(
+      session: session,
+      result: result,
+      onContinue: onContinue,
     );
   }
 }
