@@ -72,10 +72,15 @@ final class PageAlignmentDiagnostics {
     this.sourceSize,
     this.canonicalSize,
     this.decodeDuration = Duration.zero,
+    this.detectionPreparationDuration = Duration.zero,
     this.detectionDuration = Duration.zero,
+    this.coordinateRemapDuration = Duration.zero,
     this.correspondenceDuration = Duration.zero,
     this.homographyDuration = Duration.zero,
     this.warpDuration = Duration.zero,
+    this.detectionSize,
+    this.detectionScaleX = 1,
+    this.detectionScaleY = 1,
   }) : expectedMarkerIds = UnmodifiableListView(List.of(expectedMarkerIds)),
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        sourceMarkerSideLengths = UnmodifiableListView(
@@ -102,10 +107,15 @@ final class PageAlignmentDiagnostics {
   final ImageSize? sourceSize;
   final ImageSize? canonicalSize;
   final Duration decodeDuration;
+  final Duration detectionPreparationDuration;
   final Duration detectionDuration;
+  final Duration coordinateRemapDuration;
   final Duration correspondenceDuration;
   final Duration homographyDuration;
   final Duration warpDuration;
+  final ImageSize? detectionSize;
+  final double detectionScaleX;
+  final double detectionScaleY;
 }
 
 final class PageAlignmentResult {

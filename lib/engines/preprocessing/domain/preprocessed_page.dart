@@ -26,12 +26,28 @@ final class PreprocessingDiagnostics {
     required this.normalizedStatistics,
     required this.binaryForegroundRatio,
     required this.processingDuration,
+    this.stageDurations = const PreprocessingStageDurations(),
   });
 
   final ImageStatistics sourceStatistics;
   final ImageStatistics normalizedStatistics;
   final double binaryForegroundRatio;
   final Duration processingDuration;
+  final PreprocessingStageDurations stageDurations;
+}
+
+final class PreprocessingStageDurations {
+  const PreprocessingStageDurations({
+    this.denoise = Duration.zero,
+    this.illuminationNormalization = Duration.zero,
+    this.thresholding = Duration.zero,
+    this.statistics = Duration.zero,
+  });
+
+  final Duration denoise;
+  final Duration illuminationNormalization;
+  final Duration thresholding;
+  final Duration statistics;
 }
 
 final class PreprocessedPage {

@@ -43,11 +43,21 @@ final class BackendRectification {
 final class ArucoBackendOpenTimings {
   const ArucoBackendOpenTimings({
     this.decode = Duration.zero,
+    this.detectionPreparation = Duration.zero,
     this.detection = Duration.zero,
+    this.coordinateRemap = Duration.zero,
+    this.detectionSize,
+    this.detectionScaleX = 1,
+    this.detectionScaleY = 1,
   });
 
   final Duration decode;
+  final Duration detectionPreparation;
   final Duration detection;
+  final Duration coordinateRemap;
+  final ImageSize? detectionSize;
+  final double detectionScaleX;
+  final double detectionScaleY;
 }
 
 final class ArucoBackendRectificationTimings {

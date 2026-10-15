@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
@@ -14,7 +15,11 @@ import 'opencv_aruco_detector.dart';
 
 /// Native OpenCV backend. Returned sessions own one decoded Mat until disposed.
 final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
-  const OpenCvArucoVisionBackend();
+  OpenCvArucoVisionBackend({OpenCvArucoDetector? detector})
+    : _detector = detector ?? OpenCvArucoDetector();
+
+  final OpenCvArucoDetector _detector;
+  bool _disposed = false;
 
   @override
   EngineResult<ArucoImageSession> open(
@@ -28,12 +33,18 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
       );
     }
 
+    if (_disposed) {
+      return _failure(
+        'ARUCO_BACKEND_UNAVAILABLE',
+        'The OpenCV ArUco backend has already been disposed.',
+      );
+    }
     cv.Mat? image;
-    OpenCvArucoDetector? detector;
+    cv.Mat? detectionImage;
     var transferImageOwnership = false;
     try {
       final decodeStopwatch = Stopwatch()..start();
-      final decodedMat = cv.imdecode(encodedImage, cv.IMREAD_COLOR);
+      final decodedMat = cv.imdecode(encodedImage, cv.IMREAD_GRAYSCALE);
       decodeStopwatch.stop();
       if (decodedMat.isEmpty ||
           decodedMat.width <= 0 ||
@@ -46,20 +57,46 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
       }
       image = decodedMat;
 
-      detector = OpenCvArucoDetector();
+      final preparationStopwatch = Stopwatch()..start();
+      final detectionSize = finalDetectionSize(
+        ImageSize(width: decodedMat.width, height: decodedMat.height),
+        config.finalMarkerDetectionMaxDimension,
+      );
+      if (detectionSize.width == decodedMat.width &&
+          detectionSize.height == decodedMat.height) {
+        detectionImage = decodedMat;
+      } else {
+        detectionImage = cv.resize(decodedMat, (
+          detectionSize.width,
+          detectionSize.height,
+        ), interpolation: cv.INTER_AREA);
+      }
+      preparationStopwatch.stop();
       final detectionStopwatch = Stopwatch()..start();
-      final detection = detector.detectMat(decodedMat);
+      final detection = _detector.detectMat(detectionImage);
       detectionStopwatch.stop();
       if (detection.isFailure) {
         return EngineResult.failure(detection.error);
       }
 
+      final remapStopwatch = Stopwatch()..start();
+      final remappedDetection = remapDetectionToSource(
+        detection.value,
+        ImageSize(width: decodedMat.width, height: decodedMat.height),
+      );
+      remapStopwatch.stop();
+
       final session = _OpenCvArucoImageSession(
         image: image,
-        detection: detection.value,
+        detection: remappedDetection,
         openTimings: ArucoBackendOpenTimings(
           decode: decodeStopwatch.elapsed,
+          detectionPreparation: preparationStopwatch.elapsed,
           detection: detectionStopwatch.elapsed,
+          coordinateRemap: remapStopwatch.elapsed,
+          detectionSize: detectionSize,
+          detectionScaleX: decodedMat.width / detectionSize.width,
+          detectionScaleY: decodedMat.height / detectionSize.height,
         ),
       );
       transferImageOwnership = true;
@@ -75,9 +112,15 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
         {'cause': error.toString()},
       );
     } finally {
-      detector?.dispose();
+      if (!identical(detectionImage, image)) detectionImage?.dispose();
       if (!transferImageOwnership) image?.dispose();
     }
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _detector.dispose();
   }
 
   EngineResult<ArucoImageSession> _failure(
@@ -131,7 +174,6 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
     cv.VecPoint2f? destinationVector;
     cv.Mat? homography;
     cv.Mat? warped;
-    cv.Mat? grayscale;
     cv.Scalar? border;
     try {
       sourceVector = cv.VecPoint2f.generate(
@@ -169,8 +211,7 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
           'OpenCV did not produce the requested canonical dimensions.',
         );
       }
-      grayscale = cv.cvtColor(warped, cv.COLOR_BGR2GRAY);
-      final grayscaleBytes = Uint8List.fromList(grayscale.data);
+      final grayscaleBytes = Uint8List.fromList(warped.data);
       warpStopwatch.stop();
       return EngineResult.success(
         BackendRectification(
@@ -192,7 +233,6 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
         {'cause': error.toString()},
       );
     } finally {
-      grayscale?.dispose();
       warped?.dispose();
       border?.dispose();
       homography?.dispose();
@@ -213,5 +253,40 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
     Map<String, Object?> details = const {},
   ]) => EngineResult.failure(
     EngineError(code: code, message: message, details: details),
+  );
+}
+
+ImageSize finalDetectionSize(ImageSize source, int? maximumDimension) {
+  if (maximumDimension == null ||
+      math.max(source.width, source.height) <= maximumDimension) {
+    return source;
+  }
+  final scale = maximumDimension / math.max(source.width, source.height);
+  return ImageSize(
+    width: math.max(1, (source.width * scale).round()),
+    height: math.max(1, (source.height * scale).round()),
+  );
+}
+
+ArucoDetection remapDetectionToSource(
+  ArucoDetection detection,
+  ImageSize sourceSize,
+) {
+  if (detection.sourceSize == sourceSize) return detection;
+  final scaleX = sourceSize.width / detection.sourceSize.width;
+  final scaleY = sourceSize.height / detection.sourceSize.height;
+  ImagePoint point(ImagePoint value) =>
+      ImagePoint(value.x * scaleX, value.y * scaleY);
+  return ArucoDetection(
+    sourceSize: sourceSize,
+    markers: detection.markers.map(
+      (marker) => DetectedMarker(
+        id: marker.id,
+        topLeft: point(marker.corner(MarkerCorner.topLeft)),
+        topRight: point(marker.corner(MarkerCorner.topRight)),
+        bottomRight: point(marker.corner(MarkerCorner.bottomRight)),
+        bottomLeft: point(marker.corner(MarkerCorner.bottomLeft)),
+      ),
+    ),
   );
 }

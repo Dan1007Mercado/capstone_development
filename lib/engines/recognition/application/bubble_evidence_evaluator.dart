@@ -88,6 +88,11 @@ final class BubbleEvidenceEvaluator {
       category: category,
       state: state,
       qualityUsable: !severeQuality && !unreliableQuality,
+      interiorMeanIntensity: measurement.interiorMeanIntensity,
+      interiorMedianIntensity: measurement.interiorMedianIntensity,
+      localBaselineIntensity: measurement.localBaselineIntensity,
+      foregroundPixelCount: measurement.foregroundPixelCount,
+      quality: measurement.quality,
     );
   }
 

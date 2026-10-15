@@ -10,6 +10,8 @@ import 'package:capstone_development/application/camera_scanner/infrastructure/i
 import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p5_native_validation_fixture.dart';
+import 'package:capstone_development/debug/p11_1_scanner_validation_sheet.dart';
+import 'package:capstone_development/debug/p11_camera_scanner_composition.dart';
 import 'package:capstone_development/engines/aruco/domain/marker_correspondence.dart';
 import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
 import 'package:capstone_development/engines/camera/domain/camera_engine_config.dart';
@@ -343,6 +345,29 @@ void main() {
     await fixture.dispose();
   });
 
+  test('updated expected page reaches scanner without substitution', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+    final inputs = buildP11ScannerValidationSheetInputs();
+    final expected = inputs.layout.pages[1];
+    final context = buildP11CameraScanContext(
+      template: inputs.template,
+      layout: inputs.layout,
+      scannerConfig: ScannerConfig(),
+      pageIndex: 1,
+    );
+
+    expect(fixture.coordinator.updateContext(context).isSuccess, isTrue);
+    fixture.camera.emitAnalyzing(ready: true);
+    await Future<void>.delayed(Duration.zero);
+    expect((await fixture.coordinator.captureAndScan()).isSuccess, isTrue);
+
+    expect(fixture.scanner.contexts.single, same(context));
+    expect(fixture.scanner.contexts.single.pageLayout, same(expected));
+    expect(fixture.scanner.contexts.single.pageId, expected.pageId);
+    await fixture.dispose();
+  });
+
   test('P11 contains no LayoutEngine or widget-owned scanner logic', () {
     final coordinator = File(
       'lib/application/camera_scanner/application/'
@@ -358,6 +383,9 @@ void main() {
       'lib/application/camera_scanner/infrastructure/'
       'isolate_offline_scanner_runner.dart',
     ).readAsStringSync();
+    final scanner = File(
+      'lib/engines/scanner/application/offline_scanner_engine.dart',
+    ).readAsStringSync();
 
     expect(coordinator, isNot(contains('LayoutEngine')));
     expect(coordinator, isNot(contains('BubbleMeasurementEngine')));
@@ -366,6 +394,19 @@ void main() {
     expect(composition, isNot(contains('OpenCvArucoVisionBackend')));
     expect(worker, contains('TransferableTypedData'));
     expect(worker, contains('OpenCvArucoVisionBackend'));
+    expect(worker, contains('OpenCvPreprocessingBackend'));
+    expect(
+      scanner,
+      isNot(
+        contains('alignment.align(\n      Uint8List.fromList(encodedImage)'),
+      ),
+    );
+    expect(
+      worker,
+      contains(
+        'if (bootstrap.testResult != null || bootstrap.testError != null)',
+      ),
+    );
   });
 }
 

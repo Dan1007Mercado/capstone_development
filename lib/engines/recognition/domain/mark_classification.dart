@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import '../../../core/ids/identifiers.dart';
 import '../../template/domain/question_type.dart';
+import 'bubble_measurement.dart';
 
 enum MarkState { marked, blank, multiple, ambiguous, invalid }
 
@@ -43,6 +44,11 @@ final class BubbleMarkDecision {
     required this.category,
     required this.state,
     required this.qualityUsable,
+    required this.interiorMeanIntensity,
+    required this.interiorMedianIntensity,
+    required this.localBaselineIntensity,
+    required this.foregroundPixelCount,
+    required this.quality,
   });
 
   final PageId pageId;
@@ -60,6 +66,11 @@ final class BubbleMarkDecision {
   final BubbleEvidenceCategory category;
   final BubbleDecisionState state;
   final bool qualityUsable;
+  final double interiorMeanIntensity;
+  final double interiorMedianIntensity;
+  final double localBaselineIntensity;
+  final int foregroundPixelCount;
+  final BubbleMeasurementQuality quality;
 
   BubbleMarkDecision withState(BubbleDecisionState value) => BubbleMarkDecision(
     pageId: pageId,
@@ -77,6 +88,11 @@ final class BubbleMarkDecision {
     category: category,
     state: value,
     qualityUsable: qualityUsable,
+    interiorMeanIntensity: interiorMeanIntensity,
+    interiorMedianIntensity: interiorMedianIntensity,
+    localBaselineIntensity: localBaselineIntensity,
+    foregroundPixelCount: foregroundPixelCount,
+    quality: quality,
   );
 }
 

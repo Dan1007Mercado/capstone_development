@@ -10,6 +10,7 @@ final class ArucoAlignmentConfig {
     double maximumExtremePerspectiveRatio = 12,
     double maximumReprojectionErrorPixels = 1,
     bool allowAdditionalUnrelatedMarkers = true,
+    int? finalMarkerDetectionMaxDimension = 1400,
   }) {
     final positive = [
       minimumMarkerSidePixels,
@@ -23,6 +24,12 @@ final class ArucoAlignmentConfig {
         maximumExtremePerspectiveRatio < 1) {
       throw ArgumentError('Alignment thresholds are outside valid ranges.');
     }
+    if (finalMarkerDetectionMaxDimension != null &&
+        finalMarkerDetectionMaxDimension < 1) {
+      throw ArgumentError(
+        'Final marker detection maximum dimension must be positive or null.',
+      );
+    }
     return ArucoAlignmentConfig._(
       dictionary: dictionary,
       minimumMarkerSidePixels: minimumMarkerSidePixels,
@@ -31,6 +38,7 @@ final class ArucoAlignmentConfig {
       maximumExtremePerspectiveRatio: maximumExtremePerspectiveRatio,
       maximumReprojectionErrorPixels: maximumReprojectionErrorPixels,
       allowAdditionalUnrelatedMarkers: allowAdditionalUnrelatedMarkers,
+      finalMarkerDetectionMaxDimension: finalMarkerDetectionMaxDimension,
     );
   }
 
@@ -42,6 +50,7 @@ final class ArucoAlignmentConfig {
     required this.maximumExtremePerspectiveRatio,
     required this.maximumReprojectionErrorPixels,
     required this.allowAdditionalUnrelatedMarkers,
+    required this.finalMarkerDetectionMaxDimension,
   });
 
   final ArucoDictionary dictionary;
@@ -51,4 +60,10 @@ final class ArucoAlignmentConfig {
   final double maximumExtremePerspectiveRatio;
   final double maximumReprojectionErrorPixels;
   final bool allowAdditionalUnrelatedMarkers;
+
+  /// Maximum long edge used only for final-still ArUco detection.
+  ///
+  /// The original grayscale still remains the homography warp source. `null`
+  /// keeps full-resolution detection for diagnostics.
+  final int? finalMarkerDetectionMaxDimension;
 }

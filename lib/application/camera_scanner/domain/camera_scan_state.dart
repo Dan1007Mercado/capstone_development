@@ -24,6 +24,7 @@ final class FinalScanTimings {
     this.workerDuration = Duration.zero,
     this.isolateOverhead = Duration.zero,
     this.workerReused = false,
+    this.workerStartupDuration = Duration.zero,
   });
 
   static const zero = FinalScanTimings();
@@ -35,6 +36,7 @@ final class FinalScanTimings {
   final Duration workerDuration;
   final Duration isolateOverhead;
   final bool workerReused;
+  final Duration workerStartupDuration;
 }
 
 final class CameraScanState {

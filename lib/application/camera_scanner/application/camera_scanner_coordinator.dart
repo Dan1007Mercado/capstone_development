@@ -13,8 +13,8 @@ final class CameraScannerCoordinator {
     required this.camera,
     required this.imageLoader,
     required this.scanner,
-    required this.context,
-  }) {
+    required CameraScanContext context,
+  }) : _context = context {
     _latestCameraState = camera.state;
     _state = CameraScanState(
       phase: CameraScanPhase.idle,
@@ -26,7 +26,7 @@ final class CameraScannerCoordinator {
   final CameraScanCamera camera;
   final CapturedImageBytesLoader imageLoader;
   final OfflineScanRunner scanner;
-  final CameraScanContext context;
+  CameraScanContext _context;
 
   final StreamController<CameraScanState> _states =
       StreamController<CameraScanState>.broadcast();
@@ -43,10 +43,31 @@ final class CameraScannerCoordinator {
   CameraScanState get state => _state;
   Stream<CameraScanState> get states => _states.stream;
 
+  CameraScanContext get activeContext => _context;
+
+  EngineResult<bool> updateContext(CameraScanContext value) {
+    if (_disposed) return _disposedFailure();
+    if (_operationInProgress) return _busyFailure();
+    final error = value.validate();
+    if (error != null) return EngineResult.failure(error);
+    _context = value;
+    _autoCaptureArmed = true;
+    _requiresFreshReadiness = true;
+    _readinessProcessedFrameBaseline =
+        _latestCameraState.diagnostics.processedFrameCount;
+    _emit(
+      CameraScanState(
+        phase: _phaseForCamera(_latestCameraState),
+        cameraState: _latestCameraState,
+      ),
+    );
+    return EngineResult.success(true);
+  }
+
   Future<EngineResult<bool>> initialize() async {
     if (_disposed) return _disposedFailure();
     if (_operationInProgress) return _busyFailure();
-    final contextError = context.validate();
+    final contextError = _context.validate();
     if (contextError != null) {
       _emit(
         CameraScanState(
@@ -93,7 +114,7 @@ final class CameraScannerCoordinator {
     if (_operationInProgress) {
       return EngineResult.failure(_busyError());
     }
-    final contextError = context.validate();
+    final contextError = _context.validate();
     if (contextError != null) {
       _emitFailure(contextError, FinalScanTimings.zero);
       return EngineResult.failure(contextError);
@@ -135,6 +156,7 @@ final class CameraScannerCoordinator {
     var workerDuration = Duration.zero;
     var isolateOverhead = Duration.zero;
     var workerReused = false;
+    var workerStartupDuration = Duration.zero;
     final shouldRestartAnalysis = lifecycle == CameraLifecycleState.analyzing;
     var analysisStopped = false;
 
@@ -236,7 +258,7 @@ final class CameraScannerCoordinator {
       final scannerStopwatch = Stopwatch()..start();
       final scan = await scanner.scan(
         encodedImage: loaded.value,
-        context: context,
+        context: _context,
       );
       scannerStopwatch.stop();
       scannerDuration = scannerStopwatch.elapsed;
@@ -244,6 +266,7 @@ final class CameraScannerCoordinator {
         workerDuration = scan.value.workerDuration;
         isolateOverhead = scan.value.isolateOverhead;
         workerReused = scan.value.workerReused;
+        workerStartupDuration = scan.value.workerStartupDuration;
       }
       totalStopwatch.stop();
       if (_disposed) return EngineResult.failure(_disposedError());
@@ -256,6 +279,7 @@ final class CameraScannerCoordinator {
         workerDuration: workerDuration,
         isolateOverhead: isolateOverhead,
         workerReused: workerReused,
+        workerStartupDuration: workerStartupDuration,
       );
       if (scan.isFailure) {
         final error = _wrapFailure(

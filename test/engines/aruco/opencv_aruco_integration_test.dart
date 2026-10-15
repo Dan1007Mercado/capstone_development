@@ -25,7 +25,8 @@ void main() {
   setUpAll(() {
     page = buildLayout(fullTemplate()).pages.single;
     frontal = _renderSyntheticPage(page);
-    final probe = const OpenCvArucoVisionBackend().open(
+    final backend = OpenCvArucoVisionBackend();
+    final probe = backend.open(
       Uint8List.fromList(image.encodePng(frontal)),
       ArucoAlignmentConfig(),
     );
@@ -35,6 +36,7 @@ void main() {
     } else {
       unavailableReason = '${probe.error.code}: ${probe.error.message}';
     }
+    backend.dispose();
   });
 
   test('clean frontal page detects and aligns all four markers', () {
@@ -193,10 +195,16 @@ void main() {
   });
 }
 
-EngineResult<PageAlignmentResult> _align(image.Image source, PageLayout page) =>
-    ArucoAlignmentEngine(
-      backend: const OpenCvArucoVisionBackend(),
+EngineResult<PageAlignmentResult> _align(image.Image source, PageLayout page) {
+  final backend = OpenCvArucoVisionBackend();
+  try {
+    return ArucoAlignmentEngine(
+      backend: backend,
     ).align(Uint8List.fromList(image.encodePng(source)), page);
+  } finally {
+    backend.dispose();
+  }
+}
 
 image.Image _renderSyntheticPage(PageLayout page) {
   final output = image.Image(

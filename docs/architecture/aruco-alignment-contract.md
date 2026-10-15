@@ -11,13 +11,15 @@ prebuilt platform-library model. The root app includes only the relevant
 OpenCV module groups. Upgrading to 2.x is appropriate once CI and developer
 hosts provide the required native build toolchains.
 
-The public application boundary accepts encoded image bytes. The infrastructure
-adapter decodes those bytes once into a native `Mat`, detects markers, retains
-that matrix only for the alignment session, and disposes it in all success and
-failure paths. Temporary dictionaries, detector parameters, corner vectors,
-homography matrices, warped matrices, and scalar/vector arguments are also
-explicitly disposed. The returned canonical image is PNG bytes and has no
-native ownership requirement.
+The public application boundary accepts encoded image bytes. The production
+adapter decodes those bytes once as grayscale. Final-still marker detection may
+use a configured reduced long edge; detected corners are scaled back to the
+original source coordinate space before correspondence and homography. The
+original full-resolution grayscale `Mat` is always the warp source. A
+persistent worker may reuse its dictionary, parameters, and detector, but owns
+and disposes them inside that isolate. Sessions and temporary Mats/vectors are
+disposed deterministically. The returned canonical image is owned grayscale
+Dart bytes and has no native ownership requirement.
 
 ## Dictionary and Corner Order
 
@@ -51,8 +53,9 @@ corner participates in homography.
 ## Homography and Output
 
 The projective transform maps source-image registration points to canonical
-registration points. `warpPerspective` produces exactly the width and height
-in `PageLayout.canonicalPageSpec`. Results expose the canonical PNG, the 3x3
+registration points. `warpPerspective` produces a grayscale image with exactly
+the width and height in `PageLayout.canonicalPageSpec`. Results expose canonical
+grayscale pixels, the 3x3
 homography, source and destination correspondences, semantic marker
 observations, quality metrics, reprojection errors, and processing duration.
 

@@ -36,6 +36,7 @@ final class FinalScannerRun {
     required this.workerDuration,
     required this.isolateOverhead,
     required this.workerReused,
+    this.workerStartupDuration = Duration.zero,
     this.transferredByteCount = 0,
     this.transferredByteChecksum = 0,
   });
@@ -44,6 +45,7 @@ final class FinalScannerRun {
   final Duration workerDuration;
   final Duration isolateOverhead;
   final bool workerReused;
+  final Duration workerStartupDuration;
   final int transferredByteCount;
   final int transferredByteChecksum;
 }

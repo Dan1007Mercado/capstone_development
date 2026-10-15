@@ -8,6 +8,9 @@ final class GrayImage {
   GrayImage({required this.size, required List<int> pixels})
     : _pixels = _validatedCopy(size, pixels);
 
+  GrayImage.owned({required this.size, required Uint8List pixels})
+    : _pixels = _validateOwned(size, pixels);
+
   final ImageSize size;
   final Uint8List _pixels;
 
@@ -24,6 +27,9 @@ final class GrayImage {
 final class BinaryImage {
   BinaryImage({required this.size, required List<int> pixels})
     : _pixels = _validatedBinaryCopy(size, pixels);
+
+  BinaryImage.owned({required this.size, required Uint8List pixels})
+    : _pixels = _validateOwnedBinary(size, pixels);
 
   final ImageSize size;
   final Uint8List _pixels;
@@ -56,6 +62,28 @@ Uint8List _validatedBinaryCopy(ImageSize size, List<int> pixels) {
     );
   }
   return _validatedCopy(size, pixels);
+}
+
+Uint8List _validateOwned(ImageSize size, Uint8List pixels) {
+  if (pixels.length != size.area) {
+    throw ArgumentError.value(
+      pixels.length,
+      'pixels',
+      'Pixel count must equal width * height.',
+    );
+  }
+  return pixels;
+}
+
+Uint8List _validateOwnedBinary(ImageSize size, Uint8List pixels) {
+  if (pixels.any((pixel) => pixel != 0 && pixel != 1)) {
+    throw ArgumentError.value(
+      pixels,
+      'pixels',
+      'Binary pixels must contain only 0 and 1.',
+    );
+  }
+  return _validateOwned(size, pixels);
 }
 
 void _checkCoordinates(ImageSize size, int x, int y) {

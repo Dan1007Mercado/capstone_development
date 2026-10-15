@@ -22,4 +22,34 @@ void main() {
     expect(source, contains('_analyzeInWorker(message, detector)'));
     expect(source, contains('detector.dispose();'));
   });
+
+  test('final scanner worker owns and disposes one persistent backend', () {
+    final source = File(
+      'lib/application/camera_scanner/infrastructure/'
+      'isolate_offline_scanner_runner.dart',
+    ).readAsStringSync();
+
+    expect(
+      RegExp(r'OpenCvArucoVisionBackend\(\)').allMatches(source).length,
+      1,
+    );
+    expect(source, contains('alignmentBackend?.dispose();'));
+    expect(source, contains('alignmentBackend: alignmentBackend!'));
+  });
+
+  test(
+    'final scanner native path remains grayscale without PNG round trip',
+    () {
+      final source = File(
+        'lib/engines/aruco/infrastructure/opencv_aruco_vision_backend.dart',
+      ).readAsStringSync();
+
+      expect(source, contains('cv.IMREAD_GRAYSCALE'));
+      expect(source, isNot(contains('cv.IMREAD_COLOR')));
+      expect(source, isNot(contains('cv.COLOR_BGR2GRAY')));
+      expect(source, isNot(contains('cv.imencode')));
+      expect(source, contains('cv.resize'));
+      expect(source, contains('cv.warpPerspective(_image!'));
+    },
+  );
 }

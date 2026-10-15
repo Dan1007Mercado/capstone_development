@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../../../engines/aruco/infrastructure/opencv_aruco_vision_backend.dart';
-import '../../../engines/preprocessing/infrastructure/dart_image_preprocessing_backend.dart';
+import '../../../engines/preprocessing/infrastructure/opencv_preprocessing_backend.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
 import '../../../engines/scanner/infrastructure/offline_scanner_composition.dart';
 import '../domain/camera_scan_context.dart';
@@ -34,6 +34,7 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
   var _nextRequestId = 0;
   var _completedScans = 0;
   var _disposed = false;
+  Completer<void>? _workerDisposed;
 
   @override
   Future<EngineResult<FinalScannerRun>> scan({
@@ -50,7 +51,9 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
       );
     }
     try {
+      final startupStopwatch = Stopwatch()..start();
       await _ensureStarted();
+      startupStopwatch.stop();
       if (_disposed || _workerPort == null) {
         return EngineResult.failure(_disposedError());
       }
@@ -76,6 +79,9 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
         workerDuration: response.workerDuration,
         isolateOverhead: overhead.isNegative ? Duration.zero : overhead,
         workerReused: _completedScans > 0,
+        workerStartupDuration: _completedScans == 0
+            ? startupStopwatch.elapsed
+            : Duration.zero,
         transferredByteCount: response.transferredByteCount,
         transferredByteChecksum: response.transferredByteChecksum,
       );
@@ -99,6 +105,8 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
         if (!ready.isCompleted) ready.complete();
       } else if (message is _WorkerScanResponse) {
         _pending.remove(message.requestId)?.completer.complete(message);
+      } else if (message is _WorkerDisposed) {
+        _workerDisposed?.complete();
       }
     });
     _errors!.listen((error) => _failWorker(error));
@@ -114,6 +122,9 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
   }
 
   void _failWorker(Object error) {
+    if (_workerDisposed != null && !_workerDisposed!.isCompleted) {
+      _workerDisposed!.complete();
+    }
     final failure = _WorkerScanResponse.failure(_workerFailure(error));
     for (final pending in _pending.values) {
       if (!pending.completer.isCompleted) {
@@ -138,7 +149,11 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    _workerPort?.send(const _WorkerDispose());
+    if (_workerPort != null) {
+      _workerDisposed = Completer<void>();
+      _workerPort!.send(const _WorkerDispose());
+      await _workerDisposed!.future;
+    }
     _isolate?.kill(priority: Isolate.immediate);
     _failWorker(_disposedError());
     _responses?.close();
@@ -196,6 +211,10 @@ final class _WorkerDispose {
   const _WorkerDispose();
 }
 
+final class _WorkerDisposed {
+  const _WorkerDisposed();
+}
+
 final class _WorkerBootstrap {
   const _WorkerBootstrap(this.mainPort, this.testResult, this.testError);
 
@@ -206,16 +225,22 @@ final class _WorkerBootstrap {
 
 void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
   final inbox = ReceivePort();
+  final alignmentBackend =
+      bootstrap.testResult == null && bootstrap.testError == null
+      ? OpenCvArucoVisionBackend()
+      : null;
   final scanner = bootstrap.testResult == null && bootstrap.testError == null
       ? OfflineScannerComposition.create(
-          alignmentBackend: const OpenCvArucoVisionBackend(),
-          preprocessingBackend: const DartImagePreprocessingBackend(),
+          alignmentBackend: alignmentBackend!,
+          preprocessingBackend: const OpenCvPreprocessingBackend(),
         )
       : null;
   bootstrap.mainPort.send(inbox.sendPort);
   inbox.listen((message) {
     if (message is _WorkerDispose) {
+      alignmentBackend?.dispose();
       inbox.close();
+      bootstrap.mainPort.send(const _WorkerDisposed());
       Isolate.exit();
     }
     if (message is! _WorkerScanRequest) return;
@@ -226,10 +251,14 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
     try {
       final bytes = message.encodedImage.materialize().asUint8List();
       transferredByteCount = bytes.length;
-      transferredByteChecksum = bytes.fold<int>(
-        0,
-        (sum, byte) => (sum + byte) & 0x7fffffff,
-      );
+      // The checksum exists only for pure-Dart isolate protocol tests. The
+      // production scanner never performs an O(N) diagnostic pass over JPEG.
+      if (bootstrap.testResult != null || bootstrap.testError != null) {
+        transferredByteChecksum = bytes.fold<int>(
+          0,
+          (sum, byte) => (sum + byte) & 0x7fffffff,
+        );
+      }
       result = bootstrap.testError != null
           ? EngineResult.failure(bootstrap.testError!)
           : bootstrap.testResult == null

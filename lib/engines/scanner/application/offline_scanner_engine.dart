@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../../../core/errors/engine_error.dart';
 import '../../../core/ids/identifiers.dart';
 import '../../../core/result/engine_result.dart';
+import '../../aruco/domain/page_alignment_result.dart';
 import '../../layout/domain/page_layout.dart';
 import '../../recognition/domain/mark_classification.dart';
 import '../../template/domain/template_definition.dart';
@@ -35,11 +36,29 @@ final class OfflineScannerEngine {
 
     final totalStopwatch = Stopwatch()..start();
     final alignmentStopwatch = Stopwatch()..start();
-    final alignmentResult = alignment.align(
-      Uint8List.fromList(encodedImage),
-      pageLayout,
-      config.alignment,
-    );
+    // The caller owns this read-only encoded buffer for the duration of the
+    // synchronous scan. Worker-isolate transfer has already detached it from
+    // the UI isolate, so another full JPEG copy is unnecessary here.
+    late final EngineResult<PageAlignmentResult> alignmentResult;
+    try {
+      alignmentResult = alignment.align(
+        encodedImage.asUnmodifiableView(),
+        pageLayout,
+        config.alignment,
+      );
+    } on Object catch (error) {
+      alignmentStopwatch.stop();
+      return _stageFailure(
+        ScanStage.alignment,
+        EngineError(
+          code: 'ARUCO_IMAGE_READ_ONLY_VIOLATION',
+          message:
+              'Alignment stages must treat encoded source bytes as read-only.',
+          details: {'cause': error.toString()},
+        ),
+        pageLayout,
+      );
+    }
     alignmentStopwatch.stop();
     if (alignmentResult.isFailure) {
       return _stageFailure(

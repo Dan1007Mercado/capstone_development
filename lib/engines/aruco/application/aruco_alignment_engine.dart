@@ -123,10 +123,16 @@ final class ArucoAlignmentEngine {
             sourceSize: session.sourceSize,
             canonicalSize: outputSize,
             decodeDuration: session.openTimings.decode,
+            detectionPreparationDuration:
+                session.openTimings.detectionPreparation,
             detectionDuration: session.openTimings.detection,
+            coordinateRemapDuration: session.openTimings.coordinateRemap,
             correspondenceDuration: correspondenceStopwatch.elapsed,
             homographyDuration: rectification.value.timings.homography,
             warpDuration: rectification.value.timings.warp,
+            detectionSize: session.openTimings.detectionSize,
+            detectionScaleX: session.openTimings.detectionScaleX,
+            detectionScaleY: session.openTimings.detectionScaleY,
           ),
         ),
       );

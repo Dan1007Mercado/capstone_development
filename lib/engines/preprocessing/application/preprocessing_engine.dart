@@ -46,15 +46,16 @@ final class PreprocessingEngine {
       );
     }
 
-    final sourceStatistics = _statistics(output.grayscale, config);
-    final normalizedStatistics = _statistics(
-      output.normalizedGrayscale,
-      config,
-    );
-    final foregroundCount = output.binary.pixels.fold<int>(
-      0,
-      (sum, pixel) => sum + pixel,
-    );
+    final statisticsStopwatch = Stopwatch()..start();
+    final sourceStatistics =
+        output.sourceStatistics ?? _statistics(output.grayscale, config);
+    final normalizedStatistics =
+        output.normalizedStatistics ??
+        _statistics(output.normalizedGrayscale, config);
+    final foregroundCount =
+        output.binaryForegroundCount ??
+        output.binary.pixels.fold<int>(0, (sum, pixel) => sum + pixel);
+    statisticsStopwatch.stop();
     final foregroundRatio = foregroundCount / page.size.area;
     if (!_statisticsAreFinite(sourceStatistics) ||
         !_statisticsAreFinite(normalizedStatistics) ||
@@ -89,6 +90,14 @@ final class PreprocessingEngine {
           normalizedStatistics: normalizedStatistics,
           binaryForegroundRatio: foregroundRatio,
           processingDuration: stopwatch.elapsed,
+          stageDurations: PreprocessingStageDurations(
+            denoise: output.stageDurations.denoise,
+            illuminationNormalization:
+                output.stageDurations.illuminationNormalization,
+            thresholding: output.stageDurations.thresholding,
+            statistics:
+                output.stageDurations.statistics + statisticsStopwatch.elapsed,
+          ),
         ),
         config: config,
       ),

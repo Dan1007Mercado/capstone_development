@@ -34,6 +34,7 @@ Future<P5NativeValidationReport> runP5NativeValidation() async {
     'gateStatus=UNVERIFIED',
     'expectedMarkerIds=$p5NativeValidationExpectedMarkerIds',
   ];
+  OpenCvArucoVisionBackend? backend;
 
   try {
     final page = buildP5NativeValidationPage();
@@ -42,7 +43,7 @@ Future<P5NativeValidationReport> runP5NativeValidation() async {
     lines.add('expectedCanonical=${expectedWidth}x$expectedHeight');
 
     final bytes = renderP5NativeValidationPng(page);
-    final backend = const OpenCvArucoVisionBackend();
+    backend = OpenCvArucoVisionBackend();
     final backendResult = backend.open(bytes, ArucoAlignmentConfig());
     if (backendResult.isFailure) {
       lines.add('backend=failure');
@@ -118,6 +119,8 @@ Future<P5NativeValidationReport> runP5NativeValidation() async {
     _appendUnavailableAlignment(lines);
     lines.add('verdict=FAIL');
     return P5NativeValidationReport(lines: lines, passed: false);
+  } finally {
+    backend?.dispose();
   }
 }
 
