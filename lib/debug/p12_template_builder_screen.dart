@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import '../application/template_builder/template_builder_controller.dart';
 import '../application/template_builder/template_pdf_exporter.dart';
 import '../application/template_builder/user_accessible_template_pdf_exporter.dart';
+import '../application/published_templates/in_memory_published_template_artifact_repository.dart';
+import '../application/published_templates/published_template_artifact_service.dart';
 import '../core/errors/engine_error.dart';
 import '../core/ids/identifiers.dart';
 import '../core/result/engine_result.dart';
 import '../core/result/validation.dart';
+import '../engines/layout/domain/layout_config.dart';
 import '../engines/layout/domain/page_layout.dart';
 import '../engines/pdf/application/pdf_engine.dart';
 import '../engines/template/application/template_publication_service.dart';
@@ -31,6 +34,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.pdfGenerator,
     this.densePdfGenerator,
     this.publicationService,
+    this.densePublicationService,
   });
 
   final TemplateBuilderController? controller;
@@ -38,6 +42,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
   final TemplatePdfGenerator? pdfGenerator;
   final TemplatePdfGenerator? densePdfGenerator;
   final TemplatePublicationService? publicationService;
+  final PublishedTemplateArtifactService? densePublicationService;
 
   @override
   State<P12TemplateBuilderScreen> createState() =>
@@ -50,6 +55,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplatePdfGenerator _pdfGenerator;
   late TemplatePdfGenerator _densePdfGenerator;
   late TemplatePublicationService _publicationService;
+  late PublishedTemplateArtifactService _densePublicationService;
   final TemplateValidator _validator = TemplateValidator();
   ValidationResult? _validation;
   TemplateLayoutPreview? _preview;
@@ -62,6 +68,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   TemplateDefinition? _publishedDefinition;
   List<TemplateDefinition> _publishedVersions = const [];
   String? _lifecycleMessage;
+  String? _densePublicationMessage;
 
   @override
   void initState() {
@@ -73,6 +80,11 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     _publicationService =
         widget.publicationService ??
         TemplatePublicationService(repository: InMemoryTemplateRepository());
+    _densePublicationService =
+        widget.densePublicationService ??
+        PublishedTemplateArtifactService(
+          repository: InMemoryPublishedTemplateArtifactRepository(),
+        );
   }
 
   TemplateDefinition get _activeDefinition =>
@@ -171,6 +183,38 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         bytes: rendered.value,
       ),
     );
+  }
+
+  Future<void> _publishDenseArtifact() async {
+    setState(() {
+      _publishing = true;
+      _error = null;
+      _densePublicationMessage = null;
+    });
+    final result = await _densePublicationService.publish(
+      draft: buildP13_6DenseValidationTemplate(),
+      layoutConfig: LayoutConfig.a4Dense(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _publishing = false;
+      _error = result.errorOrNull;
+      if (result.isSuccess) {
+        final artifact = result.value;
+        _pdf = TemplatePdfArtifact(
+          definition: artifact.template,
+          layout: artifact.layout,
+          bytes: artifact.pdfBytes,
+        );
+        _preview = TemplateLayoutPreview(
+          definition: artifact.template,
+          layout: artifact.layout,
+        );
+        _densePublicationMessage =
+            'Dense Template v${artifact.templateVersion.value} saved locally '
+            'with exact PDF and PageLayout.';
+      }
+    });
   }
 
   Future<void> _publish() async {
@@ -403,6 +447,13 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 child: const Text('Generate Dense Validation PDF'),
               ),
               FilledButton.tonal(
+                key: const Key('publish-dense-template-v1'),
+                onPressed: _publishing || _generatingPdf || _savingPdf
+                    ? null
+                    : _publishDenseArtifact,
+                child: const Text('Publish Dense Template v1'),
+              ),
+              FilledButton.tonal(
                 key: const Key('publish-template'),
                 onPressed: editable && !_generatingPdf && !_savingPdf
                     ? _publish
@@ -425,6 +476,14 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
           ),
           if (_validation case final validation?)
             _ValidationPanel(validation: validation),
+          if (_densePublicationMessage case final message?)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: SelectableText(
+                message,
+                key: const Key('dense-publication-result'),
+              ),
+            ),
           if (_error case final error?) _ErrorPanel(error: error),
           if (_preview case final preview?)
             _LayoutPreviewPanel(preview: preview),

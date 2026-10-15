@@ -1,6 +1,8 @@
 import '../../core/errors/engine_error.dart';
 import '../../core/ids/identifiers.dart';
 import '../../core/result/engine_result.dart';
+import '../published_templates/published_template_artifact.dart';
+import '../published_templates/published_template_artifact_repository.dart';
 import '../../engines/layout/application/layout_engine.dart';
 import '../../engines/layout/domain/layout_config.dart';
 import '../../engines/layout/domain/page_layout.dart';
@@ -24,23 +26,39 @@ final class PublishedScannerArtifact {
 
 /// Resolves scanner input only through immutable published history.
 ///
-/// P13 stores semantic versions, so P13.5 deterministically reconstructs the
-/// layout with the same authoritative engine/config used by PDF generation.
+/// Durable artifacts provide their exact stored PageLayout. The legacy
+/// semantic-only path remains available for older in-memory validation tests.
 final class PublishedScannerResolver {
   PublishedScannerResolver({
-    required TemplatePublicationService publicationService,
+    TemplatePublicationService? publicationService,
+    PublishedTemplateArtifactRepository? artifactRepository,
     LayoutEngine? layoutEngine,
     LayoutConfig? layoutConfig,
-  }) : _publicationService = publicationService,
+  }) : assert(
+         publicationService != null || artifactRepository != null,
+         'A published artifact or legacy publication repository is required.',
+       ),
+       _publicationService = publicationService,
+       _artifactRepository = artifactRepository,
        _layoutEngine = layoutEngine ?? LayoutEngine(),
        _layoutConfig = layoutConfig ?? LayoutConfig.a4Default();
 
-  final TemplatePublicationService _publicationService;
+  final TemplatePublicationService? _publicationService;
+  final PublishedTemplateArtifactRepository? _artifactRepository;
   final LayoutEngine _layoutEngine;
   final LayoutConfig _layoutConfig;
 
   Future<EngineResult<List<PublishedScannerArtifact>>> listAvailable() async {
-    final published = await _publicationService.listPublishedTemplates();
+    final artifactRepository = _artifactRepository;
+    if (artifactRepository != null) {
+      final stored = await artifactRepository.list();
+      if (stored.isFailure) return EngineResult.failure(stored.error);
+      return EngineResult.success(
+        List.unmodifiable(stored.value.map(_fromStoredArtifact)),
+      );
+    }
+
+    final published = await _publicationService!.listPublishedTemplates();
     if (published.isFailure) return EngineResult.failure(published.error);
     final artifacts = <PublishedScannerArtifact>[];
     for (final template in published.value) {
@@ -62,26 +80,45 @@ final class PublishedScannerResolver {
     required TemplateId templateId,
     required TemplateVersion templateVersion,
   }) async {
-    final result = await _publicationService.getPublished(
+    final artifactRepository = _artifactRepository;
+    if (artifactRepository != null) {
+      final stored = await artifactRepository.get(templateId, templateVersion);
+      if (stored.isFailure) return EngineResult.failure(stored.error);
+      final artifact = stored.value;
+      if (artifact == null) return _notFound(templateId, templateVersion);
+      return EngineResult.success(_fromStoredArtifact(artifact));
+    }
+
+    final result = await _publicationService!.getPublished(
       templateId,
       templateVersion,
     );
     if (result.isFailure) return EngineResult.failure(result.error);
     final template = result.value;
-    if (template == null) {
-      return EngineResult.failure(
-        EngineError(
-          code: 'PUBLISHED_TEMPLATE_NOT_FOUND',
-          message: 'The selected published template version was not found.',
-          details: {
-            'templateId': templateId.value,
-            'templateVersion': templateVersion.value,
-          },
-        ),
-      );
-    }
+    if (template == null) return _notFound(templateId, templateVersion);
     return _build(template);
   }
+
+  PublishedScannerArtifact _fromStoredArtifact(
+    PublishedTemplateArtifact artifact,
+  ) => PublishedScannerArtifact(
+    template: artifact.template,
+    layout: artifact.layout,
+  );
+
+  EngineResult<PublishedScannerArtifact> _notFound(
+    TemplateId templateId,
+    TemplateVersion templateVersion,
+  ) => EngineResult.failure(
+    EngineError(
+      code: 'PUBLISHED_TEMPLATE_NOT_FOUND',
+      message: 'The selected published template version was not found.',
+      details: {
+        'templateId': templateId.value,
+        'templateVersion': templateVersion.value,
+      },
+    ),
+  );
 
   EngineResult<PublishedScannerArtifact> _build(TemplateDefinition template) {
     if (template.status != TemplateStatus.published) {

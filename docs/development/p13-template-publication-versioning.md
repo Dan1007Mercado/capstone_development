@@ -39,6 +39,12 @@ version and returned through unmodifiable collections. The stored domain graph
 is immutable, so callers cannot mutate repository history through a retrieved
 definition. Cloud synchronization is intentionally deferred.
 
+The production dense-template path now persists the stronger
+`PublishedTemplateArtifact` aggregate (definition, exact `LayoutDocument`, and
+exact PDF bytes) in application-support storage. See
+`published-template-artifact-persistence.md`. The original in-memory semantic
+repository remains for draft/revision validation and legacy debug coverage.
+
 ## Revision Behavior
 
 `TemplatePublicationService.createRevision` returns an editable draft while:

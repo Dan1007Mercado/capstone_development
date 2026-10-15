@@ -1,6 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
+import 'application/published_templates/file_published_template_artifact_repository.dart';
+import 'application/published_templates/in_memory_published_template_artifact_repository.dart';
+import 'application/published_templates/published_template_artifact_repository.dart';
+import 'application/published_templates/published_template_artifact_service.dart';
+import 'application/real_scanner/published_scanner_resolver.dart';
 import 'debug/p5_native_validation_screen.dart';
 import 'debug/p10_camera_diagnostics_screen.dart';
 import 'debug/p11_camera_scanner_screen.dart';
@@ -9,12 +17,22 @@ import 'debug/real_scanner_validation_screen.dart';
 import 'engines/template/application/template_publication_service.dart';
 import 'engines/template/infrastructure/in_memory_template_repository.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final supportDirectory = await getApplicationSupportDirectory();
+  final artifactRepository = FilePublishedTemplateArtifactRepository(
+    rootDirectory: Directory(
+      '${supportDirectory.path}${Platform.pathSeparator}'
+      'published_template_artifacts',
+    ),
+  );
+  runApp(MyApp(artifactRepository: artifactRepository));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.artifactRepository});
+
+  final PublishedTemplateArtifactRepository? artifactRepository;
 
   // This widget is the root of your application.
   @override
@@ -39,13 +57,16 @@ class MyApp extends StatelessWidget {
         // tested with just a hot reload.
         colorScheme: .fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: MyHomePage(
+        title: 'Flutter Demo Home Page',
+        artifactRepository: artifactRepository,
+      ),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+  const MyHomePage({super.key, required this.title, this.artifactRepository});
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -57,6 +78,7 @@ class MyHomePage extends StatefulWidget {
   // always marked "final".
 
   final String title;
+  final PublishedTemplateArtifactRepository? artifactRepository;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -65,6 +87,7 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
   late final TemplatePublicationService _publicationService;
+  late final PublishedTemplateArtifactRepository _artifactRepository;
 
   @override
   void initState() {
@@ -72,6 +95,9 @@ class _MyHomePageState extends State<MyHomePage> {
     _publicationService = TemplatePublicationService(
       repository: InMemoryTemplateRepository(),
     );
+    _artifactRepository =
+        widget.artifactRepository ??
+        InMemoryPublishedTemplateArtifactRepository();
   }
 
   void _incrementCounter() {
@@ -161,6 +187,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   MaterialPageRoute<void>(
                     builder: (_) => P12TemplateBuilderScreen(
                       publicationService: _publicationService,
+                      densePublicationService: PublishedTemplateArtifactService(
+                        repository: _artifactRepository,
+                      ),
                     ),
                   ),
                 ),
@@ -171,7 +200,9 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => RealScannerSelectionScreen(
-                      publicationService: _publicationService,
+                      resolver: PublishedScannerResolver(
+                        artifactRepository: _artifactRepository,
+                      ),
                     ),
                   ),
                 ),

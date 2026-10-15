@@ -22,11 +22,16 @@ import 'scanner_detection_overlay.dart';
 
 class RealScannerSelectionScreen extends StatefulWidget {
   const RealScannerSelectionScreen({
-    required this.publicationService,
+    this.publicationService,
+    this.resolver,
     super.key,
-  });
+  }) : assert(
+         publicationService != null || resolver != null,
+         'A scanner resolver or legacy publication service is required.',
+       );
 
-  final TemplatePublicationService publicationService;
+  final TemplatePublicationService? publicationService;
+  final PublishedScannerResolver? resolver;
 
   @override
   State<RealScannerSelectionScreen> createState() =>
@@ -44,9 +49,11 @@ class _RealScannerSelectionScreenState
   @override
   void initState() {
     super.initState();
-    _resolver = PublishedScannerResolver(
-      publicationService: widget.publicationService,
-    );
+    _resolver =
+        widget.resolver ??
+        PublishedScannerResolver(
+          publicationService: widget.publicationService!,
+        );
     unawaited(_load());
   }
 
@@ -99,8 +106,8 @@ class _RealScannerSelectionScreenState
               const Center(child: CircularProgressIndicator())
             else if (_artifacts.isEmpty)
               const Text(
-                'No published templates are available. Publish a template in '
-                'the template builder first.',
+                'No durable published artifacts are available. Publish Dense '
+                'Template v1 in the template builder first.',
               )
             else
               DropdownButtonFormField<PublishedScannerArtifact>(

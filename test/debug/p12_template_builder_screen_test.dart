@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:capstone_development/application/template_builder/template_builder_controller.dart';
 import 'package:capstone_development/application/template_builder/template_pdf_exporter.dart';
+import 'package:capstone_development/application/published_templates/in_memory_published_template_artifact_repository.dart';
+import 'package:capstone_development/application/published_templates/published_template_artifact_service.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p12_template_builder_fixture.dart';
@@ -162,6 +164,52 @@ void main() {
         skipOffstage: false,
       ),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('dense publication stores the exact versioned artifact', (
+    tester,
+  ) async {
+    final repository = InMemoryPublishedTemplateArtifactRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          densePublicationService: PublishedTemplateArtifactService(
+            repository: repository,
+            pdfRenderer: (_, _) async =>
+                EngineResult.success(Uint8List.fromList([37, 80, 68, 70, 45])),
+          ),
+        ),
+      ),
+    );
+
+    final publishButton = tester.widget<FilledButton>(
+      find.byKey(const Key('publish-dense-template-v1')),
+    );
+    expect(publishButton.onPressed, isNotNull);
+    publishButton.onPressed!();
+    await tester.pumpAndSettle();
+
+    final stored = await repository.list();
+    expect(stored.value, hasLength(1));
+    await tester.dragUntilVisible(
+      find.byKey(const Key('dense-publication-result')),
+      find.byType(ListView),
+      const Offset(0, -250),
+    );
+    final publicationResult = find.byKey(
+      const Key('dense-publication-result'),
+      skipOffstage: false,
+    );
+    expect(publicationResult, findsOneWidget);
+    expect(
+      tester.widget<SelectableText>(publicationResult).data,
+      contains('Dense Template v1 saved locally'),
+    );
+    expect(stored.value.single.layout.pages, hasLength(1));
+    expect(
+      stored.value.single.layout.pages.single.bubbleRegions,
+      hasLength(160),
     );
   });
 
