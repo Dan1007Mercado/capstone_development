@@ -1,6 +1,8 @@
 import '../../../core/geometry/page_spec.dart';
 import '../../../core/geometry/physical_geometry.dart';
 
+enum LayoutProfile { comfortable, dense }
+
 /// Configurable IDs assigned to the four marker roles.
 final class MarkerIds {
   const MarkerIds({
@@ -45,6 +47,7 @@ final class MarkerIds {
 /// print/scan calibration before they can be treated as production constants.
 final class LayoutConfig {
   const LayoutConfig({
+    required this.profile,
     required this.pageSpec,
     required this.margins,
     required this.canonicalPageSpec,
@@ -62,30 +65,73 @@ final class LayoutConfig {
     required this.minimumContentGapMm,
     required this.estimatedLineHeightMm,
     required this.estimatedCharactersPerLine,
+    required this.estimatedTextWidthMm,
     required this.humanReadableFieldHeightMm,
+    required this.columnCount,
+    required this.columnGapMm,
+    required this.maximumColumnPromptLines,
   });
 
-  factory LayoutConfig.a4Default() => LayoutConfig(
-    pageSpec: PageSpec.a4Portrait(),
-    margins: PageMargins.all(PhysicalLength(12)),
-    canonicalPageSpec: CanonicalPageSpec.a4FromWidth(2100),
-    markerSizeMm: 14,
-    markerInsetMm: 10,
-    markerIds: MarkerIds.defaults,
-    bubbleDiameterMm: 5,
-    bubbleHorizontalGapMm: 5,
-    bubbleVerticalGapMm: 3,
-    optionCellWidthMm: 28,
-    questionVerticalGapMm: 6,
-    sectionGapMm: 8,
-    headerHeightMm: 10,
-    identityRegionHeightMm: 12,
-    minimumContentGapMm: 4,
-    estimatedLineHeightMm: 5,
-    estimatedCharactersPerLine: 70,
-    humanReadableFieldHeightMm: 12,
-  );
+  factory LayoutConfig.a4Default() =>
+      LayoutConfig.forProfile(LayoutProfile.comfortable);
 
+  factory LayoutConfig.a4Dense() =>
+      LayoutConfig.forProfile(LayoutProfile.dense);
+
+  factory LayoutConfig.forProfile(LayoutProfile profile) => switch (profile) {
+    LayoutProfile.comfortable => LayoutConfig(
+      profile: LayoutProfile.comfortable,
+      pageSpec: PageSpec.a4Portrait(),
+      margins: PageMargins.all(PhysicalLength(12)),
+      canonicalPageSpec: CanonicalPageSpec.a4FromWidth(2100),
+      markerSizeMm: 14,
+      markerInsetMm: 10,
+      markerIds: MarkerIds.defaults,
+      bubbleDiameterMm: 5,
+      bubbleHorizontalGapMm: 5,
+      bubbleVerticalGapMm: 3,
+      optionCellWidthMm: 28,
+      questionVerticalGapMm: 6,
+      sectionGapMm: 8,
+      headerHeightMm: 10,
+      identityRegionHeightMm: 12,
+      minimumContentGapMm: 4,
+      estimatedLineHeightMm: 5,
+      estimatedCharactersPerLine: 70,
+      estimatedTextWidthMm: 154,
+      humanReadableFieldHeightMm: 12,
+      columnCount: 1,
+      columnGapMm: 6,
+      maximumColumnPromptLines: 1000,
+    ),
+    LayoutProfile.dense => LayoutConfig(
+      profile: LayoutProfile.dense,
+      pageSpec: PageSpec.a4Portrait(),
+      margins: PageMargins.all(PhysicalLength(12)),
+      canonicalPageSpec: CanonicalPageSpec.a4FromWidth(2100),
+      markerSizeMm: 14,
+      markerInsetMm: 10,
+      markerIds: MarkerIds.defaults,
+      bubbleDiameterMm: 5,
+      bubbleHorizontalGapMm: 1.5,
+      bubbleVerticalGapMm: 2,
+      optionCellWidthMm: 8,
+      questionVerticalGapMm: 1,
+      sectionGapMm: 3,
+      headerHeightMm: 6,
+      identityRegionHeightMm: 5,
+      minimumContentGapMm: 1.5,
+      estimatedLineHeightMm: 3.5,
+      estimatedCharactersPerLine: 34,
+      estimatedTextWidthMm: 76.5,
+      humanReadableFieldHeightMm: 10,
+      columnCount: 2,
+      columnGapMm: 6,
+      maximumColumnPromptLines: 2,
+    ),
+  };
+
+  final LayoutProfile profile;
   final PageSpec pageSpec;
   final PageMargins margins;
   final CanonicalPageSpec canonicalPageSpec;
@@ -103,12 +149,17 @@ final class LayoutConfig {
   final double minimumContentGapMm;
   final double estimatedLineHeightMm;
   final int estimatedCharactersPerLine;
+  final double estimatedTextWidthMm;
   final double humanReadableFieldHeightMm;
+  final int columnCount;
+  final double columnGapMm;
+  final int maximumColumnPromptLines;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is LayoutConfig &&
+          other.profile == profile &&
           other.pageSpec == pageSpec &&
           other.margins == margins &&
           other.canonicalPageSpec == canonicalPageSpec &&
@@ -126,10 +177,15 @@ final class LayoutConfig {
           other.minimumContentGapMm == minimumContentGapMm &&
           other.estimatedLineHeightMm == estimatedLineHeightMm &&
           other.estimatedCharactersPerLine == estimatedCharactersPerLine &&
-          other.humanReadableFieldHeightMm == humanReadableFieldHeightMm;
+          other.estimatedTextWidthMm == estimatedTextWidthMm &&
+          other.humanReadableFieldHeightMm == humanReadableFieldHeightMm &&
+          other.columnCount == columnCount &&
+          other.columnGapMm == columnGapMm &&
+          other.maximumColumnPromptLines == maximumColumnPromptLines;
 
   @override
   int get hashCode => Object.hashAll([
+    profile,
     pageSpec,
     margins,
     canonicalPageSpec,
@@ -147,6 +203,10 @@ final class LayoutConfig {
     minimumContentGapMm,
     estimatedLineHeightMm,
     estimatedCharactersPerLine,
+    estimatedTextWidthMm,
     humanReadableFieldHeightMm,
+    columnCount,
+    columnGapMm,
+    maximumColumnPromptLines,
   ]);
 }

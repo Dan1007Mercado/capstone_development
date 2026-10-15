@@ -143,6 +143,31 @@ final class ContentRegion {
   int get hashCode => Object.hash(physicalBounds, normalizedBounds);
 }
 
+/// One deterministic vertical flow lane within the page content area.
+final class LayoutColumnRegion {
+  const LayoutColumnRegion({
+    required this.columnIndex,
+    required this.physicalBounds,
+    required this.normalizedBounds,
+  });
+
+  final int columnIndex;
+  final PhysicalRect physicalBounds;
+  final NormalizedRect normalizedBounds;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LayoutColumnRegion &&
+          other.columnIndex == columnIndex &&
+          other.physicalBounds == physicalBounds &&
+          other.normalizedBounds == normalizedBounds;
+
+  @override
+  int get hashCode =>
+      Object.hash(columnIndex, physicalBounds, normalizedBounds);
+}
+
 /// Scanner-target geometry for either an option or one numeric-grid cell.
 final class BubbleRegion {
   const BubbleRegion._({
@@ -252,6 +277,7 @@ final class QuestionRegion {
   QuestionRegion({
     required this.questionId,
     required this.questionType,
+    required this.columnIndex,
     required this.physicalBounds,
     required this.normalizedBounds,
     required Iterable<BubbleRegion> bubbleRegions,
@@ -259,6 +285,9 @@ final class QuestionRegion {
 
   final QuestionId questionId;
   final QuestionType questionType;
+
+  /// Null only for a deliberately full-width question in a column profile.
+  final int? columnIndex;
   final PhysicalRect physicalBounds;
   final NormalizedRect normalizedBounds;
   final List<BubbleRegion> bubbleRegions;
@@ -269,6 +298,7 @@ final class QuestionRegion {
       other is QuestionRegion &&
           other.questionId == questionId &&
           other.questionType == questionType &&
+          other.columnIndex == columnIndex &&
           other.physicalBounds == physicalBounds &&
           other.normalizedBounds == normalizedBounds &&
           layoutListEquals(other.bubbleRegions, bubbleRegions);
@@ -277,6 +307,7 @@ final class QuestionRegion {
   int get hashCode => Object.hash(
     questionId,
     questionType,
+    columnIndex,
     physicalBounds,
     normalizedBounds,
     Object.hashAll(bubbleRegions),
@@ -286,6 +317,7 @@ final class QuestionRegion {
 final class SectionRegion {
   SectionRegion({
     required this.sectionId,
+    required this.columnIndex,
     required this.physicalBounds,
     required this.normalizedBounds,
     required this.titleRegion,
@@ -295,6 +327,9 @@ final class SectionRegion {
   }) : questionRegions = UnmodifiableListView(List.of(questionRegions));
 
   final SectionId sectionId;
+
+  /// Null only for a deliberately full-width fragment.
+  final int? columnIndex;
   final PhysicalRect physicalBounds;
   final NormalizedRect normalizedBounds;
 
@@ -309,6 +344,7 @@ final class SectionRegion {
       identical(this, other) ||
       other is SectionRegion &&
           other.sectionId == sectionId &&
+          other.columnIndex == columnIndex &&
           other.physicalBounds == physicalBounds &&
           other.normalizedBounds == normalizedBounds &&
           other.titleRegion == titleRegion &&
@@ -319,6 +355,7 @@ final class SectionRegion {
   @override
   int get hashCode => Object.hash(
     sectionId,
+    columnIndex,
     physicalBounds,
     normalizedBounds,
     titleRegion,

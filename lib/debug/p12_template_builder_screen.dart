@@ -8,6 +8,7 @@ import '../core/ids/identifiers.dart';
 import '../core/result/engine_result.dart';
 import '../core/result/validation.dart';
 import '../engines/layout/domain/page_layout.dart';
+import '../engines/pdf/application/pdf_engine.dart';
 import '../engines/template/application/template_publication_service.dart';
 import '../engines/template/application/template_validator.dart';
 import '../engines/template/domain/question_type.dart';
@@ -17,6 +18,7 @@ import '../engines/template/domain/template_section.dart';
 import '../engines/template/domain/template_status.dart';
 import '../engines/template/infrastructure/in_memory_template_repository.dart';
 import 'p12_template_builder_fixture.dart';
+import 'p13_6_dense_validation_sheet.dart';
 
 typedef TemplatePdfGenerator =
     Future<EngineResult<TemplatePdfArtifact>> Function();
@@ -27,12 +29,14 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.controller,
     this.exporter,
     this.pdfGenerator,
+    this.densePdfGenerator,
     this.publicationService,
   });
 
   final TemplateBuilderController? controller;
   final TemplatePdfExporter? exporter;
   final TemplatePdfGenerator? pdfGenerator;
+  final TemplatePdfGenerator? densePdfGenerator;
   final TemplatePublicationService? publicationService;
 
   @override
@@ -44,6 +48,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplateBuilderController _controller;
   late TemplatePdfExporter _exporter;
   late TemplatePdfGenerator _pdfGenerator;
+  late TemplatePdfGenerator _densePdfGenerator;
   late TemplatePublicationService _publicationService;
   final TemplateValidator _validator = TemplateValidator();
   ValidationResult? _validation;
@@ -64,6 +69,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     _controller = widget.controller ?? TemplateBuilderController();
     _exporter = widget.exporter ?? UserAccessibleTemplatePdfExporter();
     _pdfGenerator = widget.pdfGenerator ?? () => _controller.generatePdf();
+    _densePdfGenerator = widget.densePdfGenerator ?? _generateDenseArtifact;
     _publicationService =
         widget.publicationService ??
         TemplatePublicationService(repository: InMemoryTemplateRepository());
@@ -126,6 +132,45 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _error = result.errorOrNull;
       _validation = _validator.validate(definition);
     });
+  }
+
+  Future<void> _generateDensePdf() async {
+    setState(() {
+      _generatingPdf = true;
+      _error = null;
+    });
+    final result = await _densePdfGenerator();
+    if (!mounted) return;
+    setState(() {
+      _generatingPdf = false;
+      _pdf = result.valueOrNull;
+      _exportOutcome = null;
+      _preview = result.isSuccess
+          ? TemplateLayoutPreview(
+              definition: result.value.definition,
+              layout: result.value.layout,
+            )
+          : null;
+      _error = result.errorOrNull;
+      _validation = result.isSuccess
+          ? _validator.validate(result.value.definition)
+          : null;
+    });
+  }
+
+  Future<EngineResult<TemplatePdfArtifact>> _generateDenseArtifact() async {
+    final inputs = buildP13_6DenseValidationInputs();
+    final rendered = await PdfEngine().render(inputs.template, inputs.layout);
+    if (rendered.isFailure) {
+      return EngineResult.failure(rendered.error);
+    }
+    return EngineResult.success(
+      TemplatePdfArtifact(
+        definition: inputs.template,
+        layout: inputs.layout,
+        bytes: rendered.value,
+      ),
+    );
   }
 
   Future<void> _publish() async {
@@ -349,6 +394,13 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 child: Text(
                   _generatingPdf ? 'Generating...' : 'Generate Preview PDF',
                 ),
+              ),
+              OutlinedButton(
+                key: const Key('generate-dense-validation-pdf'),
+                onPressed: _generatingPdf || _savingPdf
+                    ? null
+                    : _generateDensePdf,
+                child: const Text('Generate Dense Validation PDF'),
               ),
               FilledButton.tonal(
                 key: const Key('publish-template'),

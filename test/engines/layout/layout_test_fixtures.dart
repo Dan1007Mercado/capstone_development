@@ -92,10 +92,15 @@ LayoutConfig testConfig({
   double? minimumContentGapMm,
   double? estimatedLineHeightMm,
   int? estimatedCharactersPerLine,
+  double? estimatedTextWidthMm,
   double? humanReadableFieldHeightMm,
+  int? columnCount,
+  double? columnGapMm,
+  int? maximumColumnPromptLines,
 }) {
   final defaults = LayoutConfig.a4Default();
   return LayoutConfig(
+    profile: defaults.profile,
     pageSpec: pageSpec ?? defaults.pageSpec,
     margins: margins ?? defaults.margins,
     canonicalPageSpec: canonicalPageSpec ?? defaults.canonicalPageSpec,
@@ -118,8 +123,13 @@ LayoutConfig testConfig({
         estimatedLineHeightMm ?? defaults.estimatedLineHeightMm,
     estimatedCharactersPerLine:
         estimatedCharactersPerLine ?? defaults.estimatedCharactersPerLine,
+    estimatedTextWidthMm: estimatedTextWidthMm ?? defaults.estimatedTextWidthMm,
     humanReadableFieldHeightMm:
         humanReadableFieldHeightMm ?? defaults.humanReadableFieldHeightMm,
+    columnCount: columnCount ?? defaults.columnCount,
+    columnGapMm: columnGapMm ?? defaults.columnGapMm,
+    maximumColumnPromptLines:
+        maximumColumnPromptLines ?? defaults.maximumColumnPromptLines,
   );
 }
 

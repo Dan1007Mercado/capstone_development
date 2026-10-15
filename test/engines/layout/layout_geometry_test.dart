@@ -162,6 +162,7 @@ void main() {
         page.normalizedPrintableBounds,
         page.normalizedSafeBounds,
         page.templateIdentityRegion.normalizedBounds,
+        ...page.contentColumnRegions.map((column) => column.normalizedBounds),
         ...page.markerRegions.map((marker) => marker.normalizedBounds),
         ...page.markerRegions.map((marker) => marker.normalizedMarkerBounds),
         ...page.questionRegions.map((question) => question.normalizedBounds),
@@ -205,6 +206,7 @@ void main() {
 
     expect(() => document.pages.clear(), throwsUnsupportedError);
     expect(() => page.markerRegions.clear(), throwsUnsupportedError);
+    expect(() => page.contentColumnRegions.clear(), throwsUnsupportedError);
     expect(() => page.sectionRegions.clear(), throwsUnsupportedError);
     expect(() => page.questionRegions.clear(), throwsUnsupportedError);
     expect(() => page.bubbleRegions.clear(), throwsUnsupportedError);

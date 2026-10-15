@@ -6,6 +6,7 @@ import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p12_template_builder_fixture.dart';
 import 'package:capstone_development/debug/p12_template_builder_screen.dart';
+import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/template/application/template_publication_service.dart';
 import 'package:capstone_development/engines/template/infrastructure/in_memory_template_repository.dart';
 import 'package:flutter/material.dart';
@@ -117,6 +118,51 @@ void main() {
     expect(find.textContaining('PDF saved successfully'), findsOneWidget);
     expect(find.textContaining('content://documents/'), findsOneWidget);
     expect(find.textContaining('resume-survey-v1.pdf'), findsNWidgets(2));
+  });
+
+  testWidgets('dense validation PDF action exposes the dense artifact', (
+    tester,
+  ) async {
+    final controller = TemplateBuilderController();
+    final denseController = TemplateBuilderController(
+      name: 'Dense Validation',
+      layoutConfig: LayoutConfig.a4Dense(),
+    );
+    final section = denseController.addSection(title: 'Dense');
+    denseController.addQuestion(section, prompt: 'Dense question');
+    final preview = denseController.previewLayout().value;
+    final artifact = TemplatePdfArtifact(
+      definition: preview.definition,
+      layout: preview.layout,
+      bytes: Uint8List.fromList([37, 80, 68, 70, 45]),
+    );
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          controller: controller,
+          densePdfGenerator: () async {
+            calls++;
+            return EngineResult.success(artifact);
+          },
+        ),
+      ),
+    );
+
+    await _tapVisible(tester, const Key('generate-dense-validation-pdf'));
+
+    expect(calls, 1);
+    expect(
+      find.textContaining('PDF generated successfully', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'Pages: ${artifact.layout.pages.length}',
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('save cancellation keeps the generated PDF without an error', (

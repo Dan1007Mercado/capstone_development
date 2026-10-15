@@ -26,10 +26,14 @@ final class PageLayout {
     required Iterable<MarkerRegion> markerRegions,
     required this.templateIdentityRegion,
     required this.headerRegion,
+    required Iterable<LayoutColumnRegion> contentColumnRegions,
     required Iterable<SectionRegion> sectionRegions,
     required Iterable<QuestionRegion> questionRegions,
     required Iterable<BubbleRegion> bubbleRegions,
   }) : markerRegions = UnmodifiableListView(List.of(markerRegions)),
+       contentColumnRegions = UnmodifiableListView(
+         List.of(contentColumnRegions),
+       ),
        sectionRegions = UnmodifiableListView(List.of(sectionRegions)),
        questionRegions = UnmodifiableListView(List.of(questionRegions)),
        bubbleRegions = UnmodifiableListView(List.of(bubbleRegions));
@@ -52,6 +56,7 @@ final class PageLayout {
   final List<MarkerRegion> markerRegions;
   final TemplateIdentityRegion templateIdentityRegion;
   final ContentRegion headerRegion;
+  final List<LayoutColumnRegion> contentColumnRegions;
   final List<SectionRegion> sectionRegions;
   final List<QuestionRegion> questionRegions;
   final List<BubbleRegion> bubbleRegions;
@@ -76,6 +81,7 @@ final class PageLayout {
           layoutListEquals(other.markerRegions, markerRegions) &&
           other.templateIdentityRegion == templateIdentityRegion &&
           other.headerRegion == headerRegion &&
+          layoutListEquals(other.contentColumnRegions, contentColumnRegions) &&
           layoutListEquals(other.sectionRegions, sectionRegions) &&
           layoutListEquals(other.questionRegions, questionRegions) &&
           layoutListEquals(other.bubbleRegions, bubbleRegions);
@@ -98,6 +104,7 @@ final class PageLayout {
     Object.hashAll(markerRegions),
     templateIdentityRegion,
     headerRegion,
+    Object.hashAll(contentColumnRegions),
     Object.hashAll(sectionRegions),
     Object.hashAll(questionRegions),
     Object.hashAll(bubbleRegions),

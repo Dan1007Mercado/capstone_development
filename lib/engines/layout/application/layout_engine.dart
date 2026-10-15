@@ -132,7 +132,9 @@ final class LayoutEngine {
       'identityRegionHeightMm': config.identityRegionHeightMm,
       'minimumContentGapMm': config.minimumContentGapMm,
       'estimatedLineHeightMm': config.estimatedLineHeightMm,
+      'estimatedTextWidthMm': config.estimatedTextWidthMm,
       'humanReadableFieldHeightMm': config.humanReadableFieldHeightMm,
+      'columnGapMm': config.columnGapMm,
     };
     for (final entry in positiveValues.entries) {
       if (!entry.value.isFinite || entry.value <= 0) {
@@ -152,6 +154,12 @@ final class LayoutEngine {
       return EngineError(
         code: 'LAYOUT_CONFIG_INVALID',
         message: 'estimatedCharactersPerLine must be positive.',
+      );
+    }
+    if (config.columnCount <= 0 || config.maximumColumnPromptLines <= 0) {
+      return EngineError(
+        code: 'LAYOUT_CONFIG_INVALID',
+        message: 'Column count and prompt-line limit must be positive.',
       );
     }
 
@@ -201,6 +209,13 @@ final class LayoutEngine {
       return EngineError(
         code: 'CONTENT_AREA_INVALID',
         message: 'Markers and reserved regions leave no usable content area.',
+      );
+    }
+    final totalColumnGaps = (config.columnCount - 1) * config.columnGapMm;
+    if (safeWidth <= totalColumnGaps) {
+      return EngineError(
+        code: 'CONTENT_AREA_INVALID',
+        message: 'Column gaps leave no usable content width.',
       );
     }
     return null;
@@ -333,6 +348,31 @@ final class LayoutEngine {
       height: config.headerHeightMm,
     );
     final contentTop = headerBounds.bottom.millimeters;
+    final columnWidth =
+        (safeBounds.width.millimeters -
+            (config.columnCount - 1) * config.columnGapMm) /
+        config.columnCount;
+    final contentColumnRegions = [
+      for (var index = 0; index < config.columnCount; index++)
+        LayoutColumnRegion(
+          columnIndex: index,
+          physicalBounds: PhysicalRect.millimeters(
+            left: safeLeft + index * (columnWidth + config.columnGapMm),
+            top: contentTop,
+            width: columnWidth,
+            height: safeBounds.bottom.millimeters - contentTop,
+          ),
+          normalizedBounds: GeometryConverter.physicalRectToNormalized(
+            PhysicalRect.millimeters(
+              left: safeLeft + index * (columnWidth + config.columnGapMm),
+              top: contentTop,
+              width: columnWidth,
+              height: safeBounds.bottom.millimeters - contentTop,
+            ),
+            pageSize,
+          ),
+        ),
+    ];
 
     return _StaticPageGeometry(
       physicalPageBounds: physicalPageBounds,
@@ -365,6 +405,7 @@ final class LayoutEngine {
           pageSize,
         ),
       ),
+      contentColumnRegions: contentColumnRegions,
       contentTop: contentTop,
       contentBottom: safeBounds.bottom.millimeters,
     );
@@ -381,72 +422,206 @@ final class LayoutEngine {
     final contentHeight = geometry.contentBottom - geometry.contentTop;
 
     for (final section in template.sections) {
-      final leadPlan = _planSectionLead(section, config);
-      final firstPlan = section.questions.isEmpty
-          ? null
-          : _planQuestion(
-              section.questions.first,
-              geometry.safeBounds.width.millimeters,
-              config,
-            );
-      if (firstPlan?.isTooWide ?? false) {
-        return _questionTooLarge(section.questions.first);
-      }
-      final sectionGap = page.hasContent ? config.sectionGapMm : 0;
-      final preferredInitialHeight =
-          sectionGap + leadPlan.height + (firstPlan?.height ?? 0);
-      if (page.cursorY + preferredInitialHeight > geometry.contentBottom &&
-          page.hasContent) {
-        page = _newPage(template, pages.length, geometry);
-        pages.add(page);
-      }
-      if (leadPlan.height > contentHeight) {
-        return EngineResult.failure(
-          EngineError(
-            code: 'LAYOUT_OVERFLOW',
-            message: 'Section content is too large for a fresh page.',
-            details: {'sectionId': section.id.value},
-          ),
-        );
-      }
+      var sectionStarted = false;
+      _SectionDraft? sectionDraft;
 
-      if (page.hasContent) page.cursorY += config.sectionGapMm;
-      var sectionDraft = page.startSection(
-        section.id,
-        page.cursorY,
-        leadPlacement: _placeSectionLead(
-          leadPlan,
-          geometry.safeBounds.left.millimeters,
-          page.cursorY,
-          geometry.safeBounds.width.millimeters,
-        ),
-      );
-      page.cursorY += leadPlan.height;
-      sectionDraft.endY = page.cursorY;
-
-      for (final question in section.questions) {
-        final plan = _planQuestion(
-          question,
-          geometry.safeBounds.width.millimeters,
+      if (section.questions.isEmpty) {
+        if (page.fullWidthLocked) {
+          page = _appendPage(template, pages, geometry);
+        }
+        final column = page.activeColumn;
+        final leadPlan = _planSectionLead(
+          section,
+          column.physicalBounds.width.millimeters,
           config,
         );
-        if (plan.isTooWide || plan.height > contentHeight) {
+        if (leadPlan.height > contentHeight) {
+          return _sectionTooLarge(section);
+        }
+        final gap = page.activeColumnHasContent ? config.sectionGapMm : 0;
+        if (page.cursorY + gap + leadPlan.height > geometry.contentBottom &&
+            page.activeColumnHasContent) {
+          page = _advanceFlow(template, pages, geometry, page);
+        }
+        if (page.activeColumnHasContent) {
+          page.cursorY += config.sectionGapMm;
+        }
+        final target = page.activeColumn;
+        sectionDraft = page.startSection(
+          section.id,
+          page.cursorY,
+          left: target.physicalBounds.left.millimeters,
+          width: target.physicalBounds.width.millimeters,
+          columnIndex: target.columnIndex,
+          leadPlacement: _placeSectionLead(
+            leadPlan,
+            target.physicalBounds.left.millimeters,
+            page.cursorY,
+            target.physicalBounds.width.millimeters,
+          ),
+        );
+        page.cursorY += leadPlan.height;
+        sectionDraft.endY = page.cursorY;
+        continue;
+      }
+
+      for (final question in section.questions) {
+        if (page.fullWidthLocked) {
+          page = _appendPage(template, pages, geometry);
+          sectionDraft = null;
+        }
+
+        var column = page.activeColumn;
+        var columnPlan = _planQuestion(
+          question,
+          column.physicalBounds.width.millimeters,
+          config,
+        );
+        final columnSuitable =
+            !columnPlan.isTooWide &&
+            columnPlan.promptLineCount <= config.maximumColumnPromptLines &&
+            (question.type == QuestionType.numericGrid ||
+                columnPlan.usesHorizontalOptions);
+
+        if (!columnSuitable && config.columnCount > 1) {
+          final fullPlan = _planQuestion(
+            question,
+            geometry.safeBounds.width.millimeters,
+            config,
+          );
+          final leadPlan = sectionStarted
+              ? null
+              : _planSectionLead(
+                  section,
+                  geometry.safeBounds.width.millimeters,
+                  config,
+                );
+          final requiredHeight = (leadPlan?.height ?? 0) + fullPlan.height;
+          if (fullPlan.isTooWide || requiredHeight > contentHeight) {
+            return _questionTooLarge(question);
+          }
+          if (page.hasContent) {
+            page = _appendPage(template, pages, geometry);
+          }
+          sectionDraft = page.startSection(
+            section.id,
+            page.cursorY,
+            left: geometry.safeBounds.left.millimeters,
+            width: geometry.safeBounds.width.millimeters,
+            columnIndex: null,
+            leadPlacement: leadPlan == null
+                ? null
+                : _placeSectionLead(
+                    leadPlan,
+                    geometry.safeBounds.left.millimeters,
+                    page.cursorY,
+                    geometry.safeBounds.width.millimeters,
+                  ),
+          );
+          if (leadPlan != null) page.cursorY += leadPlan.height;
+          final questionRegion = _placeQuestion(
+            question,
+            fullPlan,
+            page.pageId,
+            geometry.safeBounds.left.millimeters,
+            page.cursorY,
+            geometry.safeBounds.width.millimeters,
+            null,
+            config,
+          );
+          sectionDraft.questionRegions.add(questionRegion);
+          sectionDraft.endY = questionRegion.physicalBounds.bottom.millimeters;
+          page.cursorY =
+              questionRegion.physicalBounds.bottom.millimeters +
+              config.questionVerticalGapMm;
+          page.fullWidthLocked = true;
+          sectionStarted = true;
+          continue;
+        }
+
+        if (columnPlan.isTooWide || columnPlan.height > contentHeight) {
           return _questionTooLarge(question);
         }
 
-        if (page.cursorY + plan.height > geometry.contentBottom) {
-          page = _newPage(template, pages.length, geometry);
-          pages.add(page);
-          sectionDraft = page.startSection(section.id, page.cursorY);
+        if (!sectionStarted) {
+          var leadPlan = _planSectionLead(
+            section,
+            column.physicalBounds.width.millimeters,
+            config,
+          );
+          if (leadPlan.height > contentHeight) {
+            return _sectionTooLarge(section);
+          }
+          var gap = page.activeColumnHasContent ? config.sectionGapMm : 0;
+          if (page.cursorY + gap + leadPlan.height + columnPlan.height >
+                  geometry.contentBottom &&
+              page.activeColumnHasContent) {
+            page = _advanceFlow(template, pages, geometry, page);
+            column = page.activeColumn;
+            columnPlan = _planQuestion(
+              question,
+              column.physicalBounds.width.millimeters,
+              config,
+            );
+            leadPlan = _planSectionLead(
+              section,
+              column.physicalBounds.width.millimeters,
+              config,
+            );
+            gap = 0;
+          }
+          page.cursorY += gap;
+          sectionDraft = page.startSection(
+            section.id,
+            page.cursorY,
+            left: column.physicalBounds.left.millimeters,
+            width: column.physicalBounds.width.millimeters,
+            columnIndex: column.columnIndex,
+            leadPlacement: _placeSectionLead(
+              leadPlan,
+              column.physicalBounds.left.millimeters,
+              page.cursorY,
+              column.physicalBounds.width.millimeters,
+            ),
+          );
+          page.cursorY += leadPlan.height;
+          sectionDraft.endY = page.cursorY;
+          sectionStarted = true;
         }
+
+        if (page.cursorY + columnPlan.height > geometry.contentBottom) {
+          page = _advanceFlow(template, pages, geometry, page);
+          column = page.activeColumn;
+          columnPlan = _planQuestion(
+            question,
+            column.physicalBounds.width.millimeters,
+            config,
+          );
+          sectionDraft = page.startSection(
+            section.id,
+            page.cursorY,
+            left: column.physicalBounds.left.millimeters,
+            width: column.physicalBounds.width.millimeters,
+            columnIndex: column.columnIndex,
+          );
+        }
+
+        sectionDraft ??= page.startSection(
+          section.id,
+          page.cursorY,
+          left: column.physicalBounds.left.millimeters,
+          width: column.physicalBounds.width.millimeters,
+          columnIndex: column.columnIndex,
+        );
 
         final questionRegion = _placeQuestion(
           question,
-          plan,
+          columnPlan,
           page.pageId,
-          geometry.safeBounds.left.millimeters,
+          column.physicalBounds.left.millimeters,
           page.cursorY,
-          geometry.safeBounds.width.millimeters,
+          column.physicalBounds.width.millimeters,
+          column.columnIndex,
           config,
         );
         sectionDraft.questionRegions.add(questionRegion);
@@ -469,6 +644,35 @@ final class LayoutEngine {
         ),
       );
 
+  EngineResult<List<_PageDraft>> _sectionTooLarge(TemplateSection section) =>
+      EngineResult.failure(
+        EngineError(
+          code: 'LAYOUT_OVERFLOW',
+          message: 'Section content is too large for a fresh page.',
+          details: {'sectionId': section.id.value},
+        ),
+      );
+
+  _PageDraft _appendPage(
+    TemplateDefinition template,
+    List<_PageDraft> pages,
+    _StaticPageGeometry geometry,
+  ) {
+    final page = _newPage(template, pages.length, geometry);
+    pages.add(page);
+    return page;
+  }
+
+  _PageDraft _advanceFlow(
+    TemplateDefinition template,
+    List<_PageDraft> pages,
+    _StaticPageGeometry geometry,
+    _PageDraft page,
+  ) {
+    if (page.advanceColumn()) return page;
+    return _appendPage(template, pages, geometry);
+  }
+
   _PageDraft _newPage(
     TemplateDefinition template,
     int pageIndex,
@@ -478,21 +682,31 @@ final class LayoutEngine {
     pageId: PageId(
       '${template.id.value}-v${template.version.value}-p${pageIndex + 1}',
     ),
-    cursorY: geometry.contentTop,
+    contentTop: geometry.contentTop,
+    columns: geometry.contentColumnRegions,
   );
 
   _SectionLeadPlan _planSectionLead(
     TemplateSection section,
+    double availableWidth,
     LayoutConfig config,
   ) {
-    final titleHeight = _estimateTextHeight(section.title, config);
+    final titleHeight = _estimateTextHeight(
+      section.title,
+      availableWidth,
+      config,
+    );
     var cursor = titleHeight;
     double? instructionTop;
     double? instructionHeight;
     if (section.instruction != null) {
       cursor += config.minimumContentGapMm;
       instructionTop = cursor;
-      instructionHeight = _estimateTextHeight(section.instruction!, config);
+      instructionHeight = _estimateTextHeight(
+        section.instruction!,
+        availableWidth,
+        config,
+      );
       cursor += instructionHeight;
     }
     double? humanReadableFieldTop;
@@ -501,10 +715,15 @@ final class LayoutEngine {
     if (textField != null) {
       cursor += config.minimumContentGapMm;
       humanReadableFieldTop = cursor;
-      humanReadableFieldHeight = _estimateTextHeight(textField.label, config);
+      humanReadableFieldHeight = _estimateTextHeight(
+        textField.label,
+        availableWidth,
+        config,
+      );
       if (textField.instruction != null) {
         humanReadableFieldHeight += _estimateTextHeight(
           textField.instruction!,
+          availableWidth,
           config,
         );
       }
@@ -559,10 +778,19 @@ final class LayoutEngine {
     double availableWidth,
     LayoutConfig config,
   ) {
-    var promptHeight = _estimateTextHeight(question.prompt, config);
+    var promptLineCount = _estimateLineCount(
+      question.prompt,
+      availableWidth,
+      config,
+    );
     if (question.description != null) {
-      promptHeight += _estimateTextHeight(question.description!, config);
+      promptLineCount += _estimateLineCount(
+        question.description!,
+        availableWidth,
+        config,
+      );
     }
+    final promptHeight = promptLineCount * config.estimatedLineHeightMm;
 
     if (question.type == QuestionType.numericGrid) {
       final spec = question.numericGridSpec!;
@@ -575,6 +803,7 @@ final class LayoutEngine {
       return _QuestionPlan(
         height: promptHeight + config.minimumContentGapMm + gridHeight,
         promptHeight: promptHeight,
+        promptLineCount: promptLineCount,
         usesHorizontalOptions: false,
         isTooWide: gridWidth > availableWidth,
       );
@@ -592,15 +821,35 @@ final class LayoutEngine {
     return _QuestionPlan(
       height: promptHeight + config.minimumContentGapMm + optionHeight,
       promptHeight: promptHeight,
+      promptLineCount: promptLineCount,
       usesHorizontalOptions: horizontal,
       isTooWide: false,
     );
   }
 
-  double _estimateTextHeight(String text, LayoutConfig config) {
+  int _estimateLineCount(
+    String text,
+    double availableWidth,
+    LayoutConfig config,
+  ) {
+    final charactersPerLine = math.max(
+      1,
+      (config.estimatedCharactersPerLine *
+              availableWidth /
+              config.estimatedTextWidthMm)
+          .floor(),
+    );
+    return math.max(1, (text.length / charactersPerLine).ceil());
+  }
+
+  double _estimateTextHeight(
+    String text,
+    double availableWidth,
+    LayoutConfig config,
+  ) {
     final lineCount = math.max(
       1,
-      (text.length / config.estimatedCharactersPerLine).ceil(),
+      _estimateLineCount(text, availableWidth, config),
     );
     return lineCount * config.estimatedLineHeightMm;
   }
@@ -612,6 +861,7 @@ final class LayoutEngine {
     double left,
     double top,
     double width,
+    int? columnIndex,
     LayoutConfig config,
   ) {
     final pageSize = config.pageSpec.size;
@@ -708,6 +958,7 @@ final class LayoutEngine {
     return QuestionRegion(
       questionId: question.id,
       questionType: question.type,
+      columnIndex: columnIndex,
       physicalBounds: bounds,
       normalizedBounds: GeometryConverter.physicalRectToNormalized(
         bounds,
@@ -728,13 +979,14 @@ final class LayoutEngine {
     final sections = draft.sections
         .map((section) {
           final bounds = PhysicalRect.millimeters(
-            left: geometry.safeBounds.left.millimeters,
+            left: section.left,
             top: section.startY,
-            width: geometry.safeBounds.width.millimeters,
+            width: section.width,
             height: section.endY - section.startY,
           );
           return SectionRegion(
             sectionId: section.sectionId,
+            columnIndex: section.columnIndex,
             physicalBounds: bounds,
             normalizedBounds: GeometryConverter.physicalRectToNormalized(
               bounds,
@@ -797,6 +1049,7 @@ final class LayoutEngine {
       ],
       templateIdentityRegion: geometry.identityRegion,
       headerRegion: geometry.headerRegion,
+      contentColumnRegions: geometry.contentColumnRegions,
       sectionRegions: sections,
       questionRegions: questions,
       bubbleRegions: bubbles,
@@ -857,7 +1110,66 @@ final class LayoutEngine {
         );
       }
 
-      for (final section in page.sectionRegions) {
+      for (var index = 0; index < page.contentColumnRegions.length; index++) {
+        final column = page.contentColumnRegions[index];
+        if (column.columnIndex != index ||
+            !page.safeBounds.containsRect(column.physicalBounds) ||
+            page.markerRegions.any(
+              (marker) =>
+                  column.physicalBounds.intersects(marker.physicalBounds),
+            )) {
+          return EngineError(
+            code: 'GEOMETRY_INVALID',
+            message: 'Content column geometry is invalid.',
+          );
+        }
+        for (
+          var otherIndex = index + 1;
+          otherIndex < page.contentColumnRegions.length;
+          otherIndex++
+        ) {
+          if (column.physicalBounds.intersects(
+            page.contentColumnRegions[otherIndex].physicalBounds,
+          )) {
+            return EngineError(
+              code: 'GEOMETRY_INVALID',
+              message: 'Content columns overlap.',
+            );
+          }
+        }
+      }
+
+      for (
+        var sectionIndex = 0;
+        sectionIndex < page.sectionRegions.length;
+        sectionIndex++
+      ) {
+        final section = page.sectionRegions[sectionIndex];
+        if (!page.safeBounds.containsRect(section.physicalBounds) ||
+            !_matchesColumnAssignment(
+              section.physicalBounds,
+              section.columnIndex,
+              page,
+            )) {
+          return EngineError(
+            code: 'GEOMETRY_INVALID',
+            message: 'Section fragment is outside its assigned flow area.',
+          );
+        }
+        for (
+          var otherIndex = sectionIndex + 1;
+          otherIndex < page.sectionRegions.length;
+          otherIndex++
+        ) {
+          if (section.physicalBounds.intersects(
+            page.sectionRegions[otherIndex].physicalBounds,
+          )) {
+            return EngineError(
+              code: 'GEOMETRY_INVALID',
+              message: 'Generated section fragments overlap.',
+            );
+          }
+        }
         final leadRegions = [
           section.titleRegion,
           section.instructionRegion,
@@ -868,6 +1180,10 @@ final class LayoutEngine {
               page.bubbleRegions.any(
                 (bubble) =>
                     region.physicalBounds.intersects(bubble.physicalBounds),
+              ) ||
+              page.questionRegions.any(
+                (question) =>
+                    region.physicalBounds.intersects(question.physicalBounds),
               )) {
             return EngineError(
               code: 'GEOMETRY_INVALID',
@@ -909,19 +1225,65 @@ final class LayoutEngine {
         }
       }
 
-      for (final question in page.questionRegions) {
-        if (question.bubbleRegions.any(
-          (bubble) =>
-              !question.physicalBounds.containsRect(bubble.physicalBounds),
-        )) {
+      for (
+        var questionIndex = 0;
+        questionIndex < page.questionRegions.length;
+        questionIndex++
+      ) {
+        final question = page.questionRegions[questionIndex];
+        if (!page.safeBounds.containsRect(question.physicalBounds) ||
+            !_matchesColumnAssignment(
+              question.physicalBounds,
+              question.columnIndex,
+              page,
+            ) ||
+            page.markerRegions.any(
+              (marker) =>
+                  question.physicalBounds.intersects(marker.physicalBounds),
+            ) ||
+            question.bubbleRegions.any(
+              (bubble) =>
+                  !question.physicalBounds.containsRect(bubble.physicalBounds),
+            )) {
           return EngineError(
             code: 'GEOMETRY_INVALID',
-            message: 'Question bounds do not contain all of their bubbles.',
+            message: 'Question geometry is outside its assigned flow area.',
           );
+        }
+        for (
+          var otherIndex = questionIndex + 1;
+          otherIndex < page.questionRegions.length;
+          otherIndex++
+        ) {
+          if (question.physicalBounds.intersects(
+            page.questionRegions[otherIndex].physicalBounds,
+          )) {
+            return EngineError(
+              code: 'GEOMETRY_INVALID',
+              message: 'Generated question regions overlap.',
+            );
+          }
         }
       }
     }
     return null;
+  }
+
+  bool _matchesColumnAssignment(
+    PhysicalRect bounds,
+    int? columnIndex,
+    PageLayout page,
+  ) {
+    if (columnIndex == null) {
+      return bounds.left == page.safeBounds.left &&
+          bounds.right == page.safeBounds.right;
+    }
+    if (columnIndex < 0 || columnIndex >= page.contentColumnRegions.length) {
+      return false;
+    }
+    return page.contentColumnRegions[columnIndex].physicalBounds.containsRect(
+      bounds,
+    );
   }
 }
 
@@ -929,12 +1291,14 @@ final class _QuestionPlan {
   const _QuestionPlan({
     required this.height,
     required this.promptHeight,
+    required this.promptLineCount,
     required this.usesHorizontalOptions,
     required this.isTooWide,
   });
 
   final double height;
   final double promptHeight;
+  final int promptLineCount;
   final bool usesHorizontalOptions;
   final bool isTooWide;
 }
@@ -980,6 +1344,7 @@ final class _StaticPageGeometry {
     required this.markerRegions,
     required this.identityRegion,
     required this.headerRegion,
+    required this.contentColumnRegions,
     required this.contentTop,
     required this.contentBottom,
   });
@@ -993,6 +1358,7 @@ final class _StaticPageGeometry {
   final List<MarkerRegion> markerRegions;
   final TemplateIdentityRegion identityRegion;
   final ContentRegion headerRegion;
+  final List<LayoutColumnRegion> contentColumnRegions;
   final double contentTop;
   final double contentBottom;
 }
@@ -1001,25 +1367,46 @@ final class _PageDraft {
   _PageDraft({
     required this.pageIndex,
     required this.pageId,
-    required this.cursorY,
-  });
+    required double contentTop,
+    required this.columns,
+  }) : _columnCursors = List.filled(columns.length, contentTop);
 
   final int pageIndex;
   final PageId pageId;
-  double cursorY;
+  final List<LayoutColumnRegion> columns;
+  final List<double> _columnCursors;
+  var activeColumnIndex = 0;
+  bool fullWidthLocked = false;
   final List<_SectionDraft> sections = [];
 
   bool get hasContent => sections.isNotEmpty;
+  LayoutColumnRegion get activeColumn => columns[activeColumnIndex];
+  double get cursorY => _columnCursors[activeColumnIndex];
+  set cursorY(double value) => _columnCursors[activeColumnIndex] = value;
+  bool get activeColumnHasContent =>
+      sections.any((section) => section.columnIndex == activeColumnIndex);
+
+  bool advanceColumn() {
+    if (activeColumnIndex + 1 >= columns.length) return false;
+    activeColumnIndex++;
+    return true;
+  }
 
   _SectionDraft startSection(
     SectionId sectionId,
     double startY, {
+    required double left,
+    required double width,
+    required int? columnIndex,
     _SectionLeadPlacement? leadPlacement,
   }) {
     final section = _SectionDraft(
       sectionId: sectionId,
       startY: startY,
       endY: startY,
+      left: left,
+      width: width,
+      columnIndex: columnIndex,
       leadPlacement: leadPlacement,
     );
     sections.add(section);
@@ -1032,12 +1419,18 @@ final class _SectionDraft {
     required this.sectionId,
     required this.startY,
     required this.endY,
+    required this.left,
+    required this.width,
+    required this.columnIndex,
     required this.leadPlacement,
   });
 
   final SectionId sectionId;
   final double startY;
   double endY;
+  final double left;
+  final double width;
+  final int? columnIndex;
   final _SectionLeadPlacement? leadPlacement;
   final List<QuestionRegion> questionRegions = [];
 }
