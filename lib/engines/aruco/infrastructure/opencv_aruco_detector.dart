@@ -9,7 +9,10 @@ import '../domain/image_geometry.dart';
 
 /// Shared DICT_4X4_50 detection boundary for encoded-image and camera paths.
 final class OpenCvArucoDetector {
-  const OpenCvArucoDetector();
+  cv.ArucoDictionary? _dictionary;
+  cv.ArucoDetectorParameters? _parameters;
+  cv.ArucoDetector? _detector;
+  bool _disposed = false;
 
   EngineResult<ArucoDetection> detectGray({
     required Uint8List pixels,
@@ -36,19 +39,18 @@ final class OpenCvArucoDetector {
   }
 
   EngineResult<ArucoDetection> detectMat(cv.Mat image) {
-    cv.ArucoDictionary? dictionary;
-    cv.ArucoDetectorParameters? parameters;
-    cv.ArucoDetector? detector;
     cv.VecVecPoint2f? corners;
     cv.VecI32? ids;
     cv.VecVecPoint2f? rejected;
     try {
-      dictionary = cv.ArucoDictionary.predefined(
-        cv.PredefinedDictionaryType.DICT_4X4_50,
-      );
-      parameters = cv.ArucoDetectorParameters.empty();
-      detector = cv.ArucoDetector.create(dictionary, parameters);
-      final detection = detector.detectMarkers(image);
+      if (_disposed) {
+        return _failure(
+          'ARUCO_BACKEND_UNAVAILABLE',
+          'The OpenCV ArUco detector has already been disposed.',
+        );
+      }
+      _ensureInitialized();
+      final detection = _detector!.detectMarkers(image);
       corners = detection.$1;
       ids = detection.$2;
       rejected = detection.$3;
@@ -92,10 +94,38 @@ final class OpenCvArucoDetector {
       rejected?.dispose();
       ids?.dispose();
       corners?.dispose();
-      detector?.dispose();
+    }
+  }
+
+  void _ensureInitialized() {
+    if (_detector != null) return;
+    cv.ArucoDictionary? dictionary;
+    cv.ArucoDetectorParameters? parameters;
+    try {
+      dictionary = cv.ArucoDictionary.predefined(
+        cv.PredefinedDictionaryType.DICT_4X4_50,
+      );
+      parameters = cv.ArucoDetectorParameters.empty();
+      final detector = cv.ArucoDetector.create(dictionary, parameters);
+      _dictionary = dictionary;
+      _parameters = parameters;
+      _detector = detector;
+    } catch (_) {
       parameters?.dispose();
       dictionary?.dispose();
+      rethrow;
     }
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _detector?.dispose();
+    _parameters?.dispose();
+    _dictionary?.dispose();
+    _detector = null;
+    _parameters = null;
+    _dictionary = null;
   }
 
   EngineResult<ArucoDetection> _detectionFailure(Object error) => _failure(

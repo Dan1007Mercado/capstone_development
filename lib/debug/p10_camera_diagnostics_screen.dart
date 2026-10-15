@@ -88,6 +88,7 @@ class _P10CameraDiagnosticsScreenState extends State<P10CameraDiagnosticsScreen>
     final analysis = _state.analysis;
     final preview = _state.previewInfo;
     final diagnostics = _state.diagnostics;
+    final timings = analysis?.timings;
     return Scaffold(
       appBar: AppBar(title: const Text('P10 Camera Diagnostics')),
       body: ListView(
@@ -131,9 +132,26 @@ class _P10CameraDiagnosticsScreenState extends State<P10CameraDiagnosticsScreen>
             'Resize scale: ${analysis == null ? 'unavailable' : '${analysis.analysisScaleX.toStringAsFixed(3)}x${analysis.analysisScaleY.toStringAsFixed(3)}'}',
           ),
           Text(
-            'Processing: ${analysis?.processingDuration.inMilliseconds ?? 0} ms '
-            '(average ${diagnostics.averageAnalysisDuration.inMilliseconds} ms)',
+            'Total processing: ${_milliseconds(analysis?.processingDuration)} ms '
+            '(average ${_milliseconds(diagnostics.averageAnalysisDuration)} ms)',
           ),
+          Text(
+            'Materialization: ${_milliseconds(timings?.materializationDuration)} ms',
+          ),
+          Text(
+            'Isolate transfer/start wait: ${_milliseconds(timings?.isolateOverheadDuration)} ms',
+          ),
+          Text(
+            'Preparation/downscale: ${_milliseconds(timings?.preparationDuration)} ms',
+          ),
+          Text('Sharpness: ${_milliseconds(timings?.sharpnessDuration)} ms'),
+          Text(
+            'ArUco detection: ${_milliseconds(timings?.arucoDetectionDuration)} ms',
+          ),
+          Text(
+            'Geometry/remap: ${_milliseconds(timings?.geometryDuration)} ms',
+          ),
+          Text('Worker total: ${_milliseconds(timings?.workerDuration)} ms'),
           Text('Received frames: ${diagnostics.receivedFrameCount}'),
           Text('Accepted frames: ${diagnostics.acceptedFrameCount}'),
           Text('Processed frames: ${diagnostics.processedFrameCount}'),
@@ -168,3 +186,6 @@ class _P10CameraDiagnosticsScreenState extends State<P10CameraDiagnosticsScreen>
     );
   }
 }
+
+String _milliseconds(Duration? duration) =>
+    ((duration?.inMicroseconds ?? 0) / 1000).toStringAsFixed(1);

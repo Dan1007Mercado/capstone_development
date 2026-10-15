@@ -30,9 +30,12 @@ camera initialization, image streaming, and still capture. The Flutter camera
 adapter exposes a native preview controller only to the diagnostics widget.
 A persistent worker isolate downsamples accepted luma frames into a compact
 grayscale buffer, constructs a native OpenCV grayscale Mat directly, and runs
-the shared P5 ArUco detector plus lightweight quality measurements. Detected
-geometry is remapped to source-frame coordinates before it reaches the engine.
-Fake backends and analyzers drive deterministic CI tests.
+the shared P5 ArUco detector plus lightweight quality measurements. The worker
+owns one lazily initialized dictionary, parameter set, and detector for its
+entire lifetime and disposes them before shutdown. Native detector objects
+never cross an isolate boundary. Detected geometry is remapped to source-frame
+coordinates before it reaches the engine. Fake backends and analyzers drive
+deterministic CI tests.
 
 The official Flutter `camera` package is selected. Native preview uses
 `CameraPreview`; streamed analysis frames use latest-frame delivery; stills use
@@ -66,11 +69,15 @@ native camera permission are not required in CI.
 Default analysis target is 10 FPS. The preview is never reconstructed from
 analysis frames. One worker task is allowed at a time, with drop-while-busy and
 no pending frame queue. Diagnostics expose processed/dropped frames, estimated
-analysis FPS, and average analysis duration. The native preview resolution is
-unchanged while analysis defaults to a maximum 960-pixel long edge. The former
+analysis FPS, average analysis duration, and materialization, isolate overhead,
+preparation, sharpness, ArUco, geometry, worker-total, and end-to-end timings.
+The native preview resolution is unchanged while analysis defaults to a
+provisional maximum 800-pixel long edge. Values 720, 800, and 960 remain
+supported for physical tuning. The former
 accepted-frame path allocated a compact full-size buffer, image package object,
 PNG bytes, and an OpenCV-decoded Mat. P10.2 keeps one compact/downscaled
-analysis buffer before direct Mat construction. Device performance and GC
+analysis buffer before direct Mat construction. P10.3 also removes per-frame
+native detector setup. Device performance, detection reliability, and GC
 behavior remain manual measurements.
 
 ## Risks

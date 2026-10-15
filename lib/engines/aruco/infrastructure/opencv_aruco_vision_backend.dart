@@ -15,9 +15,7 @@ import 'opencv_aruco_detector.dart';
 
 /// Native OpenCV backend. Returned sessions own one decoded Mat until disposed.
 final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
-  const OpenCvArucoVisionBackend({this.detector = const OpenCvArucoDetector()});
-
-  final OpenCvArucoDetector detector;
+  const OpenCvArucoVisionBackend();
 
   @override
   EngineResult<ArucoImageSession> open(
@@ -32,6 +30,7 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
     }
 
     cv.Mat? image;
+    OpenCvArucoDetector? detector;
     var transferImageOwnership = false;
     try {
       final decoded = image_codec.decodeImage(encodedImage);
@@ -49,6 +48,7 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
       );
       image = decodedMat;
 
+      detector = OpenCvArucoDetector();
       final detection = detector.detectMat(decodedMat);
       if (detection.isFailure) {
         return EngineResult.failure(detection.error);
@@ -71,6 +71,7 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
         {'cause': error.toString()},
       );
     } finally {
+      detector?.dispose();
       if (!transferImageOwnership) image?.dispose();
     }
   }

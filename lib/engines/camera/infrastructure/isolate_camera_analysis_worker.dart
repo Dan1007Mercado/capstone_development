@@ -27,9 +27,11 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
         'The camera analysis worker has been disposed.',
       );
     }
+    final roundTripStopwatch = Stopwatch()..start();
+    ReceivePort? response;
     try {
       await _ensureStarted();
-      final response = ReceivePort();
+      response = ReceivePort();
       _commands!.send({
         'reply': response.sendPort,
         'luma': TransferableTypedData.fromList([frame.lumaBytes]),
@@ -41,7 +43,7 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
         'markerIds': config.markerIds.values,
       });
       final message = await response.first as Map<Object?, Object?>;
-      response.close();
+      roundTripStopwatch.stop();
       if (message['ok'] != true) {
         return _failure(
           message['code']! as String,
@@ -70,6 +72,7 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
           ),
           analysisScaleX: message['analysisScaleX']! as double,
           analysisScaleY: message['analysisScaleY']! as double,
+          timings: _readWorkerTimings(message, roundTripStopwatch.elapsed),
         ),
       );
     } on Object catch (error) {
@@ -78,6 +81,8 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
         'Background camera analysis failed.',
         {'cause': error.toString()},
       );
+    } finally {
+      response?.close();
     }
   }
 
@@ -116,17 +121,19 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
 
 void _cameraWorkerMain(SendPort ready) {
   final commands = ReceivePort();
+  final detector = OpenCvArucoDetector();
   ready.send(commands.sendPort);
   commands.listen((dynamic rawMessage) {
     final message = (rawMessage as Map<Object?, Object?>);
     final reply = message['reply']! as SendPort;
     if (message['dispose'] == true) {
+      detector.dispose();
       reply.send(true);
       commands.close();
       return;
     }
     try {
-      reply.send(_analyzeInWorker(message));
+      reply.send(_analyzeInWorker(message, detector));
     } on Object catch (error) {
       reply.send({
         'ok': false,
@@ -138,7 +145,12 @@ void _cameraWorkerMain(SendPort ready) {
   });
 }
 
-Map<Object?, Object?> _analyzeInWorker(Map<Object?, Object?> task) {
+Map<Object?, Object?> _analyzeInWorker(
+  Map<Object?, Object?> task,
+  OpenCvArucoDetector detector,
+) {
+  final workerStopwatch = Stopwatch()..start();
+  final preparationStopwatch = Stopwatch()..start();
   final width = task['width']! as int;
   final height = task['height']! as int;
   final bytesPerRow = task['bytesPerRow']! as int;
@@ -154,16 +166,21 @@ Map<Object?, Object?> _analyzeInWorker(Map<Object?, Object?> task) {
     bytesPerPixel: bytesPerPixel,
     maximumDimension: task['analysisMaxDimension']! as int,
   );
+  preparationStopwatch.stop();
+  final sharpnessStopwatch = Stopwatch()..start();
   final sharpness = _laplacianVariance(
     prepared.pixels,
     prepared.analysisSize.width,
     prepared.analysisSize.height,
   );
-  final detectionResult = const OpenCvArucoDetector().detectGray(
+  sharpnessStopwatch.stop();
+  final arucoStopwatch = Stopwatch()..start();
+  final detectionResult = detector.detectGray(
     pixels: prepared.pixels,
     width: prepared.analysisSize.width,
     height: prepared.analysisSize.height,
   );
+  arucoStopwatch.stop();
   if (detectionResult.isFailure) {
     return {
       'ok': false,
@@ -173,6 +190,7 @@ Map<Object?, Object?> _analyzeInWorker(Map<Object?, Object?> task) {
     };
   }
 
+  final geometryStopwatch = Stopwatch()..start();
   final sourceDetection = remapArucoDetectionToSource(
     detectionResult.value,
     prepared.sourceSize,
@@ -181,6 +199,8 @@ Map<Object?, Object?> _analyzeInWorker(Map<Object?, Object?> task) {
     sourceDetection: sourceDetection,
     markerIds: (task['markerIds']! as List<Object?>).cast<int>(),
   );
+  geometryStopwatch.stop();
+  workerStopwatch.stop();
   return {
     'ok': true,
     'detectedMarkerIds': geometry.detectedMarkerIds,
@@ -196,7 +216,34 @@ Map<Object?, Object?> _analyzeInWorker(Map<Object?, Object?> task) {
     'analysisHeight': prepared.analysisSize.height,
     'analysisScaleX': prepared.analysisScaleX,
     'analysisScaleY': prepared.analysisScaleY,
+    'preparationUs': preparationStopwatch.elapsedMicroseconds,
+    'sharpnessUs': sharpnessStopwatch.elapsedMicroseconds,
+    'arucoUs': arucoStopwatch.elapsedMicroseconds,
+    'geometryUs': geometryStopwatch.elapsedMicroseconds,
+    'workerUs': workerStopwatch.elapsedMicroseconds,
   };
+}
+
+CameraAnalysisTimings _readWorkerTimings(
+  Map<Object?, Object?> message,
+  Duration roundTripDuration,
+) {
+  final workerDuration = Duration(microseconds: message['workerUs']! as int);
+  final overheadMicroseconds =
+      roundTripDuration.inMicroseconds - workerDuration.inMicroseconds;
+  return CameraAnalysisTimings(
+    isolateOverheadDuration: Duration(
+      microseconds: overheadMicroseconds < 0 ? 0 : overheadMicroseconds,
+    ),
+    preparationDuration: Duration(
+      microseconds: message['preparationUs']! as int,
+    ),
+    sharpnessDuration: Duration(microseconds: message['sharpnessUs']! as int),
+    arucoDetectionDuration: Duration(microseconds: message['arucoUs']! as int),
+    geometryDuration: Duration(microseconds: message['geometryUs']! as int),
+    workerDuration: workerDuration,
+    totalDuration: roundTripDuration,
+  );
 }
 
 double _laplacianVariance(Uint8List pixels, int width, int height) {

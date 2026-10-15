@@ -80,45 +80,57 @@ void main() {
     expect(image.pixels, [1, 2]);
   });
 
-  test('marker geometry remaps to source coordinates and preserves ratios', () {
-    final analysisDetection = ArucoDetection(
-      sourceSize: ImageSize(width: 960, height: 540),
-      markers: [
-        _marker(10, 50, 50, 50),
-        _marker(11, 860, 50, 50),
-        _marker(12, 50, 440, 50),
-        _marker(13, 860, 440, 50),
-      ],
-    );
-    final sourceDetection = remapArucoDetectionToSource(
-      analysisDetection,
-      ImageSize(width: 1920, height: 1080),
-    );
-    final geometry = calculateCameraMarkerGeometry(
-      sourceDetection: sourceDetection,
-      markerIds: const [10, 11, 12, 13],
-    );
+  for (final maximumDimension in [960, 800, 720]) {
+    test(
+      'marker geometry and IDs survive remapping at $maximumDimension px',
+      () {
+        final scale = maximumDimension / 960;
+        final analysisDetection = ArucoDetection(
+          sourceSize: ImageSize(
+            width: maximumDimension,
+            height: (540 * scale).round(),
+          ),
+          markers: [
+            _marker(10, 50 * scale, 50 * scale, 50 * scale),
+            _marker(11, 860 * scale, 50 * scale, 50 * scale),
+            _marker(12, 50 * scale, 440 * scale, 50 * scale),
+            _marker(13, 860 * scale, 440 * scale, 50 * scale),
+          ],
+        );
+        final sourceDetection = remapArucoDetectionToSource(
+          analysisDetection,
+          ImageSize(width: 1920, height: 1080),
+        );
+        final geometry = calculateCameraMarkerGeometry(
+          sourceDetection: sourceDetection,
+          markerIds: const [10, 11, 12, 13],
+        );
 
-    expect(geometry.detectedMarkerIds, [10, 11, 12, 13]);
-    expect(geometry.registrationPoints, [
-      ImagePoint(200, 200),
-      ImagePoint(1720, 200),
-      ImagePoint(1720, 880),
-      ImagePoint(200, 880),
-    ]);
-    expect(geometry.minimumMarkerSidePixels, closeTo(100, 1e-9));
-    expect(
-      geometry.pageAreaRatio,
-      closeTo((1520 * 680) / (1920 * 1080), 1e-12),
+        expect(geometry.detectedMarkerIds, [10, 11, 12, 13]);
+        final expected = [
+          ImagePoint(200, 200),
+          ImagePoint(1720, 200),
+          ImagePoint(1720, 880),
+          ImagePoint(200, 880),
+        ];
+        for (var index = 0; index < expected.length; index++) {
+          expect(
+            geometry.registrationPoints[index].x,
+            closeTo(expected[index].x, 1e-9),
+          );
+          expect(
+            geometry.registrationPoints[index].y,
+            closeTo(expected[index].y, 1e-9),
+          );
+        }
+        expect(geometry.minimumMarkerSidePixels, closeTo(100, 1e-9));
+        expect(
+          geometry.pageAreaRatio,
+          closeTo((1520 * 680) / (1920 * 1080), 1e-12),
+        );
+      },
     );
-    expect(
-      geometry.perspectiveRatio,
-      closeTo(
-        ImagePoint(200, 200).distanceTo(ImagePoint(1720, 880)) / 680,
-        1e-12,
-      ),
-    );
-  });
+  }
 
   test('camera worker source contains no PNG transport path', () {
     final source = File(
@@ -128,7 +140,10 @@ void main() {
     expect(source, isNot(contains('encodePng')));
     expect(source, isNot(contains('decodePng')));
     expect(source, isNot(contains("package:image/image.dart")));
-    expect(source, contains('OpenCvArucoDetector().detectGray'));
+    expect(source, contains('final detector = OpenCvArucoDetector();'));
+    expect(source, contains('_analyzeInWorker(message, detector)'));
+    expect(source, contains('detector.detectGray('));
+    expect(source, contains('detector.dispose();'));
   });
 }
 

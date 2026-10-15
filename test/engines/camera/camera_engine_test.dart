@@ -84,6 +84,29 @@ void main() {
     await fixture.dispose();
   });
 
+  test(
+    'next eligible frame starts immediately after prior analysis completes',
+    () async {
+      final analyzer = _FakeAnalyzer()..gate = Completer<void>();
+      final fixture = _Fixture(analyzer: analyzer);
+      await fixture.initializeAndStart();
+      fixture.emitAt(0);
+      await _settle();
+      fixture.emitAt(200);
+      expect(analyzer.calls, 1);
+
+      analyzer.gate!.complete();
+      await _settle();
+      analyzer.gate = null;
+      fixture.emitAt(201);
+      await _settle();
+
+      expect(analyzer.calls, 2);
+      expect(fixture.backend.materializeCalls, 2);
+      await fixture.dispose();
+    },
+  );
+
   test('busy analyzer never creates an unbounded queue', () async {
     final analyzer = _FakeAnalyzer()..gate = Completer<void>();
     final fixture = _Fixture(analyzer: analyzer);
@@ -106,11 +129,18 @@ void main() {
       () => CameraEngineConfig(targetAnalysisFps: 61),
       throwsArgumentError,
     );
+    for (final dimension in [720, 800, 960]) {
+      expect(CameraEngineConfig(analysisMaxDimension: dimension), isNotNull);
+    }
     expect(
-      () => CameraEngineConfig(analysisMaxDimension: 0),
+      () => CameraEngineConfig(analysisMaxDimension: 479),
       throwsArgumentError,
     );
-    expect(CameraEngineConfig().analysisMaxDimension, 960);
+    expect(
+      () => CameraEngineConfig(analysisMaxDimension: 1921),
+      throwsArgumentError,
+    );
+    expect(CameraEngineConfig().analysisMaxDimension, 800);
   });
 
   test('detected marker IDs are preserved in engine state', () async {
@@ -372,6 +402,37 @@ void main() {
       fixture.engine.state.diagnostics.estimatedAnalysisFps,
       closeTo(5, .01),
     );
+    await fixture.dispose();
+  });
+
+  test('analysis timing diagnostics remain internally consistent', () async {
+    const timings = CameraAnalysisTimings(
+      preparationDuration: Duration(milliseconds: 2),
+      sharpnessDuration: Duration(milliseconds: 1),
+      arucoDetectionDuration: Duration(milliseconds: 5),
+      geometryDuration: Duration(milliseconds: 1),
+      workerDuration: Duration(milliseconds: 10),
+      isolateOverheadDuration: Duration(milliseconds: 2),
+      totalDuration: Duration(milliseconds: 12),
+    );
+    expect(timings.measuredWorkerStages, const Duration(milliseconds: 9));
+    expect(timings.isInternallyConsistent, isTrue);
+
+    const inconsistent = CameraAnalysisTimings(
+      arucoDetectionDuration: Duration(milliseconds: 11),
+      workerDuration: Duration(milliseconds: 10),
+      totalDuration: Duration(milliseconds: 10),
+    );
+    expect(inconsistent.isInternallyConsistent, isFalse);
+  });
+
+  test('engine publishes end-to-end timing for each processed frame', () async {
+    final fixture = _Fixture();
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    final analysis = fixture.engine.state.analysis!;
+    expect(analysis.timings.totalDuration, analysis.processingDuration);
+    expect(analysis.timings.isInternallyConsistent, isTrue);
     await fixture.dispose();
   });
 

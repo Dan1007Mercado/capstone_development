@@ -7,13 +7,17 @@ enum CameraResolutionPreference { medium, high, veryHigh, ultraHigh, maximum }
 enum AnalysisFrameDropPolicy { dropWhileBusy }
 
 final class CameraEngineConfig {
+  static const int minimumAnalysisMaxDimension = 480;
+  static const int defaultAnalysisMaxDimension = 800;
+  static const int maximumAnalysisMaxDimension = 1920;
+
   factory CameraEngineConfig({
     CameraLensPreference preferredLens = CameraLensPreference.rear,
     CameraResolutionPreference preferredResolution =
         CameraResolutionPreference.veryHigh,
     int? preferredPreviewFps = 60,
     double targetAnalysisFps = 10,
-    int analysisMaxDimension = 960,
+    int analysisMaxDimension = defaultAnalysisMaxDimension,
     int minimumStableFrames = 3,
     int stabilityWindowSize = 5,
     double maximumMotionThreshold = 0.015,
@@ -39,7 +43,8 @@ final class CameraEngineConfig {
         targetAnalysisFps > 60) {
       throw ArgumentError.value(targetAnalysisFps, 'targetAnalysisFps');
     }
-    if (analysisMaxDimension <= 0) {
+    if (analysisMaxDimension < minimumAnalysisMaxDimension ||
+        analysisMaxDimension > maximumAnalysisMaxDimension) {
       throw ArgumentError.value(analysisMaxDimension, 'analysisMaxDimension');
     }
     if (minimumStableFrames <= 0 || stabilityWindowSize < minimumStableFrames) {

@@ -186,12 +186,17 @@ final class CameraEngine {
     _analysisBusy = true;
     _lastAcceptedFrameAt = timestamp;
     _acceptedFrames++;
+    final totalStopwatch = Stopwatch()..start();
+    final materializationStopwatch = Stopwatch()..start();
     late final CameraAnalysisFrame frame;
     try {
       // This must remain synchronous so native CameraImage resources are not
       // retained beyond the plugin callback that owns them.
       frame = materialize();
+      materializationStopwatch.stop();
     } on Object catch (error) {
+      materializationStopwatch.stop();
+      totalStopwatch.stop();
       _analysisBusy = false;
       _emit(
         _copyState(
@@ -205,13 +210,18 @@ final class CameraEngine {
       );
       return;
     }
-    unawaited(_analyze(frame));
+    unawaited(
+      _analyze(frame, materializationStopwatch.elapsed, totalStopwatch),
+    );
   }
 
-  Future<void> _analyze(CameraAnalysisFrame frame) async {
-    final stopwatch = Stopwatch()..start();
+  Future<void> _analyze(
+    CameraAnalysisFrame frame,
+    Duration materializationDuration,
+    Stopwatch totalStopwatch,
+  ) async {
     final result = await analyzer.analyze(frame, config);
-    stopwatch.stop();
+    totalStopwatch.stop();
     _analysisBusy = false;
     if (_disposed || _state.lifecycle != CameraLifecycleState.analyzing) return;
     if (result.isFailure) {
@@ -232,8 +242,12 @@ final class CameraEngine {
       return;
     }
 
+    final timings = result.value.timings.withEngineDurations(
+      materializationDuration: materializationDuration,
+      totalDuration: totalStopwatch.elapsed,
+    );
     _processedFrames++;
-    _totalAnalysisDuration += stopwatch.elapsed;
+    _totalAnalysisDuration += timings.totalDuration;
     _processedFrameTimes.addLast(frame.timestamp);
     while (_processedFrameTimes.length > config.stabilityWindowSize) {
       _processedFrameTimes.removeFirst();
@@ -256,11 +270,12 @@ final class CameraEngine {
           ),
           readiness: evaluation.$1,
           stabilityScore: evaluation.$2,
-          processingDuration: stopwatch.elapsed,
+          processingDuration: timings.totalDuration,
           sourceFrameSize: result.value.frameSize,
           analysisFrameSize: result.value.analysisFrameSize,
           analysisScaleX: result.value.analysisScaleX,
           analysisScaleY: result.value.analysisScaleY,
+          timings: timings,
         ),
         diagnostics: _diagnostics,
         readiness: evaluation.$1,

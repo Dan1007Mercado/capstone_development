@@ -92,6 +92,67 @@ final class CameraAnalysisFrame {
   final CameraDeviceOrientation deviceOrientation;
 }
 
+final class CameraAnalysisTimings {
+  const CameraAnalysisTimings({
+    this.materializationDuration = Duration.zero,
+    this.isolateOverheadDuration = Duration.zero,
+    this.preparationDuration = Duration.zero,
+    this.sharpnessDuration = Duration.zero,
+    this.arucoDetectionDuration = Duration.zero,
+    this.geometryDuration = Duration.zero,
+    this.workerDuration = Duration.zero,
+    this.totalDuration = Duration.zero,
+  });
+
+  static const zero = CameraAnalysisTimings();
+
+  final Duration materializationDuration;
+  final Duration isolateOverheadDuration;
+  final Duration preparationDuration;
+  final Duration sharpnessDuration;
+  final Duration arucoDetectionDuration;
+  final Duration geometryDuration;
+  final Duration workerDuration;
+  final Duration totalDuration;
+
+  Duration get measuredWorkerStages =>
+      preparationDuration +
+      sharpnessDuration +
+      arucoDetectionDuration +
+      geometryDuration;
+
+  bool get isInternallyConsistent {
+    final durations = [
+      materializationDuration,
+      isolateOverheadDuration,
+      preparationDuration,
+      sharpnessDuration,
+      arucoDetectionDuration,
+      geometryDuration,
+      workerDuration,
+      totalDuration,
+    ];
+    return durations.every((duration) => !duration.isNegative) &&
+        workerDuration >= measuredWorkerStages &&
+        totalDuration >=
+            materializationDuration + isolateOverheadDuration + workerDuration;
+  }
+
+  CameraAnalysisTimings withEngineDurations({
+    required Duration materializationDuration,
+    required Duration totalDuration,
+  }) => CameraAnalysisTimings(
+    materializationDuration: materializationDuration,
+    isolateOverheadDuration: isolateOverheadDuration,
+    preparationDuration: preparationDuration,
+    sharpnessDuration: sharpnessDuration,
+    arucoDetectionDuration: arucoDetectionDuration,
+    geometryDuration: geometryDuration,
+    workerDuration: workerDuration,
+    totalDuration: totalDuration,
+  );
+}
+
 final class CameraFrameObservation {
   CameraFrameObservation({
     required Iterable<int> detectedMarkerIds,
@@ -105,6 +166,7 @@ final class CameraFrameObservation {
     ImageSize? analysisFrameSize,
     this.analysisScaleX = 1,
     this.analysisScaleY = 1,
+    this.timings = CameraAnalysisTimings.zero,
   }) : analysisFrameSize = analysisFrameSize ?? frameSize,
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        registrationPoints = UnmodifiableListView(List.of(registrationPoints));
@@ -120,6 +182,7 @@ final class CameraFrameObservation {
   final ImageSize analysisFrameSize;
   final double analysisScaleX;
   final double analysisScaleY;
+  final CameraAnalysisTimings timings;
 }
 
 final class FrameQuality {
@@ -177,6 +240,7 @@ final class CameraAnalysisState {
     required this.analysisFrameSize,
     required this.analysisScaleX,
     required this.analysisScaleY,
+    required this.timings,
   });
 
   final MarkerTrackingState tracking;
@@ -188,6 +252,7 @@ final class CameraAnalysisState {
   final ImageSize analysisFrameSize;
   final double analysisScaleX;
   final double analysisScaleY;
+  final CameraAnalysisTimings timings;
 }
 
 final class CameraDiagnostics {
