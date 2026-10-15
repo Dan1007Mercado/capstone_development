@@ -70,6 +70,33 @@ final class TemplateBuilderController {
        _pdfEngine = pdfEngine ?? PdfEngine(),
        _layoutConfig = layoutConfig ?? LayoutConfig.a4Default();
 
+  factory TemplateBuilderController.fromDraft(
+    TemplateDefinition draft, {
+    TemplateValidator? validator,
+    LayoutEngine? layoutEngine,
+    PdfEngine? pdfEngine,
+    LayoutConfig? layoutConfig,
+  }) {
+    if (draft.status != TemplateStatus.draft) {
+      throw ArgumentError.value(
+        draft.status,
+        'draft',
+        'TemplateBuilderController requires an editable draft.',
+      );
+    }
+    return TemplateBuilderController(
+      templateId: draft.id,
+      version: draft.version,
+      name: draft.name,
+      description: draft.description,
+      sections: draft.sections,
+      validator: validator,
+      layoutEngine: layoutEngine,
+      pdfEngine: pdfEngine,
+      layoutConfig: layoutConfig,
+    );
+  }
+
   final TemplateId _templateId;
   final TemplateVersion _version;
   final TemplateValidator _validator;
@@ -388,8 +415,14 @@ final class TemplateBuilderController {
 
   ValidationResult validate() => _validator.validate(buildDefinition());
 
-  EngineResult<TemplateLayoutPreview> previewLayout() {
-    final definition = buildDefinition();
+  EngineResult<TemplateLayoutPreview> previewLayout() =>
+      previewDefinition(buildDefinition());
+
+  /// Builds layout for an exact immutable definition, including published
+  /// versions selected for historical diagnostics.
+  EngineResult<TemplateLayoutPreview> previewDefinition(
+    TemplateDefinition definition,
+  ) {
     final validation = _validator.validate(definition);
     if (!validation.isValid) {
       return EngineResult.failure(_validationError(validation));
@@ -403,8 +436,15 @@ final class TemplateBuilderController {
     );
   }
 
-  Future<EngineResult<TemplatePdfArtifact>> generatePdf() async {
-    final preview = previewLayout();
+  Future<EngineResult<TemplatePdfArtifact>> generatePdf() =>
+      generatePdfFor(buildDefinition());
+
+  /// Renders the exact supplied semantic version without converting status or
+  /// regenerating identity.
+  Future<EngineResult<TemplatePdfArtifact>> generatePdfFor(
+    TemplateDefinition definition,
+  ) async {
+    final preview = previewDefinition(definition);
     if (preview.isFailure) return EngineResult.failure(preview.error);
     final pdf = await _pdfEngine.render(
       preview.value.definition,

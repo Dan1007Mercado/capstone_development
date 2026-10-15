@@ -6,6 +6,8 @@ import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p12_template_builder_fixture.dart';
 import 'package:capstone_development/debug/p12_template_builder_screen.dart';
+import 'package:capstone_development/engines/template/application/template_publication_service.dart';
+import 'package:capstone_development/engines/template/infrastructure/in_memory_template_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -156,6 +158,86 @@ void main() {
     expect(find.textContaining('PDF_EXPORT_PICKER_FAILED'), findsOneWidget);
     expect(find.byKey(const Key('save-pdf')), findsOneWidget);
   });
+
+  testWidgets('publish locks editing and revision restores editable v2', (
+    tester,
+  ) async {
+    final repository = InMemoryTemplateRepository();
+    final publication = TemplatePublicationService(repository: repository);
+    final controller = TemplateBuilderController(name: 'Lifecycle Survey');
+    final section = controller.addSection(title: 'Section');
+    controller.addQuestion(section, prompt: 'Question');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          controller: controller,
+          publicationService: publication,
+        ),
+      ),
+    );
+
+    expect(find.textContaining('Version: 1'), findsOneWidget);
+    expect(find.textContaining('Status: draft'), findsOneWidget);
+    await _tapVisible(tester, const Key('publish-template'));
+    await _scrollToTop(tester);
+
+    expect(find.textContaining('Status: published'), findsOneWidget);
+    expect(find.textContaining('Published successfully: v1'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.byKey(const ValueKey('name-template-1-v1')),
+          )
+          .enabled,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('add-section')))
+          .onPressed,
+      isNull,
+    );
+
+    await _tapVisible(tester, const Key('create-revision'));
+    await _scrollToTop(tester);
+    expect(find.textContaining('Version: 2'), findsOneWidget);
+    expect(find.textContaining('Status: draft'), findsOneWidget);
+    expect(
+      find.textContaining('Created editable revision: v2'),
+      findsOneWidget,
+    );
+    final v2Name = find.byKey(const ValueKey('name-template-1-v2'));
+    expect(tester.widget<TextFormField>(v2Name).enabled, isTrue);
+    await tester.ensureVisible(v2Name);
+    await tester.enterText(v2Name, 'Lifecycle Survey Revised');
+    await tester.pump();
+
+    await _tapVisible(tester, const Key('publish-template'));
+    await _scrollToTop(tester);
+
+    expect(find.textContaining('Published successfully: v2'), findsOneWidget);
+    expect(find.textContaining('Published versions: v1, v2'), findsOneWidget);
+    final history = await publication.listPublishedVersions(
+      controller.snapshot.definition.id,
+    );
+    expect(history.value.map((item) => item.version.value), [1, 2]);
+    expect(history.value.first.name, 'Lifecycle Survey');
+    expect(history.value.last.name, 'Lifecycle Survey Revised');
+
+    await _tapVisible(tester, const Key('view-published-v1'));
+    await _tapVisible(tester, const Key('preview-layout'));
+    expect(
+      find.textContaining('template-1-v1-p1', skipOffstage: false),
+      findsOneWidget,
+    );
+    await _scrollToTop(tester);
+    await _tapVisible(tester, const Key('view-published-v2'));
+    await _tapVisible(tester, const Key('preview-layout'));
+    expect(
+      find.textContaining('template-1-v2-p1', skipOffstage: false),
+      findsOneWidget,
+    );
+  });
 }
 
 final class _RecordingExporter implements TemplatePdfExporter {
@@ -219,5 +301,22 @@ Future<void> _generateAndSave(WidgetTester tester) async {
   await tester.drag(find.byType(ListView), const Offset(0, -100));
   await tester.pump();
   await tester.tap(find.byKey(const Key('save-pdf')));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapVisible(WidgetTester tester, Key key) async {
+  final finder = find.byKey(key);
+  await tester.scrollUntilVisible(
+    finder,
+    250,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pump();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollToTop(WidgetTester tester) async {
+  await tester.drag(find.byType(ListView), const Offset(0, 3000));
   await tester.pumpAndSettle();
 }

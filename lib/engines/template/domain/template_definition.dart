@@ -70,6 +70,28 @@ final class TemplateDefinition {
     );
   }
 
+  /// Creates the frozen form of a draft after application-level validation.
+  ///
+  /// Callers must use the publication service so validation and repository
+  /// uniqueness checks occur before this lifecycle transition.
+  TemplateDefinition toPublishedAfterValidation() {
+    if (status != TemplateStatus.draft) {
+      throw StateError('Only a draft template can be published.');
+    }
+    return TemplateDefinition(
+      id: id,
+      version: version,
+      name: name,
+      description: description,
+      status: TemplateStatus.published,
+      sections: sections,
+    );
+  }
+
+  /// Starts the immediately following editable version.
+  TemplateDefinition createNextDraftRevision() =>
+      createDraftRevision(TemplateVersion(version.value + 1));
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

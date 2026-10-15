@@ -8,9 +8,14 @@ import '../core/ids/identifiers.dart';
 import '../core/result/engine_result.dart';
 import '../core/result/validation.dart';
 import '../engines/layout/domain/page_layout.dart';
+import '../engines/template/application/template_publication_service.dart';
+import '../engines/template/application/template_validator.dart';
 import '../engines/template/domain/question_type.dart';
+import '../engines/template/domain/template_definition.dart';
 import '../engines/template/domain/template_question.dart';
 import '../engines/template/domain/template_section.dart';
+import '../engines/template/domain/template_status.dart';
+import '../engines/template/infrastructure/in_memory_template_repository.dart';
 import 'p12_template_builder_fixture.dart';
 
 typedef TemplatePdfGenerator =
@@ -22,11 +27,13 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.controller,
     this.exporter,
     this.pdfGenerator,
+    this.publicationService,
   });
 
   final TemplateBuilderController? controller;
   final TemplatePdfExporter? exporter;
   final TemplatePdfGenerator? pdfGenerator;
+  final TemplatePublicationService? publicationService;
 
   @override
   State<P12TemplateBuilderScreen> createState() =>
@@ -37,6 +44,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplateBuilderController _controller;
   late TemplatePdfExporter _exporter;
   late TemplatePdfGenerator _pdfGenerator;
+  late TemplatePublicationService _publicationService;
+  final TemplateValidator _validator = TemplateValidator();
   ValidationResult? _validation;
   TemplateLayoutPreview? _preview;
   TemplatePdfArtifact? _pdf;
@@ -44,6 +53,10 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   EngineError? _error;
   bool _generatingPdf = false;
   bool _savingPdf = false;
+  bool _publishing = false;
+  TemplateDefinition? _publishedDefinition;
+  List<TemplateDefinition> _publishedVersions = const [];
+  String? _lifecycleMessage;
 
   @override
   void initState() {
@@ -51,9 +64,19 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     _controller = widget.controller ?? TemplateBuilderController();
     _exporter = widget.exporter ?? UserAccessibleTemplatePdfExporter();
     _pdfGenerator = widget.pdfGenerator ?? () => _controller.generatePdf();
+    _publicationService =
+        widget.publicationService ??
+        TemplatePublicationService(repository: InMemoryTemplateRepository());
   }
 
+  TemplateDefinition get _activeDefinition =>
+      _publishedDefinition ?? _controller.snapshot.definition;
+
+  bool get _isEditable =>
+      _activeDefinition.status == TemplateStatus.draft && !_publishing;
+
   void _mutate(void Function() operation) {
+    if (!_isEditable) return;
     operation();
     setState(() {
       _validation = null;
@@ -66,17 +89,17 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
 
   void _validate() {
     setState(() {
-      _validation = _controller.validate();
+      _validation = _validator.validate(_activeDefinition);
       _error = null;
     });
   }
 
   void _previewLayout() {
-    final result = _controller.previewLayout();
+    final result = _controller.previewDefinition(_activeDefinition);
     setState(() {
       _preview = result.valueOrNull;
       _error = result.errorOrNull;
-      _validation = _controller.validate();
+      _validation = _validator.validate(_activeDefinition);
     });
   }
 
@@ -85,7 +108,10 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _generatingPdf = true;
       _error = null;
     });
-    final result = await _pdfGenerator();
+    final definition = _activeDefinition;
+    final result = definition.status == TemplateStatus.published
+        ? await _controller.generatePdfFor(definition)
+        : await _pdfGenerator();
     if (!mounted) return;
     setState(() {
       _generatingPdf = false;
@@ -98,7 +124,73 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
             )
           : null;
       _error = result.errorOrNull;
-      _validation = _controller.validate();
+      _validation = _validator.validate(definition);
+    });
+  }
+
+  Future<void> _publish() async {
+    if (!_isEditable) return;
+    final draft = _controller.buildDefinition();
+    setState(() {
+      _publishing = true;
+      _error = null;
+      _lifecycleMessage = null;
+    });
+    final result = await _publicationService.publish(draft);
+    EngineResult<List<TemplateDefinition>>? versionsResult;
+    if (result.isSuccess) {
+      versionsResult = await _publicationService.listPublishedVersions(
+        draft.id,
+      );
+    }
+    if (!mounted) return;
+    setState(() {
+      _publishing = false;
+      _publishedDefinition = result.valueOrNull;
+      _publishedVersions = versionsResult?.valueOrNull ?? _publishedVersions;
+      _validation = _validator.validate(_activeDefinition);
+      _preview = null;
+      _pdf = null;
+      _exportOutcome = null;
+      _error = result.errorOrNull ?? versionsResult?.errorOrNull;
+      if (result.isSuccess) {
+        _lifecycleMessage =
+            'Published successfully: v${result.value.version.value}';
+      }
+    });
+  }
+
+  void _createRevision() {
+    final published = _publishedDefinition;
+    if (published == null) return;
+    final result = _publicationService.createRevision(published);
+    setState(() {
+      if (result.isSuccess) {
+        _controller = TemplateBuilderController.fromDraft(result.value);
+        _publishedDefinition = null;
+        _validation = null;
+        _preview = null;
+        _pdf = null;
+        _exportOutcome = null;
+        _error = null;
+        _lifecycleMessage =
+            'Created editable revision: v${result.value.version.value}';
+      } else {
+        _error = result.error;
+      }
+    });
+  }
+
+  void _viewPublished(TemplateDefinition published) {
+    setState(() {
+      _publishedDefinition = published;
+      _validation = null;
+      _preview = null;
+      _pdf = null;
+      _exportOutcome = null;
+      _error = null;
+      _lifecycleMessage =
+          'Viewing immutable published v${published.version.value}';
     });
   }
 
@@ -128,6 +220,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   void _loadDemo() {
     setState(() {
       _controller = buildP12MixedTemplateDemo();
+      _publishedDefinition = null;
+      _publishedVersions = const [];
+      _lifecycleMessage = null;
       _validation = null;
       _preview = null;
       _pdf = null;
@@ -138,22 +233,57 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final definition = _controller.snapshot.definition;
+    final definition = _activeDefinition;
+    final editable = _isEditable;
+    final publishedVersionLabel = _publishedVersions
+        .map((item) => 'v${item.version.value}')
+        .join(', ');
     return Scaffold(
-      appBar: AppBar(title: const Text('P12 Template Builder')),
+      appBar: AppBar(title: const Text('P12/P13 Template Builder')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Card(
+            key: const Key('template-lifecycle-diagnostics'),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                'Template ID: ${definition.id.value}\n'
+                'Version: ${definition.version.value}\n'
+                'Status: ${definition.status.name}\n'
+                'Published versions: ${publishedVersionLabel.isEmpty ? 'none' : publishedVersionLabel}'
+                '${_lifecycleMessage == null ? '' : '\n$_lifecycleMessage'}',
+              ),
+            ),
+          ),
+          if (_publishedVersions.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final published in _publishedVersions)
+                  TextButton(
+                    key: Key('view-published-v${published.version.value}'),
+                    onPressed: () => _viewPublished(published),
+                    child: Text('View Published v${published.version.value}'),
+                  ),
+              ],
+            ),
           TextFormField(
-            key: ValueKey('name-${definition.id.value}'),
+            key: ValueKey(
+              'name-${definition.id.value}-v${definition.version.value}',
+            ),
             initialValue: definition.name,
+            enabled: editable,
             decoration: const InputDecoration(labelText: 'Template name'),
             onChanged: (value) => _mutate(() => _controller.updateName(value)),
           ),
           const SizedBox(height: 8),
           TextFormField(
-            key: ValueKey('description-${definition.id.value}'),
+            key: ValueKey(
+              'description-${definition.id.value}-v${definition.version.value}',
+            ),
             initialValue: definition.description,
+            enabled: editable,
             decoration: const InputDecoration(
               labelText: 'Description / instructions',
             ),
@@ -169,13 +299,15 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
             children: [
               FilledButton.icon(
                 key: const Key('add-section'),
-                onPressed: () => _mutate(_controller.addSection),
+                onPressed: editable
+                    ? () => _mutate(_controller.addSection)
+                    : null,
                 icon: const Icon(Icons.add),
                 label: const Text('Add Section'),
               ),
               OutlinedButton(
                 key: const Key('load-mixed-demo'),
-                onPressed: _loadDemo,
+                onPressed: editable ? _loadDemo : null,
                 child: const Text('Load Mixed-Type Demo'),
               ),
             ],
@@ -189,6 +321,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
               sectionCount: definition.sections.length,
               controller: _controller,
               mutate: _mutate,
+              editable: editable,
             ),
           if (definition.sections.isEmpty)
             const Padding(
@@ -216,6 +349,25 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 child: Text(
                   _generatingPdf ? 'Generating...' : 'Generate Preview PDF',
                 ),
+              ),
+              FilledButton.tonal(
+                key: const Key('publish-template'),
+                onPressed: editable && !_generatingPdf && !_savingPdf
+                    ? _publish
+                    : null,
+                child: Text(_publishing ? 'Publishing...' : 'Publish Template'),
+              ),
+              OutlinedButton(
+                key: const Key('create-revision'),
+                onPressed:
+                    definition.status == TemplateStatus.published &&
+                        !_generatingPdf &&
+                        !_savingPdf &&
+                        (_publishedVersions.isEmpty ||
+                            definition == _publishedVersions.last)
+                    ? _createRevision
+                    : null,
+                child: const Text('Create Revision'),
               ),
             ],
           ),
@@ -274,6 +426,7 @@ class _SectionEditor extends StatelessWidget {
     required this.sectionCount,
     required this.controller,
     required this.mutate,
+    required this.editable,
   });
 
   final TemplateSection section;
@@ -281,6 +434,7 @@ class _SectionEditor extends StatelessWidget {
   final int sectionCount;
   final TemplateBuilderController controller;
   final void Function(void Function()) mutate;
+  final bool editable;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -296,6 +450,7 @@ class _SectionEditor extends StatelessWidget {
                 child: TextFormField(
                   key: ValueKey('section-title-${section.id.value}'),
                   initialValue: section.title,
+                  enabled: editable,
                   decoration: const InputDecoration(labelText: 'Section title'),
                   onChanged: (value) => mutate(
                     () => controller.updateSectionTitle(section.id, value),
@@ -304,7 +459,7 @@ class _SectionEditor extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Move section up',
-                onPressed: sectionIndex == 0
+                onPressed: !editable || sectionIndex == 0
                     ? null
                     : () => mutate(
                         () => controller.reorderSections(
@@ -316,7 +471,7 @@ class _SectionEditor extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Move section down',
-                onPressed: sectionIndex == sectionCount - 1
+                onPressed: !editable || sectionIndex == sectionCount - 1
                     ? null
                     : () => mutate(
                         () => controller.reorderSections(
@@ -328,8 +483,9 @@ class _SectionEditor extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Remove section',
-                onPressed: () =>
-                    mutate(() => controller.removeSection(section.id)),
+                onPressed: editable
+                    ? () => mutate(() => controller.removeSection(section.id))
+                    : null,
                 icon: const Icon(Icons.delete_outline),
               ),
             ],
@@ -337,6 +493,7 @@ class _SectionEditor extends StatelessWidget {
           TextFormField(
             key: ValueKey('section-instruction-${section.id.value}'),
             initialValue: section.instruction,
+            enabled: editable,
             decoration: const InputDecoration(labelText: 'Instructions'),
             onChanged: (value) => mutate(
               () => controller.updateSectionInstruction(section.id, value),
@@ -352,12 +509,15 @@ class _SectionEditor extends StatelessWidget {
               questionCount: section.questions.length,
               controller: controller,
               mutate: mutate,
+              editable: editable,
             ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               key: Key('add-question-${section.id.value}'),
-              onPressed: () => mutate(() => controller.addQuestion(section.id)),
+              onPressed: editable
+                  ? () => mutate(() => controller.addQuestion(section.id))
+                  : null,
               icon: const Icon(Icons.add),
               label: const Text('Add Question'),
             ),
@@ -377,6 +537,7 @@ class _QuestionEditor extends StatelessWidget {
     required this.questionCount,
     required this.controller,
     required this.mutate,
+    required this.editable,
   });
 
   final SectionId sectionId;
@@ -385,6 +546,7 @@ class _QuestionEditor extends StatelessWidget {
   final int questionCount;
   final TemplateBuilderController controller;
   final void Function(void Function()) mutate;
+  final bool editable;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -403,6 +565,7 @@ class _QuestionEditor extends StatelessWidget {
               child: TextFormField(
                 key: ValueKey('prompt-${question.id.value}'),
                 initialValue: question.prompt,
+                enabled: editable,
                 decoration: const InputDecoration(labelText: 'Prompt'),
                 onChanged: (value) => mutate(
                   () => controller.updateQuestionPrompt(
@@ -415,7 +578,7 @@ class _QuestionEditor extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Move question up',
-              onPressed: questionIndex == 0
+              onPressed: !editable || questionIndex == 0
                   ? null
                   : () => mutate(
                       () => controller.reorderQuestions(
@@ -428,7 +591,7 @@ class _QuestionEditor extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Move question down',
-              onPressed: questionIndex == questionCount - 1
+              onPressed: !editable || questionIndex == questionCount - 1
                   ? null
                   : () => mutate(
                       () => controller.reorderQuestions(
@@ -441,9 +604,11 @@ class _QuestionEditor extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Remove question',
-              onPressed: () => mutate(
-                () => controller.removeQuestion(sectionId, question.id),
-              ),
+              onPressed: editable
+                  ? () => mutate(
+                      () => controller.removeQuestion(sectionId, question.id),
+                    )
+                  : null,
               icon: const Icon(Icons.delete_outline),
             ),
           ],
@@ -457,14 +622,19 @@ class _QuestionEditor extends StatelessWidget {
             for (final type in QuestionType.values)
               DropdownMenuItem(value: type, child: Text(type.label)),
           ],
-          onChanged: (type) {
-            if (type != null) {
-              mutate(
-                () =>
-                    controller.changeQuestionType(sectionId, question.id, type),
-              );
-            }
-          },
+          onChanged: editable
+              ? (type) {
+                  if (type != null) {
+                    mutate(
+                      () => controller.changeQuestionType(
+                        sectionId,
+                        question.id,
+                        type,
+                      ),
+                    );
+                  }
+                }
+              : null,
         ),
         const SizedBox(height: 8),
         ..._typeControls(),
@@ -482,6 +652,7 @@ class _QuestionEditor extends StatelessWidget {
             question: question,
             controller: controller,
             mutate: mutate,
+            editable: editable,
           ),
         ];
       case QuestionType.likert:
@@ -493,20 +664,26 @@ class _QuestionEditor extends StatelessWidget {
               DropdownMenuItem(value: 5, child: Text('1 - 5')),
               DropdownMenuItem(value: 7, child: Text('1 - 7')),
             ],
-            onChanged: (value) {
-              if (value != null) {
-                mutate(
-                  () =>
-                      controller.setLikertScale(sectionId, question.id, value),
-                );
-              }
-            },
+            onChanged: editable
+                ? (value) {
+                    if (value != null) {
+                      mutate(
+                        () => controller.setLikertScale(
+                          sectionId,
+                          question.id,
+                          value,
+                        ),
+                      );
+                    }
+                  }
+                : null,
           ),
           _OptionEditor(
             sectionId: sectionId,
             question: question,
             controller: controller,
             mutate: mutate,
+            editable: editable,
             allowAddRemove: false,
           ),
         ];
@@ -521,17 +698,19 @@ class _QuestionEditor extends StatelessWidget {
               for (var count = 1; count <= 8; count++)
                 DropdownMenuItem(value: count, child: Text('$count')),
             ],
-            onChanged: (value) {
-              if (value != null) {
-                mutate(
-                  () => controller.setNumericColumnCount(
-                    sectionId,
-                    question.id,
-                    value,
-                  ),
-                );
-              }
-            },
+            onChanged: editable
+                ? (value) {
+                    if (value != null) {
+                      mutate(
+                        () => controller.setNumericColumnCount(
+                          sectionId,
+                          question.id,
+                          value,
+                        ),
+                      );
+                    }
+                  }
+                : null,
           ),
         ];
     }
@@ -544,6 +723,7 @@ class _OptionEditor extends StatelessWidget {
     required this.question,
     required this.controller,
     required this.mutate,
+    required this.editable,
     this.allowAddRemove = true,
   });
 
@@ -551,6 +731,7 @@ class _OptionEditor extends StatelessWidget {
   final TemplateQuestion question;
   final TemplateBuilderController controller;
   final void Function(void Function()) mutate;
+  final bool editable;
   final bool allowAddRemove;
 
   @override
@@ -563,6 +744,7 @@ class _OptionEditor extends StatelessWidget {
             Expanded(
               child: TextFormField(
                 initialValue: question.options[index].label,
+                enabled: editable,
                 decoration: InputDecoration(labelText: 'Option ${index + 1}'),
                 onChanged: (value) => mutate(
                   () => controller.updateOptionLabel(
@@ -576,7 +758,7 @@ class _OptionEditor extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Move option up',
-              onPressed: index == 0
+              onPressed: !editable || index == 0
                   ? null
                   : () => mutate(
                       () => controller.reorderOptions(
@@ -590,7 +772,7 @@ class _OptionEditor extends StatelessWidget {
             ),
             IconButton(
               tooltip: 'Move option down',
-              onPressed: index == question.options.length - 1
+              onPressed: !editable || index == question.options.length - 1
                   ? null
                   : () => mutate(
                       () => controller.reorderOptions(
@@ -605,7 +787,7 @@ class _OptionEditor extends StatelessWidget {
             if (allowAddRemove)
               IconButton(
                 tooltip: 'Remove option',
-                onPressed: question.options.length <= 2
+                onPressed: !editable || question.options.length <= 2
                     ? null
                     : () => mutate(
                         () => controller.removeOption(
@@ -622,8 +804,10 @@ class _OptionEditor extends StatelessWidget {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
-            onPressed: () =>
-                mutate(() => controller.addOption(sectionId, question.id)),
+            onPressed: editable
+                ? () =>
+                      mutate(() => controller.addOption(sectionId, question.id))
+                : null,
             icon: const Icon(Icons.add),
             label: const Text('Add Option'),
           ),
