@@ -276,6 +276,8 @@ final class CameraEngine {
           analysisScaleX: result.value.analysisScaleX,
           analysisScaleY: result.value.analysisScaleY,
           timings: timings,
+          sensorOrientationDegrees: frame.sensorOrientationDegrees,
+          deviceOrientation: frame.deviceOrientation,
         ),
         diagnostics: _diagnostics,
         readiness: evaluation.$1,

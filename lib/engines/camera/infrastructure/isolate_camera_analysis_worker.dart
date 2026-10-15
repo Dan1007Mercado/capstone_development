@@ -73,6 +73,8 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
           analysisScaleX: message['analysisScaleX']! as double,
           analysisScaleY: message['analysisScaleY']! as double,
           timings: _readWorkerTimings(message, roundTripStopwatch.elapsed),
+          sensorOrientationDegrees: frame.sensorOrientationDegrees,
+          deviceOrientation: frame.deviceOrientation,
         ),
       );
     } on Object catch (error) {

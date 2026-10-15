@@ -282,11 +282,13 @@ final class CameraScannerCoordinator {
         workerStartupDuration: workerStartupDuration,
       );
       if (scan.isFailure) {
-        final error = _wrapFailure(
-          'CAPTURE_SCAN_SCANNER_FAILED',
-          'The offline scanner rejected the captured page.',
-          scan.error,
-        );
+        final error = _isPageIdentityFailure(scan.error.code)
+            ? scan.error
+            : _wrapFailure(
+                'CAPTURE_SCAN_SCANNER_FAILED',
+                'The offline scanner rejected the captured page.',
+                scan.error,
+              );
         _emitFailure(error, timings);
         return EngineResult.failure(error);
       }
@@ -491,6 +493,14 @@ final class CameraScannerCoordinator {
           'causeDetails': cause.details,
         },
       );
+
+  bool _isPageIdentityFailure(String code) => const {
+    'SCAN_PAGE_IDENTITY_NOT_FOUND',
+    'SCAN_PAGE_IDENTITY_INVALID',
+    'SCAN_TEMPLATE_ID_MISMATCH',
+    'SCAN_TEMPLATE_VERSION_MISMATCH',
+    'SCAN_PAGE_ID_MISMATCH',
+  }.contains(code);
 
   EngineResult<bool> _busyFailure() => EngineResult.failure(_busyError());
 

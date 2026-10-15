@@ -17,6 +17,9 @@ abstract interface class TemplateRepository {
     TemplateId id,
   );
 
+  /// Lists every immutable published version available to scanner selection.
+  Future<EngineResult<List<TemplateDefinition>>> listPublishedTemplates();
+
   Future<EngineResult<TemplateDefinition>> savePublished(
     TemplateDefinition published,
   );

@@ -167,6 +167,8 @@ final class CameraFrameObservation {
     this.analysisScaleX = 1,
     this.analysisScaleY = 1,
     this.timings = CameraAnalysisTimings.zero,
+    this.sensorOrientationDegrees = 0,
+    this.deviceOrientation = CameraDeviceOrientation.unknown,
   }) : analysisFrameSize = analysisFrameSize ?? frameSize,
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        registrationPoints = UnmodifiableListView(List.of(registrationPoints));
@@ -183,6 +185,8 @@ final class CameraFrameObservation {
   final double analysisScaleX;
   final double analysisScaleY;
   final CameraAnalysisTimings timings;
+  final int sensorOrientationDegrees;
+  final CameraDeviceOrientation deviceOrientation;
 }
 
 final class FrameQuality {
@@ -241,6 +245,8 @@ final class CameraAnalysisState {
     required this.analysisScaleX,
     required this.analysisScaleY,
     required this.timings,
+    this.sensorOrientationDegrees = 0,
+    this.deviceOrientation = CameraDeviceOrientation.unknown,
   });
 
   final MarkerTrackingState tracking;
@@ -253,6 +259,8 @@ final class CameraAnalysisState {
   final double analysisScaleX;
   final double analysisScaleY;
   final CameraAnalysisTimings timings;
+  final int sensorOrientationDegrees;
+  final CameraDeviceOrientation deviceOrientation;
 }
 
 final class CameraDiagnostics {

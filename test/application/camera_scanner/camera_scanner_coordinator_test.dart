@@ -7,6 +7,8 @@ import 'package:capstone_development/application/camera_scanner/domain/camera_sc
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_ports.dart';
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_state.dart';
 import 'package:capstone_development/application/camera_scanner/infrastructure/isolate_offline_scanner_runner.dart';
+import 'package:capstone_development/application/real_scanner/published_scanner_resolver.dart';
+import 'package:capstone_development/application/real_scanner/scanner_validation_session.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p5_native_validation_fixture.dart';
@@ -91,6 +93,73 @@ void main() {
     expect(result.error.details, {'stage': 'alignment'});
     await runner.dispose();
   });
+
+  test(
+    'scanner isolate rejects a printed identity from another version',
+    () async {
+      final template = buildP5NativeValidationTemplate();
+      final page = buildP5NativeValidationPage();
+      final context = CameraScanContext(
+        template: template,
+        pageLayout: page,
+        templateId: template.id,
+        templateVersion: template.version,
+        pageId: page.pageId,
+        scannerConfig: ScannerConfig(),
+      );
+      final runner = IsolateOfflineScannerRunner(
+        testResult: _scanResult(context: context),
+        testIdentityPayload:
+            'TS1|${template.id.value}|${template.version.value + 1}|${page.pageId.value}',
+      );
+
+      final result = await runner.scan(
+        encodedImage: Uint8List.fromList([1, 2, 3]),
+        context: context,
+      );
+
+      expect(result.error.code, 'SCAN_TEMPLATE_VERSION_MISMATCH');
+      await runner.dispose();
+    },
+  );
+
+  test(
+    'validation session advances exact ordered pages without duplicates',
+    () {
+      final inputs = buildP11ScannerValidationSheetInputs();
+      var session = ScannerValidationSession.start(
+        artifact: PublishedScannerArtifact(
+          template: inputs.template,
+          layout: inputs.layout,
+        ),
+      );
+      final firstPage = session.currentPage;
+      final first = session.recordResult(
+        _scanResult(context: session.currentContext),
+      );
+      expect(first.isSuccess, isTrue);
+      session = first.value;
+      expect(session.state, ScannerValidationSessionState.reviewing);
+      expect(session.completedPageCount, 1);
+
+      session = session.continueAfterReview().value;
+      expect(session.state, ScannerValidationSessionState.scanning);
+      expect(session.currentPage.pageId, isNot(firstPage.pageId));
+      final duplicate = session.recordResult(
+        _scanResult(
+          context: CameraScanContext(
+            template: inputs.template,
+            pageLayout: firstPage,
+            templateId: inputs.template.id,
+            templateVersion: inputs.template.version,
+            pageId: firstPage.pageId,
+            scannerConfig: ScannerConfig(),
+          ),
+        ),
+      );
+      expect(duplicate.error.code, 'SCAN_PAGE_ID_MISMATCH');
+    },
+  );
 
   test(
     'ready camera captures once and scans high-quality bytes once',
@@ -192,6 +261,24 @@ void main() {
     expect(fixture.coordinator.state.result, isNull);
     await fixture.dispose();
   });
+
+  test(
+    'wrong-page identity remains an exact typed coordinator failure',
+    () async {
+      final fixture = _Fixture(
+        scannerResults: [
+          _failure('SCAN_PAGE_ID_MISMATCH', 'wrong physical page'),
+        ],
+      );
+      await fixture.initialize();
+
+      final result = await fixture.coordinator.captureAndScan();
+
+      expect(result.error.code, 'SCAN_PAGE_ID_MISMATCH');
+      expect(fixture.coordinator.state.error?.code, 'SCAN_PAGE_ID_MISMATCH');
+      await fixture.dispose();
+    },
+  );
 
   test('capture failure does not call the scanner', () async {
     final fixture = _Fixture(

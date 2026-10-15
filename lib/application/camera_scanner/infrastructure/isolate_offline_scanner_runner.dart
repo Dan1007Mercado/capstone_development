@@ -2,12 +2,16 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:opencv_dart/opencv_dart.dart' as cv;
+
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../../../engines/aruco/infrastructure/opencv_aruco_vision_backend.dart';
+import '../../../engines/pdf/domain/template_page_identity_codec.dart';
 import '../../../engines/preprocessing/infrastructure/opencv_preprocessing_backend.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
 import '../../../engines/scanner/infrastructure/offline_scanner_composition.dart';
+import '../../real_scanner/scanner_identity_validation.dart';
 import '../domain/camera_scan_context.dart';
 import '../domain/camera_scan_ports.dart';
 
@@ -15,15 +19,20 @@ import '../domain/camera_scan_ports.dart';
 /// cross this boundary; OpenCV resources are constructed and disposed inside
 /// the worker isolate by the P5-P9 composition.
 final class IsolateOfflineScannerRunner implements OfflineScanRunner {
-  IsolateOfflineScannerRunner({ScanResult? testResult, EngineError? testError})
-    : assert(testResult == null || testError == null),
-      _testResult = testResult,
-      _testError = testError;
+  IsolateOfflineScannerRunner({
+    ScanResult? testResult,
+    EngineError? testError,
+    String? testIdentityPayload,
+  }) : assert(testResult == null || testError == null),
+       _testResult = testResult,
+       _testError = testError,
+       _testIdentityPayload = testIdentityPayload;
 
   /// Pure-Dart result injection is used only to test the real isolate protocol
   /// on hosts where native OpenCV is intentionally unavailable.
   final ScanResult? _testResult;
   final EngineError? _testError;
+  final String? _testIdentityPayload;
   Isolate? _isolate;
   ReceivePort? _responses;
   ReceivePort? _errors;
@@ -113,7 +122,12 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
     _exits!.listen((_) => _failWorker('Final scanner worker exited.'));
     _isolate = await Isolate.spawn<_WorkerBootstrap>(
       _finalScannerWorkerMain,
-      _WorkerBootstrap(_responses!.sendPort, _testResult, _testError),
+      _WorkerBootstrap(
+        _responses!.sendPort,
+        _testResult,
+        _testError,
+        _testIdentityPayload,
+      ),
       debugName: 'final-scanner-worker',
       onError: _errors!.sendPort,
       onExit: _exits!.sendPort,
@@ -216,11 +230,17 @@ final class _WorkerDisposed {
 }
 
 final class _WorkerBootstrap {
-  const _WorkerBootstrap(this.mainPort, this.testResult, this.testError);
+  const _WorkerBootstrap(
+    this.mainPort,
+    this.testResult,
+    this.testError,
+    this.testIdentityPayload,
+  );
 
   final SendPort mainPort;
   final ScanResult? testResult;
   final EngineError? testError;
+  final String? testIdentityPayload;
 }
 
 void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
@@ -235,9 +255,14 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
           preprocessingBackend: const OpenCvPreprocessingBackend(),
         )
       : null;
+  final identityDetector =
+      bootstrap.testResult == null && bootstrap.testError == null
+      ? cv.QRCodeDetector.empty()
+      : null;
   bootstrap.mainPort.send(inbox.sendPort);
   inbox.listen((message) {
     if (message is _WorkerDispose) {
+      identityDetector?.dispose();
       alignmentBackend?.dispose();
       inbox.close();
       bootstrap.mainPort.send(const _WorkerDisposed());
@@ -259,16 +284,48 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
           (sum, byte) => (sum + byte) & 0x7fffffff,
         );
       }
-      result = bootstrap.testError != null
-          ? EngineResult.failure(bootstrap.testError!)
-          : bootstrap.testResult == null
-          ? scanner!.scan(
-              encodedImage: bytes,
-              template: message.context.template,
-              pageLayout: message.context.pageLayout,
-              config: message.context.scannerConfig,
-            )
-          : EngineResult.success(bootstrap.testResult!);
+      final identity =
+          bootstrap.testResult == null && bootstrap.testError == null
+          ? _readPrintedIdentity(bytes, identityDetector!)
+          : const TemplatePageIdentityCodec().decode(
+              bootstrap.testIdentityPayload ??
+                  const TemplatePageIdentityCodec().encode(
+                    templateId: message.context.templateId,
+                    templateVersion: message.context.templateVersion,
+                    pageId: message.context.pageId,
+                  ),
+            );
+      if (identity.isFailure) {
+        result = EngineResult.failure(identity.error);
+      } else {
+        final identityValidation = validateCapturedPageIdentity(
+          identity.value,
+          message.context,
+        );
+        if (identityValidation.isFailure) {
+          result = EngineResult.failure(identityValidation.error);
+        } else {
+          result = bootstrap.testError != null
+              ? EngineResult.failure(bootstrap.testError!)
+              : bootstrap.testResult == null
+              ? scanner!.scan(
+                  encodedImage: bytes,
+                  template: message.context.template,
+                  pageLayout: message.context.pageLayout,
+                  config: message.context.scannerConfig,
+                )
+              : EngineResult.success(bootstrap.testResult!);
+          if (result.isSuccess) {
+            final resultIdentity = validateScanResultIdentity(
+              result.value,
+              message.context,
+            );
+            if (resultIdentity.isFailure) {
+              result = EngineResult.failure(resultIdentity.error);
+            }
+          }
+        }
+      }
     } on Object catch (error) {
       result = EngineResult.failure(
         EngineError(
@@ -289,4 +346,61 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
       ),
     );
   });
+}
+
+EngineResult<TemplatePageIdentity> _readPrintedIdentity(
+  Uint8List encodedImage,
+  cv.QRCodeDetector detector,
+) {
+  cv.Mat? image;
+  cv.VecPoint? points;
+  cv.Mat? straightCode;
+  try {
+    image = cv.imdecode(encodedImage, cv.IMREAD_GRAYSCALE);
+    if (image.isEmpty) {
+      return EngineResult.failure(
+        EngineError(
+          code: 'SCAN_PAGE_IDENTITY_NOT_FOUND',
+          message: 'The captured image could not be decoded for page identity.',
+        ),
+      );
+    }
+    final decoded = detector.detectAndDecode(image);
+    points = decoded.$2;
+    straightCode = decoded.$3;
+    if (decoded.$1.isEmpty) {
+      return EngineResult.failure(
+        EngineError(
+          code: 'SCAN_PAGE_IDENTITY_NOT_FOUND',
+          message: 'No readable TalaanScan page identity was found.',
+        ),
+      );
+    }
+    final identity = const TemplatePageIdentityCodec().decode(decoded.$1);
+    if (identity.isFailure) {
+      return EngineResult.failure(
+        EngineError(
+          code: 'SCAN_PAGE_IDENTITY_INVALID',
+          message: 'The captured page identity is malformed.',
+          details: {
+            'causeCode': identity.error.code,
+            'causeMessage': identity.error.message,
+          },
+        ),
+      );
+    }
+    return identity;
+  } on Object catch (error) {
+    return EngineResult.failure(
+      EngineError(
+        code: 'SCAN_PAGE_IDENTITY_NOT_FOUND',
+        message: 'The captured page identity could not be read.',
+        details: {'cause': error.toString()},
+      ),
+    );
+  } finally {
+    straightCode?.dispose();
+    points?.dispose();
+    image?.dispose();
+  }
 }

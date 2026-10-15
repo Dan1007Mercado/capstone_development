@@ -126,6 +126,9 @@ final class TemplatePublicationService {
     TemplateId id,
   ) => _repository.listPublishedVersions(id);
 
+  Future<EngineResult<List<TemplateDefinition>>> listPublishedTemplates() =>
+      _repository.listPublishedTemplates();
+
   EngineError _alreadyPublished(TemplateDefinition template) => _error(
     code: 'TEMPLATE_VERSION_ALREADY_PUBLISHED',
     message: 'This template version has already been published.',

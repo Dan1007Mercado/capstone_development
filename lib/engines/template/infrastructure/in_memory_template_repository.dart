@@ -49,6 +49,15 @@ final class InMemoryTemplateRepository implements TemplateRepository {
   );
 
   @override
+  Future<EngineResult<List<TemplateDefinition>>>
+  listPublishedTemplates() async => EngineResult.success(
+    List<TemplateDefinition>.unmodifiable([
+      for (final entry in _published.entries)
+        for (final template in entry.value.values) template,
+    ]),
+  );
+
+  @override
   Future<EngineResult<TemplateDefinition>> savePublished(
     TemplateDefinition published,
   ) async {

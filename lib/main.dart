@@ -5,6 +5,9 @@ import 'debug/p5_native_validation_screen.dart';
 import 'debug/p10_camera_diagnostics_screen.dart';
 import 'debug/p11_camera_scanner_screen.dart';
 import 'debug/p12_template_builder_screen.dart';
+import 'debug/real_scanner_validation_screen.dart';
+import 'engines/template/application/template_publication_service.dart';
+import 'engines/template/infrastructure/in_memory_template_repository.dart';
 
 void main() {
   runApp(const MyApp());
@@ -61,6 +64,15 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
+  late final TemplatePublicationService _publicationService;
+
+  @override
+  void initState() {
+    super.initState();
+    _publicationService = TemplatePublicationService(
+      repository: InMemoryTemplateRepository(),
+    );
+  }
 
   void _incrementCounter() {
     setState(() {
@@ -147,10 +159,23 @@ class _MyHomePageState extends State<MyHomePage> {
               ElevatedButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const P12TemplateBuilderScreen(),
+                    builder: (_) => P12TemplateBuilderScreen(
+                      publicationService: _publicationService,
+                    ),
                   ),
                 ),
                 child: const Text('Open P12 Template Builder'),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => RealScannerSelectionScreen(
+                      publicationService: _publicationService,
+                    ),
+                  ),
+                ),
+                child: const Text('Open Real Scanner Validation'),
               ),
             ],
           ],
