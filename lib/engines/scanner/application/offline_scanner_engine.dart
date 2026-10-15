@@ -94,6 +94,7 @@ final class OfflineScannerEngine {
       );
     }
 
+    final validationStopwatch = Stopwatch()..start();
     final classificationContractError = _validateClassificationResult(
       classificationResult.value,
       pageLayout,
@@ -160,6 +161,7 @@ final class OfflineScannerEngine {
         : reviewQuestionIds.isNotEmpty
         ? ScanPageState.needsReview
         : ScanPageState.accepted;
+    validationStopwatch.stop();
     totalStopwatch.stop();
     final summary = ScanSummary(
       totalQuestions: questions.length,
@@ -187,6 +189,7 @@ final class OfflineScannerEngine {
             preprocessing: preprocessingStopwatch.elapsed,
             measurement: measurementStopwatch.elapsed,
             classification: classificationStopwatch.elapsed,
+            validation: validationStopwatch.elapsed,
           ),
           alignment: alignmentResult.value.diagnostics,
           preprocessing: preprocessingResult.value.diagnostics,

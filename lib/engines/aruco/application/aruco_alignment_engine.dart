@@ -37,11 +37,13 @@ final class ArucoAlignmentEngine {
 
     final session = sessionResult.value;
     try {
+      final correspondenceStopwatch = Stopwatch()..start();
       final correspondenceResult = correspondenceService.build(
         detection: session.detection,
         page: page,
         config: effectiveConfig,
       );
+      correspondenceStopwatch.stop();
       if (correspondenceResult.isFailure) {
         return EngineResult.failure(correspondenceResult.error);
       }
@@ -118,6 +120,13 @@ final class ArucoAlignmentEngine {
             meanReprojectionError: meanError,
             maxReprojectionError: maxError,
             processingDuration: stopwatch.elapsed,
+            sourceSize: session.sourceSize,
+            canonicalSize: outputSize,
+            decodeDuration: session.openTimings.decode,
+            detectionDuration: session.openTimings.detection,
+            correspondenceDuration: correspondenceStopwatch.elapsed,
+            homographyDuration: rectification.value.timings.homography,
+            warpDuration: rectification.value.timings.warp,
           ),
         ),
       );

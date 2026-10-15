@@ -22,8 +22,28 @@ abstract interface class CapturedImageBytesLoader {
 }
 
 abstract interface class OfflineScanRunner {
-  Future<EngineResult<ScanResult>> scan({
+  Future<EngineResult<FinalScannerRun>> scan({
     required Uint8List encodedImage,
     required CameraScanContext context,
   });
+
+  Future<void> dispose();
+}
+
+final class FinalScannerRun {
+  const FinalScannerRun({
+    required this.result,
+    required this.workerDuration,
+    required this.isolateOverhead,
+    required this.workerReused,
+    this.transferredByteCount = 0,
+    this.transferredByteChecksum = 0,
+  });
+
+  final ScanResult result;
+  final Duration workerDuration;
+  final Duration isolateOverhead;
+  final bool workerReused;
+  final int transferredByteCount;
+  final int transferredByteChecksum;
 }

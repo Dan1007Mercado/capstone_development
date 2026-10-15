@@ -51,12 +51,14 @@ final class ScanStageDurations {
     required this.preprocessing,
     required this.measurement,
     required this.classification,
+    this.validation = Duration.zero,
   });
 
   final Duration alignment;
   final Duration preprocessing;
   final Duration measurement;
   final Duration classification;
+  final Duration validation;
 }
 
 final class ScanDiagnostics {

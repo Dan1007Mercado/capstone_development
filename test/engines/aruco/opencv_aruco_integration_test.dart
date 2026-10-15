@@ -180,9 +180,16 @@ void main() {
         height: page.canonicalPageSpec.heightPixels,
       ),
     );
-    final decoded = image.decodePng(result.value.canonicalPage.pngBytes)!;
-    expect(decoded.width, page.canonicalPageSpec.widthPixels);
-    expect(decoded.height, page.canonicalPageSpec.heightPixels);
+    expect(result.value.canonicalPage.pngBytes, isEmpty);
+    expect(
+      result.value.canonicalPage.grayscaleBytes,
+      hasLength(
+        page.canonicalPageSpec.widthPixels *
+            page.canonicalPageSpec.heightPixels,
+      ),
+    );
+    expect(result.value.diagnostics.decodeDuration, isNot(Duration.zero));
+    expect(result.value.diagnostics.detectionDuration, isNot(Duration.zero));
   });
 }
 

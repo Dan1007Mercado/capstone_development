@@ -35,6 +35,19 @@ void main() {
     expect(result.error.code, 'PREPROCESS_IMAGE_SIZE_MISMATCH');
   });
 
+  test('owned canonical grayscale bypasses PNG decoding', () {
+    final pixels = Uint8List.fromList(List<int>.generate(1024, (i) => i % 256));
+    final result = engine.process(
+      CanonicalPageImage(
+        size: ImageSize(width: 32, height: 32),
+        grayscaleBytes: pixels,
+      ),
+    );
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(result.value.grayscale.pixels, pixels);
+  });
+
   for (final value in [0, 255]) {
     test('uniform $value page fails the low-contrast quality gate', () {
       final result = engine.process(_page(_solid(48, 48, value)));

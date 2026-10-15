@@ -5,6 +5,7 @@ import 'package:capstone_development/application/camera_scanner/application/came
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_context.dart';
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_ports.dart';
 import 'package:capstone_development/application/camera_scanner/infrastructure/camera_scan_adapters.dart';
+import 'package:capstone_development/application/camera_scanner/infrastructure/isolate_offline_scanner_runner.dart';
 import 'package:capstone_development/core/geometry/page_spec.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/engines/aruco/domain/aruco_alignment_config.dart';
@@ -88,6 +89,19 @@ void main() {
       expect(result.value.questions.single.selectedOptionIds, [
         page.bubbleRegions[1].optionId,
       ]);
+      final isolateRunner = IsolateOfflineScannerRunner(
+        testResult: result.value,
+      );
+      final roundTrip = await isolateRunner.scan(
+        encodedImage: camera.highQualityBytes,
+        context: context,
+      );
+      expect(roundTrip.value.result.templateId, template.id);
+      expect(roundTrip.value.result.questions.single.state, MarkState.marked);
+      expect(roundTrip.value.result.questions.single.selectedOptionIds, [
+        page.bubbleRegions[1].optionId,
+      ]);
+      await isolateRunner.dispose();
       await coordinator.dispose();
     },
   );

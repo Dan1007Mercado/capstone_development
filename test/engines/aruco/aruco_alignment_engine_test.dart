@@ -127,6 +127,12 @@ final class _FakeSession implements ArucoImageSession {
 
   @override
   final ArucoDetection detection;
+
+  @override
+  ImageSize get sourceSize => ImageSize(width: 1200, height: 1800);
+
+  @override
+  ArucoBackendOpenTimings get openTimings => const ArucoBackendOpenTimings();
   final HomographyMatrix homography;
   bool disposed = false;
 

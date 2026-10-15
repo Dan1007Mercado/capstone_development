@@ -18,6 +18,9 @@ final class DartImagePreprocessingBackend implements PreprocessingBackend {
     CanonicalPageImage page,
     PreprocessingConfig config,
   ) {
+    if (page.grayscaleBytes.isNotEmpty) {
+      return _processGrayscale(page, config);
+    }
     image_codec.Image? decoded;
     try {
       decoded = image_codec.decodePng(page.pngBytes);
@@ -89,6 +92,47 @@ final class DartImagePreprocessingBackend implements PreprocessingBackend {
       return _failure(
         'PREPROCESS_FAILED',
         'Canonical PNG preprocessing failed.',
+        {'cause': error.toString()},
+      );
+    }
+  }
+
+  EngineResult<BackendPreprocessingOutput> _processGrayscale(
+    CanonicalPageImage page,
+    PreprocessingConfig config,
+  ) {
+    try {
+      final grayscalePixels = page.grayscaleBytes;
+      final workingPixels = config.enableDenoise
+          ? _localMean(grayscalePixels, page.size, config.denoiseKernelSize)
+          : Uint8List.fromList(grayscalePixels);
+      final normalizedPixels = config.enableIlluminationNormalization
+          ? _normalizeIllumination(
+              workingPixels,
+              page.size,
+              config.backgroundKernelSize,
+            )
+          : Uint8List.fromList(workingPixels);
+      final binaryPixels = _adaptiveThreshold(
+        normalizedPixels,
+        page.size,
+        config.adaptiveThresholdBlockSize,
+        config.adaptiveThresholdC,
+      );
+      return EngineResult.success(
+        BackendPreprocessingOutput(
+          grayscale: GrayImage(size: page.size, pixels: grayscalePixels),
+          normalizedGrayscale: GrayImage(
+            size: page.size,
+            pixels: normalizedPixels,
+          ),
+          binary: BinaryImage(size: page.size, pixels: binaryPixels),
+        ),
+      );
+    } on Object catch (error) {
+      return _failure(
+        'PREPROCESS_FAILED',
+        'Canonical grayscale preprocessing failed.',
         {'cause': error.toString()},
       );
     }

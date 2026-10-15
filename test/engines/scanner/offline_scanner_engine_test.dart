@@ -279,6 +279,17 @@ void main() {
       result.diagnostics.totalProcessingDuration,
       greaterThanOrEqualTo(Duration.zero),
     );
+    final stages = result.diagnostics.stageDurations;
+    final stageTotal =
+        stages.alignment +
+        stages.preprocessing +
+        stages.measurement +
+        stages.classification +
+        stages.validation;
+    expect(
+      result.diagnostics.totalProcessingDuration,
+      greaterThanOrEqualTo(stageTotal),
+    );
   });
 
   test('rejects classifier output that changes PageLayout order', () {

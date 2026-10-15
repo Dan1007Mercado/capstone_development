@@ -5,7 +5,6 @@ import '../../../core/result/engine_result.dart';
 import '../../../engines/camera/application/camera_engine.dart';
 import '../../../engines/camera/domain/camera_models.dart';
 import '../../../engines/scanner/application/offline_scanner_engine.dart';
-import '../../../engines/scanner/domain/scan_result.dart';
 import '../domain/camera_scan_context.dart';
 import '../domain/camera_scan_ports.dart';
 
@@ -59,24 +58,38 @@ final class InMemoryCapturedImageBytesLoader
   }
 }
 
+/// In-process adapter retained for pure-Dart tests and explicit compositions.
+/// Production camera scanning uses [IsolateOfflineScannerRunner].
 final class OfflineScannerRunnerAdapter implements OfflineScanRunner {
   const OfflineScannerRunnerAdapter(this.engine);
 
   final OfflineScannerEngine engine;
 
   @override
-  Future<EngineResult<ScanResult>> scan({
+  Future<EngineResult<FinalScannerRun>> scan({
     required Uint8List encodedImage,
     required CameraScanContext context,
   }) async {
-    // Let the scanning state reach the UI before invoking the accepted
-    // synchronous P9 boundary. Native scanner isolation remains a later phase.
     await Future<void>.delayed(Duration.zero);
-    return engine.scan(
+    final stopwatch = Stopwatch()..start();
+    final result = engine.scan(
       encodedImage: encodedImage,
       template: context.template,
       pageLayout: context.pageLayout,
       config: context.scannerConfig,
     );
+    stopwatch.stop();
+    if (result.isFailure) return EngineResult.failure(result.error);
+    return EngineResult.success(
+      FinalScannerRun(
+        result: result.value,
+        workerDuration: stopwatch.elapsed,
+        isolateOverhead: Duration.zero,
+        workerReused: false,
+      ),
+    );
   }
+
+  @override
+  Future<void> dispose() async {}
 }

@@ -18,10 +18,10 @@ final class PreprocessingEngine {
     PreprocessingConfig config = const PreprocessingConfig(),
   ]) {
     final stopwatch = Stopwatch()..start();
-    if (page.pngBytes.isEmpty) {
+    if (page.pngBytes.isEmpty && page.grayscaleBytes.isEmpty) {
       return _failure(
         'PREPROCESS_IMAGE_INVALID',
-        'Canonical PNG bytes are empty.',
+        'Canonical image bytes are empty.',
       );
     }
     final configError = config.validationMessage();

@@ -103,6 +103,9 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
     final result = state.result;
     final summary = result?.summary;
     final timings = state.finalScanTimings;
+    final scanDiagnostics = result?.diagnostics;
+    final alignment = scanDiagnostics?.alignment;
+    final stages = scanDiagnostics?.stageDurations;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -138,6 +141,16 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
           ),
         const SizedBox(height: 8),
         Text('Scan status: ${result?.pageState.name ?? state.phase.name}'),
+        Text(
+          'Final scanner worker: '
+          '${state.phase == CameraScanPhase.scanning
+              ? 'running'
+              : state.phase == CameraScanPhase.scanCompleted
+              ? 'completed'
+              : state.phase == CameraScanPhase.scanFailed
+              ? 'failed'
+              : 'idle'}',
+        ),
         if (result != null) ...[
           Text('Template ID: ${result.templateId.value}'),
           Text('Template version: ${result.templateVersion.value}'),
@@ -156,8 +169,33 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
             Text('${question.questionId.value}: ${question.state.name}'),
         ],
         Text('Capture: ${_milliseconds(timings.captureDuration)} ms'),
-        Text('Byte load: ${_milliseconds(timings.byteLoadDuration)} ms'),
-        Text('P9 scanner: ${_milliseconds(timings.scannerDuration)} ms'),
+        Text('Transfer/load: ${_milliseconds(timings.byteLoadDuration)} ms'),
+        Text('Decode: ${_milliseconds(alignment?.decodeDuration)} ms'),
+        Text('ArUco detect: ${_milliseconds(alignment?.detectionDuration)} ms'),
+        Text(
+          'Marker correspondence: '
+          '${_milliseconds(alignment?.correspondenceDuration)} ms',
+        ),
+        Text('Homography: ${_milliseconds(alignment?.homographyDuration)} ms'),
+        Text(
+          'Warp/canonicalization: ${_milliseconds(alignment?.warpDuration)} ms',
+        ),
+        Text('Preprocessing: ${_milliseconds(stages?.preprocessing)} ms'),
+        Text('Bubble measurement: ${_milliseconds(stages?.measurement)} ms'),
+        Text('Classification: ${_milliseconds(stages?.classification)} ms'),
+        Text('Validation/result: ${_milliseconds(stages?.validation)} ms'),
+        Text('Worker total: ${_milliseconds(timings.workerDuration)} ms'),
+        Text('Isolate overhead: ${_milliseconds(timings.isolateOverhead)} ms'),
+        Text(
+          'Worker status: ${timings.workerReused ? 'reused' : 'newly started'}',
+        ),
+        Text(
+          'Source still: ${alignment?.sourceSize == null ? 'unavailable' : '${alignment!.sourceSize!.width}x${alignment.sourceSize!.height}'}',
+        ),
+        Text(
+          'Canonical page: ${alignment?.canonicalSize == null ? 'unavailable' : '${alignment!.canonicalSize!.width}x${alignment.canonicalSize!.height}'}',
+        ),
+        Text('Scanner request: ${_milliseconds(timings.scannerDuration)} ms'),
         Text('Capture-to-result: ${_milliseconds(timings.totalDuration)} ms'),
         if (state.error != null)
           SelectableText(
@@ -169,5 +207,5 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
   }
 }
 
-String _milliseconds(Duration duration) =>
-    (duration.inMicroseconds / 1000).toStringAsFixed(1);
+String _milliseconds(Duration? duration) =>
+    ((duration ?? Duration.zero).inMicroseconds / 1000).toStringAsFixed(1);

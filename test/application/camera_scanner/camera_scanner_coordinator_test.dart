@@ -6,6 +6,7 @@ import 'package:capstone_development/application/camera_scanner/application/came
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_context.dart';
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_ports.dart';
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_state.dart';
+import 'package:capstone_development/application/camera_scanner/infrastructure/isolate_offline_scanner_runner.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p5_native_validation_fixture.dart';
@@ -19,6 +20,76 @@ import 'package:capstone_development/engines/scanner/domain/scanner_config.dart'
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'persistent scanner isolate transfers bytes, reuses, and disposes',
+    () async {
+      final template = buildP5NativeValidationTemplate();
+      final page = buildP5NativeValidationPage();
+      final context = CameraScanContext(
+        template: template,
+        pageLayout: page,
+        templateId: template.id,
+        templateVersion: template.version,
+        pageId: page.pageId,
+        scannerConfig: ScannerConfig(),
+      );
+      final expected = _scanResult(context: context);
+      final runner = IsolateOfflineScannerRunner(testResult: expected);
+      final bytes = Uint8List.fromList([1, 2, 3, 4]);
+
+      final first = await runner.scan(encodedImage: bytes, context: context);
+      bytes.fillRange(0, bytes.length, 99);
+      final second = await runner.scan(
+        encodedImage: Uint8List.fromList([5, 6]),
+        context: context,
+      );
+
+      expect(first.isSuccess, isTrue);
+      expect(first.value.workerReused, isFalse);
+      expect(first.value.transferredByteCount, 4);
+      expect(first.value.transferredByteChecksum, 10);
+      expect(first.value.result.templateId, template.id);
+      expect(first.value.result.pageId, page.pageId);
+      expect(second.isSuccess, isTrue);
+      expect(second.value.workerReused, isTrue);
+      expect(second.value.transferredByteCount, 2);
+      await runner.dispose();
+      await runner.dispose();
+      final afterDispose = await runner.scan(
+        encodedImage: Uint8List.fromList([1]),
+        context: context,
+      );
+      expect(afterDispose.error.code, 'FINAL_SCANNER_WORKER_DISPOSED');
+    },
+  );
+
+  test('scanner isolate preserves structured worker failure', () async {
+    final template = buildP5NativeValidationTemplate();
+    final page = buildP5NativeValidationPage();
+    final runner = IsolateOfflineScannerRunner(
+      testError: EngineError(
+        code: 'TEST_WORKER_FAILURE',
+        message: 'Worker failed predictably.',
+        details: const {'stage': 'alignment'},
+      ),
+    );
+    final result = await runner.scan(
+      encodedImage: Uint8List.fromList([1, 2, 3]),
+      context: CameraScanContext(
+        template: template,
+        pageLayout: page,
+        templateId: template.id,
+        templateVersion: template.version,
+        pageId: page.pageId,
+        scannerConfig: ScannerConfig(),
+      ),
+    );
+
+    expect(result.error.code, 'TEST_WORKER_FAILURE');
+    expect(result.error.details, {'stage': 'alignment'});
+    await runner.dispose();
+  });
+
   test(
     'ready camera captures once and scans high-quality bytes once',
     () async {
@@ -200,6 +271,11 @@ void main() {
       await fixture.initialize();
       final operation = fixture.coordinator.captureAndScan();
       await _waitFor(() => fixture.scanner.calls == 1);
+      expect(
+        fixture.camera.startCalls,
+        2,
+        reason: 'Live analysis must resume while final scanning is pending.',
+      );
 
       await fixture.coordinator.dispose();
       scannerGate.complete();
@@ -275,11 +351,21 @@ void main() {
     final screen = File(
       'lib/debug/p11_camera_scanner_screen.dart',
     ).readAsStringSync();
+    final composition = File(
+      'lib/debug/p11_camera_scanner_composition.dart',
+    ).readAsStringSync();
+    final worker = File(
+      'lib/application/camera_scanner/infrastructure/'
+      'isolate_offline_scanner_runner.dart',
+    ).readAsStringSync();
 
     expect(coordinator, isNot(contains('LayoutEngine')));
     expect(coordinator, isNot(contains('BubbleMeasurementEngine')));
     expect(screen, isNot(contains('OfflineScannerEngine')));
     expect(screen, isNot(contains('.scan(')));
+    expect(composition, isNot(contains('OpenCvArucoVisionBackend')));
+    expect(worker, contains('TransferableTypedData'));
+    expect(worker, contains('OpenCvArucoVisionBackend'));
   });
 }
 
@@ -473,7 +559,7 @@ final class _FakeScanner implements OfflineScanRunner {
   int maximumActiveCalls = 0;
 
   @override
-  Future<EngineResult<ScanResult>> scan({
+  Future<EngineResult<FinalScannerRun>> scan({
     required Uint8List encodedImage,
     required CameraScanContext context,
   }) async {
@@ -484,10 +570,22 @@ final class _FakeScanner implements OfflineScanRunner {
     contexts.add(context);
     if (gate != null) await gate!.future;
     activeCalls--;
-    return results.isEmpty
+    final result = results.isEmpty
         ? EngineResult.success(_scanResult(context: context))
         : results.removeAt(0);
+    if (result.isFailure) return EngineResult.failure(result.error);
+    return EngineResult.success(
+      FinalScannerRun(
+        result: result.value,
+        workerDuration: const Duration(milliseconds: 10),
+        isolateOverhead: const Duration(milliseconds: 1),
+        workerReused: calls > 1,
+      ),
+    );
   }
+
+  @override
+  Future<void> dispose() async {}
 }
 
 CameraEngineState _cameraState({

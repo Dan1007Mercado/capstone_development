@@ -132,6 +132,9 @@ final class CameraScannerCoordinator {
     var captureDuration = Duration.zero;
     var byteLoadDuration = Duration.zero;
     var scannerDuration = Duration.zero;
+    var workerDuration = Duration.zero;
+    var isolateOverhead = Duration.zero;
+    var workerReused = false;
     final shouldRestartAnalysis = lifecycle == CameraLifecycleState.analyzing;
     var analysisStopped = false;
 
@@ -201,6 +204,25 @@ final class CameraScannerCoordinator {
         );
       }
 
+      // Once the still bytes are owned, live analysis can safely resume while
+      // the independent scanner isolate works. Auto capture remains disarmed
+      // and the operation remains single-flight.
+      final earlyRestart = await _restoreCamera(analysisStopped);
+      if (_disposed) return EngineResult.failure(_disposedError());
+      if (earlyRestart.isFailure) {
+        return await _finishFailure(
+          code: 'CAPTURE_SCAN_CAMERA_STREAM_FAILED',
+          message: 'Camera analysis could not resume after still capture.',
+          cause: earlyRestart.error,
+          totalStopwatch: totalStopwatch,
+          captureDuration: captureDuration,
+          byteLoadDuration: byteLoadDuration,
+          scannerDuration: scannerDuration,
+          restartAnalysis: false,
+        );
+      }
+      analysisStopped = false;
+
       _emit(
         CameraScanState(
           phase: CameraScanPhase.scanning,
@@ -218,26 +240,23 @@ final class CameraScannerCoordinator {
       );
       scannerStopwatch.stop();
       scannerDuration = scannerStopwatch.elapsed;
+      if (scan.isSuccess) {
+        workerDuration = scan.value.workerDuration;
+        isolateOverhead = scan.value.isolateOverhead;
+        workerReused = scan.value.workerReused;
+      }
       totalStopwatch.stop();
       if (_disposed) return EngineResult.failure(_disposedError());
 
-      final restart = await _restoreCamera(analysisStopped);
-      if (_disposed) return EngineResult.failure(_disposedError());
       final timings = FinalScanTimings(
         captureDuration: captureDuration,
         byteLoadDuration: byteLoadDuration,
         scannerDuration: scannerDuration,
         totalDuration: totalStopwatch.elapsed,
+        workerDuration: workerDuration,
+        isolateOverhead: isolateOverhead,
+        workerReused: workerReused,
       );
-      if (restart.isFailure) {
-        final error = _wrapFailure(
-          'CAPTURE_SCAN_CAMERA_STREAM_FAILED',
-          'Camera analysis could not resume after final scanning.',
-          restart.error,
-        );
-        _emitFailure(error, timings);
-        return EngineResult.failure(error);
-      }
       if (scan.isFailure) {
         final error = _wrapFailure(
           'CAPTURE_SCAN_SCANNER_FAILED',
@@ -252,11 +271,11 @@ final class CameraScannerCoordinator {
         CameraScanState(
           phase: CameraScanPhase.scanCompleted,
           cameraState: _latestCameraState,
-          result: scan.value,
+          result: scan.value.result,
           finalScanTimings: timings,
         ),
       );
-      return scan;
+      return EngineResult.success(scan.value.result);
     } on Object catch (error) {
       if (totalStopwatch.isRunning) totalStopwatch.stop();
       if (!_disposed) await _restoreCamera(analysisStopped);
@@ -475,6 +494,7 @@ final class CameraScannerCoordinator {
     _disposed = true;
     _cameraSessionRequested = false;
     await _cameraSubscription.cancel();
+    await scanner.dispose();
     await camera.dispose();
     _emit(
       CameraScanState(

@@ -42,11 +42,9 @@ The Flutter composition adapts a `CameraEngine` and the real P9
 original resolution and best-effort deletes the temporary file only after the
 bytes are owned. P11 does not save captures to the gallery.
 
-The P9 native OpenCV path remains synchronous and isolate-owned native scanner
-composition is not yet available. The adapter yields once after publishing the
-`scanning` state, then invokes P9 behind the application boundary. Moving the
-complete native scanner to a dedicated isolate is deferred rather than sharing
-native objects unsafely across isolates.
+At P11 completion, the P9 native OpenCV path remained synchronous on the main
+isolate. P11.1 supersedes that runtime limitation with a dedicated persistent
+worker; this paragraph is retained as the accepted P11 baseline.
 
 ## Files
 

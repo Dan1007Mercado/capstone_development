@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:image/image.dart' as image_codec;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 import '../../../core/errors/engine_error.dart';
@@ -33,23 +32,24 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
     OpenCvArucoDetector? detector;
     var transferImageOwnership = false;
     try {
-      final decoded = image_codec.decodeImage(encodedImage);
-      if (decoded == null || decoded.width <= 0 || decoded.height <= 0) {
+      final decodeStopwatch = Stopwatch()..start();
+      final decodedMat = cv.imdecode(encodedImage, cv.IMREAD_COLOR);
+      decodeStopwatch.stop();
+      if (decodedMat.isEmpty ||
+          decodedMat.width <= 0 ||
+          decodedMat.height <= 0) {
+        decodedMat.dispose();
         return _failure(
           'ARUCO_IMAGE_INVALID',
           'Source bytes are not a decodable static image.',
         );
       }
-      final decodedMat = cv.Mat.fromList(
-        decoded.height,
-        decoded.width,
-        cv.MatType.CV_8UC3,
-        decoded.getBytes(order: image_codec.ChannelOrder.bgr),
-      );
       image = decodedMat;
 
       detector = OpenCvArucoDetector();
+      final detectionStopwatch = Stopwatch()..start();
       final detection = detector.detectMat(decodedMat);
+      detectionStopwatch.stop();
       if (detection.isFailure) {
         return EngineResult.failure(detection.error);
       }
@@ -57,6 +57,10 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
       final session = _OpenCvArucoImageSession(
         image: image,
         detection: detection.value,
+        openTimings: ArucoBackendOpenTimings(
+          decode: decodeStopwatch.elapsed,
+          detection: detectionStopwatch.elapsed,
+        ),
       );
       transferImageOwnership = true;
       return EngineResult.success(session);
@@ -86,13 +90,23 @@ final class OpenCvArucoVisionBackend implements ArucoVisionBackend {
 }
 
 final class _OpenCvArucoImageSession implements ArucoImageSession {
-  _OpenCvArucoImageSession({required cv.Mat image, required this.detection})
-    : _image = image;
+  _OpenCvArucoImageSession({
+    required cv.Mat image,
+    required this.detection,
+    required this.openTimings,
+  }) : _image = image;
 
   cv.Mat? _image;
 
   @override
   final ArucoDetection detection;
+
+  @override
+  final ArucoBackendOpenTimings openTimings;
+
+  @override
+  ImageSize get sourceSize =>
+      ImageSize(width: _image?.width ?? 0, height: _image?.height ?? 0);
 
   @override
   EngineResult<BackendRectification> rectify({
@@ -117,6 +131,7 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
     cv.VecPoint2f? destinationVector;
     cv.Mat? homography;
     cv.Mat? warped;
+    cv.Mat? grayscale;
     cv.Scalar? border;
     try {
       sourceVector = cv.VecPoint2f.generate(
@@ -128,6 +143,7 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
         (index) =>
             cv.Point2f(destinationPoints[index].x, destinationPoints[index].y),
       );
+      final homographyStopwatch = Stopwatch()..start();
       homography = cv.getPerspectiveTransform2f(
         sourceVector,
         destinationVector,
@@ -138,6 +154,8 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
           .map((value) => value.toDouble())
           .toList(growable: false);
       final matrix = HomographyMatrix(matrixValues);
+      homographyStopwatch.stop();
+      final warpStopwatch = Stopwatch()..start();
       border = cv.Scalar.all(255);
       warped = cv.warpPerspective(_image!, homography, (
         outputSize.width,
@@ -151,20 +169,20 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
           'OpenCV did not produce the requested canonical dimensions.',
         );
       }
-      final (encoded, pngBytes) = cv.imencode('.png', warped);
-      if (!encoded || pngBytes.isEmpty) {
-        return _failure(
-          'ARUCO_HOMOGRAPHY_FAILED',
-          'OpenCV could not encode the canonical page.',
-        );
-      }
+      grayscale = cv.cvtColor(warped, cv.COLOR_BGR2GRAY);
+      final grayscaleBytes = Uint8List.fromList(grayscale.data);
+      warpStopwatch.stop();
       return EngineResult.success(
         BackendRectification(
-          canonicalPage: CanonicalPageImage(
+          canonicalPage: CanonicalPageImage.ownedGrayscale(
             size: outputSize,
-            pngBytes: pngBytes,
+            grayscaleBytes: grayscaleBytes,
           ),
           homography: matrix,
+          timings: ArucoBackendRectificationTimings(
+            homography: homographyStopwatch.elapsed,
+            warp: warpStopwatch.elapsed,
+          ),
         ),
       );
     } on Object catch (error) {
@@ -174,6 +192,7 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
         {'cause': error.toString()},
       );
     } finally {
+      grayscale?.dispose();
       warped?.dispose();
       border?.dispose();
       homography?.dispose();

@@ -69,3 +69,8 @@ IDs, capture/load/scanner/total durations, result counts, review-required state,
 retry outcome, and any structured error code/message/details.
 
 Manual P11 Android validation status: **NOT RUN**.
+
+P11 subsequently passed its functional Infinix X6711 gate. P11.1 performance
+and richer-sheet validation are tracked separately in
+`p11-1-final-scanner-android-validation.md`; the original procedure and timing
+baseline remain preserved here for history.
