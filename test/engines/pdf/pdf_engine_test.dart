@@ -8,9 +8,12 @@ import 'package:capstone_development/engines/pdf/domain/pdf_render_plan.dart';
 import 'package:capstone_development/engines/pdf/domain/pdf_render_style.dart';
 import 'package:capstone_development/engines/pdf/domain/pdf_units.dart';
 import 'package:capstone_development/engines/pdf/infrastructure/opencv_4x4_50_marker_encoder.dart';
+import 'package:capstone_development/engines/pdf/infrastructure/bundled_pdf_render_font_loader.dart';
 import 'package:capstone_development/engines/template/domain/numeric_grid_spec.dart';
+import 'package:capstone_development/engines/template/domain/question_type.dart';
 import 'package:capstone_development/engines/template/domain/template_content.dart';
 import 'package:capstone_development/engines/template/domain/template_definition.dart';
+import 'package:capstone_development/engines/template/domain/template_option.dart';
 import 'package:capstone_development/engines/template/domain/template_question.dart';
 import 'package:capstone_development/engines/template/domain/template_section.dart';
 import 'package:capstone_development/engines/template/domain/template_status.dart';
@@ -34,10 +37,53 @@ void main() {
     final template = fullTemplate();
     final result = await PdfEngine().render(template, buildLayout(template));
 
-    expect(result.isSuccess, isTrue);
+    expect(
+      result.isSuccess,
+      isTrue,
+      reason: '${result.errorOrNull} ${result.errorOrNull?.details}',
+    );
     expect(result.value, isNotEmpty);
     expect(ascii.decode(result.value.take(5).toList()), '%PDF-');
     expect(_pdfPageCount(result.value), 1);
+  });
+
+  test('bundled Unicode fonts render multilingual survey text', () async {
+    final question = TemplateQuestion(
+      id: QuestionId('unicode-question'),
+      type: QuestionType.singleChoice,
+      prompt: 'Masaya ka ba sa serbisyo? ✓ “Oo” — sigurado',
+      options: [
+        TemplateOption(id: OptionId('unicode-yes'), label: 'Oo – mahusay'),
+        TemplateOption(id: OptionId('unicode-no'), label: 'Hindi — café'),
+      ],
+    );
+    final template = TemplateDefinition(
+      id: TemplateId('unicode-survey'),
+      version: TemplateVersion(1),
+      name: 'Résumé – Survey',
+      status: TemplateStatus.draft,
+      sections: [
+        TemplateSection(
+          id: SectionId('respondent'),
+          title: 'Impormasyon ng Respondent',
+          instruction: 'Piliin ang sagot na “tama”.',
+          questions: [question],
+        ),
+      ],
+    );
+    final layout = buildLayout(template);
+    final unchanged = buildLayout(template);
+
+    final result = await PdfEngine().render(template, layout);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(result.value, isNotEmpty);
+    expect(ascii.decode(result.value.take(5).toList()), '%PDF-');
+    expect(layout, unchanged);
+  });
+
+  test('production renderer uses the bundled Unicode font loader', () {
+    expect(PdfEngine().fontLoader, isA<BundledPdfRenderFontLoader>());
   });
 
   test(

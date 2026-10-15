@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../application/template_builder/template_builder_controller.dart';
+import '../application/template_builder/template_pdf_exporter.dart';
 import '../core/errors/engine_error.dart';
 import '../core/ids/identifiers.dart';
+import '../core/result/engine_result.dart';
 import '../core/result/validation.dart';
 import '../engines/layout/domain/page_layout.dart';
 import '../engines/template/domain/question_type.dart';
@@ -10,10 +12,20 @@ import '../engines/template/domain/template_question.dart';
 import '../engines/template/domain/template_section.dart';
 import 'p12_template_builder_fixture.dart';
 
+typedef TemplatePdfGenerator =
+    Future<EngineResult<TemplatePdfArtifact>> Function();
+
 class P12TemplateBuilderScreen extends StatefulWidget {
-  const P12TemplateBuilderScreen({super.key, this.controller});
+  const P12TemplateBuilderScreen({
+    super.key,
+    this.controller,
+    this.exporter,
+    this.pdfGenerator,
+  });
 
   final TemplateBuilderController? controller;
+  final TemplatePdfExporter? exporter;
+  final TemplatePdfGenerator? pdfGenerator;
 
   @override
   State<P12TemplateBuilderScreen> createState() =>
@@ -22,9 +34,12 @@ class P12TemplateBuilderScreen extends StatefulWidget {
 
 class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplateBuilderController _controller;
+  late TemplatePdfExporter _exporter;
+  late TemplatePdfGenerator _pdfGenerator;
   ValidationResult? _validation;
   TemplateLayoutPreview? _preview;
   TemplatePdfArtifact? _pdf;
+  ExportedPdfFile? _exportedPdf;
   EngineError? _error;
   bool _generatingPdf = false;
 
@@ -32,6 +47,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   void initState() {
     super.initState();
     _controller = widget.controller ?? TemplateBuilderController();
+    _exporter = widget.exporter ?? IoTemplatePdfExporter();
+    _pdfGenerator = widget.pdfGenerator ?? () => _controller.generatePdf();
   }
 
   void _mutate(void Function() operation) {
@@ -40,6 +57,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _validation = null;
       _preview = null;
       _pdf = null;
+      _exportedPdf = null;
       _error = null;
     });
   }
@@ -65,18 +83,29 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _generatingPdf = true;
       _error = null;
     });
-    final result = await _controller.generatePdf();
+    final result = await _pdfGenerator();
+    EngineResult<ExportedPdfFile>? exportResult;
+    if (result.isSuccess) {
+      exportResult = await _exporter.export(
+        bytes: result.value.bytes,
+        suggestedFileName: templatePdfFileName(
+          result.value.definition.name,
+          result.value.definition.version,
+        ),
+      );
+    }
     if (!mounted) return;
     setState(() {
       _generatingPdf = false;
       _pdf = result.valueOrNull;
+      _exportedPdf = exportResult?.valueOrNull;
       _preview = result.isSuccess
           ? TemplateLayoutPreview(
               definition: result.value.definition,
               layout: result.value.layout,
             )
           : null;
-      _error = result.errorOrNull;
+      _error = result.errorOrNull ?? exportResult?.errorOrNull;
       _validation = _controller.validate();
     });
   }
@@ -87,6 +116,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _validation = null;
       _preview = null;
       _pdf = null;
+      _exportedPdf = null;
       _error = null;
     });
   }
@@ -181,12 +211,18 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
             _LayoutPreviewPanel(preview: preview),
           if (_pdf case final pdf?)
             Card(
+              key: const Key('pdf-export-result'),
               color: Theme.of(context).colorScheme.primaryContainer,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text(
-                  'PDF generated in memory: ${pdf.bytes.length} bytes, '
-                  '${pdf.layout.pages.length} page(s).',
+                child: SelectableText(
+                  _exportedPdf == null
+                      ? 'PDF generated in memory but export did not complete.'
+                      : 'PDF exported successfully\n'
+                            'File: ${_exportedPdf!.fileName}\n'
+                            'Path: ${_exportedPdf!.path}\n'
+                            'Bytes: ${_exportedPdf!.byteCount}\n'
+                            'Pages: ${pdf.layout.pages.length}',
                 ),
               ),
             ),

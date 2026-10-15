@@ -14,23 +14,28 @@ import '../../template/domain/template_question.dart';
 import '../../template/domain/template_section.dart';
 import '../domain/aruco_marker_encoder.dart';
 import '../domain/pdf_render_plan.dart';
+import '../domain/pdf_render_fonts.dart';
 import '../domain/pdf_render_style.dart';
 import '../domain/pdf_units.dart';
 import '../domain/template_page_identity_codec.dart';
 import '../infrastructure/opencv_4x4_50_marker_encoder.dart';
+import '../infrastructure/bundled_pdf_render_font_loader.dart';
 
 /// Renders semantic template text over the exact geometry supplied by layout.
 final class PdfEngine {
   PdfEngine({
     ArucoMarkerEncoder? markerEncoder,
     TemplatePageIdentityCodec? identityCodec,
+    PdfRenderFontLoader? fontLoader,
     this.style = const PdfRenderStyle(),
   }) : markerEncoder =
            markerEncoder ?? const OpenCvDictionary4x4MarkerEncoder(),
-       identityCodec = identityCodec ?? const TemplatePageIdentityCodec();
+       identityCodec = identityCodec ?? const TemplatePageIdentityCodec(),
+       fontLoader = fontLoader ?? BundledPdfRenderFontLoader();
 
   final ArucoMarkerEncoder markerEncoder;
   final TemplatePageIdentityCodec identityCodec;
+  final PdfRenderFontLoader fontLoader;
   final PdfRenderStyle style;
 
   EngineResult<PdfRenderPlan> buildPlan(
@@ -183,6 +188,11 @@ final class PdfEngine {
       return EngineResult.failure(planResult.error);
     }
 
+    final fontsResult = await fontLoader.load();
+    if (fontsResult.isFailure) {
+      return EngineResult.failure(fontsResult.error);
+    }
+
     try {
       final document = pw.Document(
         title: template.name,
@@ -190,7 +200,7 @@ final class PdfEngine {
         producer: 'TalaanScan',
       );
       for (final page in planResult.value.pages) {
-        document.addPage(_buildPage(page));
+        document.addPage(_buildPage(page, fontsResult.value));
       }
       final bytes = await document.save();
       if (bytes.isEmpty) {
@@ -454,7 +464,7 @@ final class PdfEngine {
     EngineError(code: 'PDF_INVALID_LAYOUT', message: message, details: details),
   );
 
-  pw.Page _buildPage(PdfPageRenderPlan plan) {
+  pw.Page _buildPage(PdfPageRenderPlan plan, PdfRenderFonts fonts) {
     final page = plan.layout;
     final pageWidth = PdfUnits.lengthToPoints(page.pageSpec.size.width);
     final pageHeight = PdfUnits.lengthToPoints(page.pageSpec.size.height);
@@ -469,7 +479,9 @@ final class PdfEngine {
         }
         children.add(_identityWidget(plan.identity));
         children.addAll(plan.markers.map(_markerWidget));
-        children.addAll(plan.text.map(_textWidget));
+        children.addAll(
+          plan.text.map((command) => _textWidget(command, fonts)),
+        );
         children.addAll(plan.bubbles.map(_bubbleWidget));
         return pw.Stack(fit: pw.StackFit.expand, children: children);
       },
@@ -543,7 +555,7 @@ final class PdfEngine {
     ),
   );
 
-  pw.Widget _textWidget(PdfTextCommand command) {
+  pw.Widget _textWidget(PdfTextCommand command, PdfRenderFonts fonts) {
     if (command.role == PdfTextRole.humanReadableField) {
       return _positioned(
         command.bounds,
@@ -552,7 +564,12 @@ final class PdfEngine {
           children: [
             pw.Positioned.fill(
               bottom: PdfUnits.millimetersToPoints(3),
-              child: _clampedText(command.text, style.bodyFontSizePoints),
+              child: _clampedText(
+                command.text,
+                style.bodyFontSizePoints,
+                fonts,
+                fonts.regular,
+              ),
             ),
             pw.Positioned(
               left: 0,
@@ -580,16 +597,34 @@ final class PdfEngine {
       PdfTextRole.numericDigit => style.labelFontSizePoints,
       _ => style.bodyFontSizePoints,
     };
-    return _positioned(command.bounds, _clampedText(command.text, fontSize));
+    final font =
+        command.role == PdfTextRole.header ||
+            command.role == PdfTextRole.sectionTitle
+        ? fonts.bold
+        : fonts.regular;
+    return _positioned(
+      command.bounds,
+      _clampedText(command.text, fontSize, fonts, font),
+    );
   }
 
-  pw.Widget _clampedText(String text, double fontSize) => pw.ClipRect(
+  pw.Widget _clampedText(
+    String text,
+    double fontSize,
+    PdfRenderFonts fonts,
+    pw.Font font,
+  ) => pw.ClipRect(
     child: pw.FittedBox(
       fit: pw.BoxFit.scaleDown,
       alignment: pw.Alignment.topLeft,
       child: pw.Text(
         text,
-        style: pw.TextStyle(fontSize: fontSize, color: PdfColors.black),
+        style: pw.TextStyle(
+          font: font,
+          fontFallback: fonts.fallback,
+          fontSize: fontSize,
+          color: PdfColors.black,
+        ),
       ),
     ),
   );

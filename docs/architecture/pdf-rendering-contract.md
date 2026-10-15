@@ -40,5 +40,10 @@ for its label. The visual label offset is configured by
 
 Header and section lead text use only their supplied content regions.
 Continuation fragments with null lead regions do not repeat headings.
+PDF text embeds bundled Unicode-capable Roboto fonts: Regular for body,
+instructions, options, and numeric labels; Bold for headers and section titles.
+Noto Sans Symbols 2 provides a fallback for common symbols and dingbats.
+Text remains clipped and scaled down within the existing `PdfTextCommand`
+bounds, so font metrics never change authoritative layout geometry.
 Diagnostic outlines are disabled by default and never cross marker or bubble
 regions.
