@@ -32,7 +32,7 @@ void main() {
     },
   );
 
-  test('export writes exact bytes and returns the actual file path', () async {
+  test('internal export writes exact bytes and returns its file URI', () async {
     final bytes = Uint8List.fromList([37, 80, 68, 70, 45, 1, 2, 3]);
     final exporter = IoTemplatePdfExporter(
       directoryProvider: () async => temporaryDirectory,
@@ -46,7 +46,9 @@ void main() {
     expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
     expect(result.value.fileName, 'survey-one-v1.pdf');
     expect(result.value.byteCount, bytes.length);
-    final file = File(result.value.path);
+    expect(result.value.method, PdfExportMethod.internalFileSystem);
+    expect(result.value.userCancelled, isFalse);
+    final file = File.fromUri(result.value.locationUri!);
     expect(await file.exists(), isTrue);
     expect(await file.readAsBytes(), bytes);
   });
@@ -68,7 +70,10 @@ void main() {
       );
 
       expect(result.isSuccess, isTrue);
-      expect(await File(result.value.path).readAsBytes(), [4, 5]);
+      expect(await File.fromUri(result.value.locationUri!).readAsBytes(), [
+        4,
+        5,
+      ]);
     },
   );
 

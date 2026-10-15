@@ -59,8 +59,9 @@ void main() {
       expect(exportResult.isSuccess, isTrue);
       expect(exportResult.value.fileName, 'resume-survey-v1.pdf');
       expect(exportResult.value.byteCount, artifact.bytes.length);
-      expect(await File(exportResult.value.path).exists(), isTrue);
-      expect(await File(exportResult.value.path).readAsBytes(), artifact.bytes);
+      final exportedFile = File.fromUri(exportResult.value.locationUri!);
+      expect(await exportedFile.exists(), isTrue);
+      expect(await exportedFile.readAsBytes(), artifact.bytes);
       expect(ascii.decode(artifact.bytes.take(5).toList()), '%PDF-');
       expect(artifact.definition, definitionBeforeExport);
       expect(artifact.layout, layoutBeforeExport);

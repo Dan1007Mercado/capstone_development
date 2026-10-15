@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../application/template_builder/template_builder_controller.dart';
 import '../application/template_builder/template_pdf_exporter.dart';
+import '../application/template_builder/user_accessible_template_pdf_exporter.dart';
 import '../core/errors/engine_error.dart';
 import '../core/ids/identifiers.dart';
 import '../core/result/engine_result.dart';
@@ -39,15 +40,16 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   ValidationResult? _validation;
   TemplateLayoutPreview? _preview;
   TemplatePdfArtifact? _pdf;
-  ExportedPdfFile? _exportedPdf;
+  PdfExportOutcome? _exportOutcome;
   EngineError? _error;
   bool _generatingPdf = false;
+  bool _savingPdf = false;
 
   @override
   void initState() {
     super.initState();
     _controller = widget.controller ?? TemplateBuilderController();
-    _exporter = widget.exporter ?? IoTemplatePdfExporter();
+    _exporter = widget.exporter ?? UserAccessibleTemplatePdfExporter();
     _pdfGenerator = widget.pdfGenerator ?? () => _controller.generatePdf();
   }
 
@@ -57,7 +59,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _validation = null;
       _preview = null;
       _pdf = null;
-      _exportedPdf = null;
+      _exportOutcome = null;
       _error = null;
     });
   }
@@ -84,29 +86,42 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _error = null;
     });
     final result = await _pdfGenerator();
-    EngineResult<ExportedPdfFile>? exportResult;
-    if (result.isSuccess) {
-      exportResult = await _exporter.export(
-        bytes: result.value.bytes,
-        suggestedFileName: templatePdfFileName(
-          result.value.definition.name,
-          result.value.definition.version,
-        ),
-      );
-    }
     if (!mounted) return;
     setState(() {
       _generatingPdf = false;
       _pdf = result.valueOrNull;
-      _exportedPdf = exportResult?.valueOrNull;
+      _exportOutcome = null;
       _preview = result.isSuccess
           ? TemplateLayoutPreview(
               definition: result.value.definition,
               layout: result.value.layout,
             )
           : null;
-      _error = result.errorOrNull ?? exportResult?.errorOrNull;
+      _error = result.errorOrNull;
       _validation = _controller.validate();
+    });
+  }
+
+  Future<void> _savePdf() async {
+    final pdf = _pdf;
+    if (pdf == null) return;
+    setState(() {
+      _savingPdf = true;
+      _exportOutcome = null;
+      _error = null;
+    });
+    final result = await _exporter.export(
+      bytes: pdf.bytes,
+      suggestedFileName: templatePdfFileName(
+        pdf.definition.name,
+        pdf.definition.version,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _savingPdf = false;
+      _exportOutcome = result.valueOrNull;
+      _error = result.errorOrNull;
     });
   }
 
@@ -116,7 +131,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _validation = null;
       _preview = null;
       _pdf = null;
-      _exportedPdf = null;
+      _exportOutcome = null;
       _error = null;
     });
   }
@@ -197,7 +212,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
               ),
               FilledButton(
                 key: const Key('generate-pdf'),
-                onPressed: _generatingPdf ? null : _generatePdf,
+                onPressed: _generatingPdf || _savingPdf ? null : _generatePdf,
                 child: Text(
                   _generatingPdf ? 'Generating...' : 'Generate Preview PDF',
                 ),
@@ -215,14 +230,33 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
               color: Theme.of(context).colorScheme.primaryContainer,
               child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: SelectableText(
-                  _exportedPdf == null
-                      ? 'PDF generated in memory but export did not complete.'
-                      : 'PDF exported successfully\n'
-                            'File: ${_exportedPdf!.fileName}\n'
-                            'Path: ${_exportedPdf!.path}\n'
-                            'Bytes: ${_exportedPdf!.byteCount}\n'
-                            'Pages: ${pdf.layout.pages.length}',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SelectableText(
+                      'PDF generated successfully\n'
+                      'File: ${templatePdfFileName(pdf.definition.name, pdf.definition.version)}\n'
+                      'Bytes: ${pdf.bytes.length}\n'
+                      'Pages: ${pdf.layout.pages.length}',
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      key: const Key('save-pdf'),
+                      onPressed: _savingPdf ? null : _savePdf,
+                      icon: const Icon(Icons.save_alt),
+                      label: Text(_savingPdf ? 'Saving...' : 'Save PDF'),
+                    ),
+                    if (_exportOutcome case final outcome?) ...[
+                      const SizedBox(height: 8),
+                      SelectableText(
+                        outcome.userCancelled
+                            ? 'Save cancelled. The generated PDF is still available to save.'
+                            : 'PDF saved successfully.\n'
+                                  'URI: ${outcome.locationUri}',
+                        key: const Key('pdf-save-outcome'),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),

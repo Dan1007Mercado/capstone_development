@@ -1,4 +1,12 @@
-# P12.1 PDF Export and Unicode Manual Validation
+# P12.1.1 User-Accessible PDF Export and Unicode Manual Validation
+
+## Export Approach
+
+The debug builder uses `file_picker` for one purpose: pass the generated PDF
+bytes to the platform save dialog. On Android this provides the system document
+picker and a user-selected destination without broad storage permissions. The
+internal IO exporter remains available for deterministic tests and internal
+temporary-file workflows, but it is not the Android screen's default exporter.
 
 ## Run
 
@@ -19,17 +27,23 @@ Open **P12 Template Builder** from the debug home.
 5. Press **Validate** and confirm the template is valid.
 6. Press **Preview Layout** and record the page count.
 7. Press **Generate Preview PDF**.
-8. Confirm the screen reports export success, file name, full saved path, byte
-   count, and page count. The path is selectable.
-9. Locate the file at the displayed path. On Android the debug exporter writes
-   beneath the app cache at `Directory.systemTemp/talaan_scan/exports`; this
-   requires no broad storage permission. Re-exporting the same template and
-   version predictably overwrites the same file.
-10. Copy the file from the device if needed and open it in a PDF viewer.
-11. Confirm accented characters, Filipino text, smart punctuation, dashes, and
+8. Confirm the screen reports generation success, file name, byte count, and
+   page count.
+9. Press **Save PDF**.
+10. In the Android system document picker, choose a user-accessible location
+    such as **Downloads** or **Documents**, then confirm the save.
+11. Confirm the screen reports **PDF saved successfully**. A returned Android
+    content URI may be shown for diagnostics; it is not a filesystem path.
+12. Open the Android **Files** app, locate the saved PDF, and open it in a PDF
+    viewer.
+13. Confirm accented characters, Filipino text, smart punctuation, dashes, and
     the check mark render without missing glyphs.
-12. Confirm all marker IDs, bubbles, page count, and content placement match the
+14. Confirm all marker IDs, bubbles, page count, and content placement match the
     authoritative preview and no geometry shifted.
+
+Closing the system picker is a normal cancellation. The screen should keep the
+generated PDF available and allow **Save PDF** to be pressed again without
+showing an engine failure.
 
 ## Expected Filename
 
@@ -39,7 +53,7 @@ example, `Résumé – Survey` version 1 becomes `resume-survey-v1.pdf`.
 
 ## Record
 
-- File name and full saved path
+- File name and chosen destination (or returned URI, when shown)
 - Byte count and page count
 - Unicode strings inspected
 - Marker and bubble geometry result

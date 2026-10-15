@@ -5,20 +5,32 @@ import '../../core/errors/engine_error.dart';
 import '../../core/ids/identifiers.dart';
 import '../../core/result/engine_result.dart';
 
-final class ExportedPdfFile {
-  const ExportedPdfFile({
-    required this.path,
+enum PdfExportMethod { systemSaveDialog, internalFileSystem }
+
+final class PdfExportOutcome {
+  const PdfExportOutcome.saved({
     required this.fileName,
     required this.byteCount,
-  });
+    required this.method,
+    required this.locationUri,
+  }) : userCancelled = false;
 
-  final String path;
+  const PdfExportOutcome.cancelled({
+    required this.fileName,
+    required this.byteCount,
+    required this.method,
+  }) : locationUri = null,
+       userCancelled = true;
+
   final String fileName;
   final int byteCount;
+  final PdfExportMethod method;
+  final Uri? locationUri;
+  final bool userCancelled;
 }
 
 abstract interface class TemplatePdfExporter {
-  Future<EngineResult<ExportedPdfFile>> export({
+  Future<EngineResult<PdfExportOutcome>> export({
     required Uint8List bytes,
     required String suggestedFileName,
   });
@@ -37,7 +49,7 @@ final class IoTemplatePdfExporter implements TemplatePdfExporter {
   final ExportDirectoryProvider _directoryProvider;
 
   @override
-  Future<EngineResult<ExportedPdfFile>> export({
+  Future<EngineResult<PdfExportOutcome>> export({
     required Uint8List bytes,
     required String suggestedFileName,
   }) async {
@@ -84,10 +96,11 @@ final class IoTemplatePdfExporter implements TemplatePdfExporter {
         );
       }
       return EngineResult.success(
-        ExportedPdfFile(
-          path: file.absolute.path,
+        PdfExportOutcome.saved(
           fileName: fileName,
           byteCount: byteCount,
+          method: PdfExportMethod.internalFileSystem,
+          locationUri: file.absolute.uri,
         ),
       );
     } on Object catch (error) {
