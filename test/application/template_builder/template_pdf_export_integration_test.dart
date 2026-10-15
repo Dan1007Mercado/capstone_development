@@ -65,18 +65,13 @@ void main() {
       expect(ascii.decode(artifact.bytes.take(5).toList()), '%PDF-');
       expect(artifact.definition, definitionBeforeExport);
       expect(artifact.layout, layoutBeforeExport);
-      expect(
-        artifact.layout.pages.expand(
-          (page) => page.markerRegions.map((marker) => marker.markerId),
-        ),
-        everyElement(isIn([10, 11, 12, 13])),
-      );
       for (final page in artifact.layout.pages) {
+        final firstMarkerId = 10 + page.pageIndex * 4;
         expect(page.markerRegions.map((marker) => marker.markerId), [
-          10,
-          11,
-          12,
-          13,
+          firstMarkerId,
+          firstMarkerId + 1,
+          firstMarkerId + 2,
+          firstMarkerId + 3,
         ]);
       }
     },

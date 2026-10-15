@@ -4,7 +4,6 @@ import '../../../core/ids/identifiers.dart';
 import '../../aruco/domain/page_alignment_result.dart';
 import '../../preprocessing/domain/preprocessed_page.dart';
 import '../../recognition/domain/mark_classification.dart';
-import 'scanner_identity.dart';
 
 enum ScanStage {
   alignment,
@@ -52,7 +51,6 @@ final class ScanStageDurations {
     required this.preprocessing,
     required this.measurement,
     required this.classification,
-    this.identity = Duration.zero,
     this.validation = Duration.zero,
   });
 
@@ -60,7 +58,6 @@ final class ScanStageDurations {
   final Duration preprocessing;
   final Duration measurement;
   final Duration classification;
-  final Duration identity;
   final Duration validation;
 }
 
@@ -71,7 +68,6 @@ final class ScanDiagnostics {
     required this.alignment,
     required this.preprocessing,
     required this.summary,
-    this.identity,
   });
 
   final Duration totalProcessingDuration;
@@ -79,7 +75,6 @@ final class ScanDiagnostics {
   final PageAlignmentDiagnostics alignment;
   final PreprocessingDiagnostics preprocessing;
   final ScanSummary summary;
-  final ScannerIdentityDiagnostics? identity;
 }
 
 final class ScanResult {

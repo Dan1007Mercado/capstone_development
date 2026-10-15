@@ -3,7 +3,10 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../../../core/errors/engine_error.dart';
+import '../../../core/ids/identifiers.dart';
 import '../../../core/result/engine_result.dart';
+import '../../aruco/domain/page_marker_signature_resolver.dart';
+import '../../layout/domain/layout_config.dart';
 import '../../aruco/domain/image_geometry.dart';
 import '../../aruco/infrastructure/opencv_aruco_detector.dart';
 import '../domain/camera_backend.dart';
@@ -41,6 +44,13 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
         'bytesPerPixel': frame.bytesPerPixel,
         'analysisMaxDimension': config.analysisMaxDimension,
         'markerIds': config.markerIds.values,
+        'pageMarkerSignatures': [
+          for (final signature in config.pageMarkerSignatures)
+            {
+              'pageId': signature.pageId.value,
+              'ids': signature.markerIds.values,
+            },
+        ],
       });
       final message = await response.first as Map<Object?, Object?>;
       roundTripStopwatch.stop();
@@ -75,6 +85,11 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
           timings: _readWorkerTimings(message, roundTripStopwatch.elapsed),
           sensorOrientationDegrees: frame.sensorOrientationDegrees,
           deviceOrientation: frame.deviceOrientation,
+          resolvedPageId: message['resolvedPageId'] == null
+              ? null
+              : PageId(message['resolvedPageId']! as String),
+          pageResolutionErrorCode:
+              message['pageResolutionErrorCode'] as String?,
         ),
       );
     } on Object catch (error) {
@@ -123,19 +138,19 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
 
 void _cameraWorkerMain(SendPort ready) {
   final commands = ReceivePort();
-  final detector = OpenCvArucoDetector();
+  final state = _CameraWorkerState();
   ready.send(commands.sendPort);
   commands.listen((dynamic rawMessage) {
     final message = (rawMessage as Map<Object?, Object?>);
     final reply = message['reply']! as SendPort;
     if (message['dispose'] == true) {
-      detector.dispose();
+      state.dispose();
       reply.send(true);
       commands.close();
       return;
     }
     try {
-      reply.send(_analyzeInWorker(message, detector));
+      reply.send(_analyzeInWorker(message, state));
     } on Object catch (error) {
       reply.send({
         'ok': false,
@@ -149,7 +164,7 @@ void _cameraWorkerMain(SendPort ready) {
 
 Map<Object?, Object?> _analyzeInWorker(
   Map<Object?, Object?> task,
-  OpenCvArucoDetector detector,
+  _CameraWorkerState state,
 ) {
   final workerStopwatch = Stopwatch()..start();
   final preparationStopwatch = Stopwatch()..start();
@@ -177,7 +192,7 @@ Map<Object?, Object?> _analyzeInWorker(
   );
   sharpnessStopwatch.stop();
   final arucoStopwatch = Stopwatch()..start();
-  final detectionResult = detector.detectGray(
+  final detectionResult = state.detector.detectGray(
     pixels: prepared.pixels,
     width: prepared.analysisSize.width,
     height: prepared.analysisSize.height,
@@ -197,15 +212,29 @@ Map<Object?, Object?> _analyzeInWorker(
     detectionResult.value,
     prepared.sourceSize,
   );
+  final resolver = state.resolverFor(
+    (task['pageMarkerSignatures']! as List<Object?>)
+        .cast<Map<Object?, Object?>>(),
+  );
+  EngineResult<ResolvedPageMarkerSignature>? resolution;
+  if (resolver != null) {
+    resolution = resolver.resolve(
+      sourceDetection.markers.map((marker) => marker.id),
+    );
+  }
   final geometry = calculateCameraMarkerGeometry(
     sourceDetection: sourceDetection,
-    markerIds: (task['markerIds']! as List<Object?>).cast<int>(),
+    markerIds:
+        resolution?.valueOrNull?.markerIds.values ??
+        (task['markerIds']! as List<Object?>).cast<int>(),
   );
   geometryStopwatch.stop();
   workerStopwatch.stop();
   return {
     'ok': true,
     'detectedMarkerIds': geometry.detectedMarkerIds,
+    'resolvedPageId': resolution?.valueOrNull?.pageId.value,
+    'pageResolutionErrorCode': resolution?.errorOrNull?.code,
     'registrationPoints': [
       for (final point in geometry.registrationPoints) [point.x, point.y],
     ],
@@ -224,6 +253,52 @@ Map<Object?, Object?> _analyzeInWorker(
     'geometryUs': geometryStopwatch.elapsedMicroseconds,
     'workerUs': workerStopwatch.elapsedMicroseconds,
   };
+}
+
+final class _CameraWorkerState {
+  final OpenCvArucoDetector detector = OpenCvArucoDetector();
+  String? _signatureKey;
+  PageMarkerSignatureResolver? _resolver;
+
+  PageMarkerSignatureResolver? resolverFor(
+    List<Map<Object?, Object?>> signatureData,
+  ) {
+    if (signatureData.isEmpty) {
+      _signatureKey = '';
+      _resolver = null;
+      return null;
+    }
+    final key = signatureData
+        .map((data) => '${data['pageId']}:${data['ids']}')
+        .join('|');
+    if (_signatureKey == key) return _resolver;
+    _signatureKey = key;
+    _resolver = PageMarkerSignatureResolver(
+      signatureData.map(
+        (data) => PageMarkerSignature(
+          pageId: PageId(data['pageId']! as String),
+          markerIds: _markerIds((data['ids']! as List<Object?>).cast<int>()),
+        ),
+      ),
+    );
+    return _resolver;
+  }
+
+  void dispose() {
+    detector.dispose();
+    _resolver = null;
+    _signatureKey = null;
+  }
+}
+
+MarkerIds _markerIds(List<int> ids) {
+  if (ids.length != 4) throw ArgumentError('Four marker IDs are required.');
+  return MarkerIds(
+    topLeft: ids[0],
+    topRight: ids[1],
+    bottomLeft: ids[2],
+    bottomRight: ids[3],
+  );
 }
 
 CameraAnalysisTimings _readWorkerTimings(

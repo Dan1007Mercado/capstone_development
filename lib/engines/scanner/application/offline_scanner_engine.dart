@@ -10,7 +10,6 @@ import '../../template/domain/template_definition.dart';
 import '../../template/domain/template_question.dart';
 import '../domain/scan_result.dart';
 import '../domain/scanner_config.dart';
-import '../domain/scanner_identity.dart';
 import '../domain/scanner_stages.dart';
 
 final class OfflineScannerEngine {
@@ -19,14 +18,12 @@ final class OfflineScannerEngine {
     required this.preprocessing,
     required this.measurement,
     required this.classification,
-    this.identity,
   });
 
   final ScannerAlignmentStage alignment;
   final ScannerPreprocessingStage preprocessing;
   final ScannerMeasurementStage measurement;
   final ScannerClassificationStage classification;
-  final ScannerIdentityStage? identity;
 
   EngineResult<ScanResult> scan({
     required Uint8List encodedImage,
@@ -64,45 +61,17 @@ final class OfflineScannerEngine {
     }
     alignmentStopwatch.stop();
     if (alignmentResult.isFailure) {
+      if (const {
+        'SCAN_UNKNOWN_PAGE_MARKERS',
+        'SCAN_DUPLICATE_PAGE_MARKERS',
+      }.contains(alignmentResult.error.code)) {
+        return EngineResult.failure(alignmentResult.error);
+      }
       return _stageFailure(
         ScanStage.alignment,
         alignmentResult.error,
         pageLayout,
       );
-    }
-
-    ScannerIdentityDiagnostics? identityDiagnostics;
-    final identityStopwatch = Stopwatch();
-    if (identity != null) {
-      identityStopwatch.start();
-      final identityResult = identity!.identify(
-        alignmentResult.value.canonicalPage,
-        pageLayout,
-      );
-      identityStopwatch.stop();
-      if (identityResult.isFailure) {
-        return EngineResult.failure(identityResult.error);
-      }
-      identityDiagnostics = identityResult.value.diagnostics;
-      final identityValidation = validateTemplatePageIdentity(
-        actual: identityResult.value.identity,
-        expectedTemplateId: template.id,
-        expectedTemplateVersion: template.version,
-        expectedPageId: pageLayout.pageId,
-      );
-      if (identityValidation.isFailure) {
-        final error = identityValidation.error;
-        return EngineResult.failure(
-          EngineError(
-            code: error.code,
-            message: error.message,
-            details: {
-              ...error.details,
-              ...identityDiagnostics.toErrorDetails(),
-            },
-          ),
-        );
-      }
     }
 
     final preprocessingStopwatch = Stopwatch()..start();
@@ -245,13 +214,11 @@ final class OfflineScannerEngine {
             preprocessing: preprocessingStopwatch.elapsed,
             measurement: measurementStopwatch.elapsed,
             classification: classificationStopwatch.elapsed,
-            identity: identityStopwatch.elapsed,
             validation: validationStopwatch.elapsed,
           ),
           alignment: alignmentResult.value.diagnostics,
           preprocessing: preprocessingResult.value.diagnostics,
           summary: summary,
-          identity: identityDiagnostics,
         ),
       ),
     );

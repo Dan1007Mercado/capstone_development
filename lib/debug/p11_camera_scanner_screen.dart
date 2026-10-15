@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../application/camera_scanner/domain/camera_scan_state.dart';
+import '../engines/camera/domain/camera_models.dart';
 import '../engines/layout/domain/page_layout.dart';
 import 'omr_camera_preview.dart';
 import 'p11_camera_scanner_composition.dart';
@@ -125,7 +126,6 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
     final timings = state.finalScanTimings;
     final scanDiagnostics = result?.diagnostics;
     final alignment = scanDiagnostics?.alignment;
-    final identity = scanDiagnostics?.identity;
     final stages = scanDiagnostics?.stageDurations;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -146,6 +146,15 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
           'Marker IDs: ${analysis?.tracking.detectedMarkerIds ?? const <int>[]}',
         ),
         Text('Readiness: ${camera.readiness.status.name}'),
+        Text(
+          'First recognition to ready: '
+          '${_milliseconds(camera.diagnostics.firstRecognitionToReadyDuration)} ms',
+        ),
+        for (final status in CaptureReadinessStatus.values)
+          Text(
+            'Readiness ${status.name}: '
+            '${_milliseconds(camera.diagnostics.readinessDurations[status])} ms',
+          ),
         Text(
           'Stable frames: ${camera.readiness.stableFrameCount}/'
           '${camera.readiness.requiredStableFrameCount}',
@@ -234,6 +243,9 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
               ],
             ),
         ],
+        Text(
+          'Stop analysis: ${_milliseconds(timings.stopAnalysisDuration)} ms',
+        ),
         Text('Capture: ${_milliseconds(timings.captureDuration)} ms'),
         Text('Transfer/load: ${_milliseconds(timings.byteLoadDuration)} ms'),
         Text('Decode: ${_milliseconds(alignment?.decodeDuration)} ms'),
@@ -242,6 +254,10 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
           '${_milliseconds(alignment?.detectionPreparationDuration)} ms',
         ),
         Text('ArUco detect: ${_milliseconds(alignment?.detectionDuration)} ms'),
+        Text(
+          'Page resolution: '
+          '${_milliseconds(alignment?.pageResolutionDuration)} ms',
+        ),
         Text(
           'Coordinate remap: '
           '${_milliseconds(alignment?.coordinateRemapDuration)} ms',
@@ -253,19 +269,6 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
         Text('Homography: ${_milliseconds(alignment?.homographyDuration)} ms'),
         Text(
           'Warp/canonicalization: ${_milliseconds(alignment?.warpDuration)} ms',
-        ),
-        Text('QR identity: ${_milliseconds(stages?.identity)} ms'),
-        Text('  Source: ${identity?.source?.name ?? 'unavailable'}'),
-        Text(
-          '  Crop: ${identity == null ? 'unavailable' : '${identity.cropSize.width}x${identity.cropSize.height}'}',
-        ),
-        Text('  Upscale: ${identity?.upscaleFactor ?? '-'}x'),
-        Text(
-          '  Payload decoded: ${identity?.payloadDecoded == true
-              ? 'yes'
-              : identity == null
-              ? 'unavailable'
-              : 'no'}',
         ),
         Text('Preprocessing: ${_milliseconds(stages?.preprocessing)} ms'),
         Text(

@@ -161,6 +161,83 @@ void main() {
     expect(measurement.fillRatio, 0);
   });
 
+  test('dark pen, check, and X marks retain distinct positive evidence', () {
+    final layout = _choiceLayout();
+    final roi = mapper.map(
+      layout.bubbleRegions.first,
+      layout,
+      const BubbleMeasurementConfig(),
+    );
+
+    final pen = _fixture(layout);
+    _paintInterior(pen, roi, value: 25, foreground: 1);
+    final penMeasurement = _measure(engine, layout, pen).measurements.first;
+
+    final check = _fixture(layout);
+    _paintInterior(
+      check,
+      roi,
+      value: 35,
+      foreground: 1,
+      include: (x, y) {
+        final dx = x + 0.5 - roi.center.x;
+        final dy = y + 0.5 - roi.center.y;
+        return (dy - dx).abs() < 1.2 || (dy + dx / 2).abs() < 1.2;
+      },
+    );
+    final checkMeasurement = _measure(engine, layout, check).measurements.first;
+
+    final cross = _fixture(layout);
+    _paintInterior(
+      cross,
+      roi,
+      value: 35,
+      foreground: 1,
+      include: (x, y) {
+        final dx = x + 0.5 - roi.center.x;
+        final dy = y + 0.5 - roi.center.y;
+        return (dy - dx).abs() < 1.2 || (dy + dx).abs() < 1.2;
+      },
+    );
+    final crossMeasurement = _measure(engine, layout, cross).measurements.first;
+
+    expect(penMeasurement.fillRatio, 1);
+    expect(checkMeasurement.fillRatio, greaterThan(0));
+    expect(crossMeasurement.fillRatio, greaterThan(0));
+    expect(checkMeasurement.darknessContrast, greaterThan(0));
+    expect(crossMeasurement.darknessContrast, greaterThan(0));
+  });
+
+  test(
+    'mild blur and slight mark offset do not become false blank evidence',
+    () {
+      final layout = _choiceLayout();
+      final fixture = _fixture(layout);
+      final roi = mapper.map(
+        layout.bubbleRegions.first,
+        layout,
+        const BubbleMeasurementConfig(),
+      );
+      _paintInterior(
+        fixture,
+        roi,
+        value: 135,
+        foreground: 1,
+        include: (x, y) {
+          final dx = x + 0.5 - (roi.center.x + 1.0);
+          final dy = y + 0.5 - (roi.center.y + 0.5);
+          return dx * dx + dy * dy <
+              roi.interiorRadius * roi.interiorRadius * 0.7;
+        },
+      );
+
+      final measurement = _measure(engine, layout, fixture).measurements.first;
+
+      expect(measurement.fillRatio, greaterThan(0.4));
+      expect(measurement.darknessContrast, greaterThan(40));
+    },
+  );
+
   test('local gradient does not radically change darkness contrast', () {
     final layout = _choiceLayout();
     final uniform = _fixture(layout);

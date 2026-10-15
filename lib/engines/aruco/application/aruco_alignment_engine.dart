@@ -37,6 +37,32 @@ final class ArucoAlignmentEngine {
 
     final session = sessionResult.value;
     try {
+      final pageResolutionStopwatch = Stopwatch()..start();
+      final detectedIds = session.detection.markers
+          .map((marker) => marker.id)
+          .toList(growable: false);
+      final expectedIds = page.markerRegions
+          .map((marker) => marker.markerId)
+          .toSet();
+      if (detectedIds.toSet().length != detectedIds.length) {
+        return _failure(
+          'SCAN_DUPLICATE_PAGE_MARKERS',
+          'A page marker ID was detected more than once.',
+          {'detectedMarkerIds': detectedIds},
+        );
+      }
+      if (detectedIds.length != expectedIds.length ||
+          !detectedIds.toSet().containsAll(expectedIds)) {
+        return _failure(
+          'SCAN_UNKNOWN_PAGE_MARKERS',
+          'The captured still does not match the live-resolved page markers.',
+          {
+            'expectedMarkerIds': expectedIds.toList()..sort(),
+            'detectedMarkerIds': detectedIds.toList()..sort(),
+          },
+        );
+      }
+      pageResolutionStopwatch.stop();
       final correspondenceStopwatch = Stopwatch()..start();
       final correspondenceResult = correspondenceService.build(
         detection: session.detection,
@@ -127,6 +153,7 @@ final class ArucoAlignmentEngine {
                 session.openTimings.detectionPreparation,
             detectionDuration: session.openTimings.detection,
             coordinateRemapDuration: session.openTimings.coordinateRemap,
+            pageResolutionDuration: pageResolutionStopwatch.elapsed,
             correspondenceDuration: correspondenceStopwatch.elapsed,
             homographyDuration: rectification.value.timings.homography,
             warpDuration: rectification.value.timings.warp,

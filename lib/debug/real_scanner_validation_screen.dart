@@ -188,6 +188,11 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
         _session = recorded.valueOrNull ?? _session;
         _sessionError = recorded.errorOrNull;
       });
+      if (recorded.isSuccess) {
+        _runtime.coordinator.updateCompletedPages(
+          recorded.value.resultsByPageId.keys,
+        );
+      }
       if (recorded.isFailure) _runtime.coordinator.reset();
       return;
     }
@@ -219,12 +224,6 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
       });
       return;
     }
-    final context = next.currentContext;
-    final updated = _runtime.coordinator.updateContext(context);
-    if (updated.isFailure) {
-      setState(() => _sessionError = updated.error);
-      return;
-    }
     _runtime.coordinator.reset();
     setState(() {
       _session = next;
@@ -253,12 +252,19 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
       return _ScannerCompleteScreen(session: _session);
     }
     final controller = _runtime.backend.controller;
-    final pageNumber = _session.currentPageIndex + 1;
+    final detectedPageId = _state.cameraState.analysis?.tracking.resolvedPageId;
+    final detectedPage = detectedPageId == null
+        ? null
+        : _session.pages
+              .where((page) => page.pageId == detectedPageId)
+              .firstOrNull;
+    final pageNumber =
+        (detectedPage?.pageIndex ?? _session.currentPageIndex) + 1;
     final pageCount = _session.pages.length;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Text('Scan page $pageNumber of $pageCount'),
+        title: Text('Scan ${_session.artifact.template.name}'),
         actions: [
           IconButton(
             tooltip: 'Show diagnostics',
@@ -301,6 +307,10 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                                   _state,
                                   pageNumber: pageNumber,
                                   pageCount: pageCount,
+                                  pageDetected: detectedPage != null,
+                                  pageAlreadyCompleted:
+                                      detectedPageId != null &&
+                                      _session.isPageCompleted(detectedPageId),
                                 ),
                                 progress:
                                     '${_session.completedPageCount} of $pageCount completed',
@@ -349,7 +359,9 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                 padding: const EdgeInsets.all(12),
                 child: P11CameraScannerDiagnosticsPanel(
                   state: _state,
-                  expectedPage: _session.currentPage,
+                  expectedPage:
+                      detectedPage ??
+                      _runtime.coordinator.activeContext.pageLayout,
                   onCapture: () =>
                       unawaited(_runtime.coordinator.captureAndScan()),
                   onReset: () => _runtime.coordinator.reset(),
@@ -368,7 +380,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     }
     return _coordinateMapper.mapQuadrilateral(
       sourcePoints: projectDetectedPageOutline(
-        page: _session.currentPage,
+        page: _runtime.coordinator.activeContext.pageLayout,
         sourceRegistrationPoints: analysis.tracking.registrationPoints,
       ),
       sourceSize: analysis.sourceFrameSize,
@@ -453,7 +465,7 @@ class ScannerPageResultScreen extends StatelessWidget {
           FilledButton(
             key: const Key('continue-after-page-review'),
             onPressed: onContinue,
-            child: Text(session.isLastPage ? 'Done' : 'Continue'),
+            child: Text(session.isComplete ? 'Done' : 'Continue'),
           ),
           ExpansionTile(
             title: const Text('Show diagnostics'),

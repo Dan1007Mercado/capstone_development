@@ -1,4 +1,5 @@
 import '../../layout/domain/layout_config.dart';
+import '../../aruco/domain/page_marker_signature_resolver.dart';
 
 enum CameraLensPreference { rear, front }
 
@@ -23,6 +24,7 @@ final class CameraEngineConfig {
     double maximumMotionThreshold = 0.015,
     bool requireAllMarkers = true,
     MarkerIds markerIds = MarkerIds.defaults,
+    List<PageMarkerSignature> pageMarkerSignatures = const [],
     double minimumPageAreaRatio = 0.12,
     double maximumPerspectiveRatio = 6,
     double minimumMarkerSidePixels = 12,
@@ -76,6 +78,9 @@ final class CameraEngineConfig {
     if (!markerIds.areUnique || markerIds.values.any((id) => id < 0)) {
       throw ArgumentError('Camera marker IDs must be unique and non-negative.');
     }
+    if (pageMarkerSignatures.isNotEmpty) {
+      PageMarkerSignatureResolver(pageMarkerSignatures);
+    }
     if (captureCooldown.isNegative) {
       throw ArgumentError.value(captureCooldown, 'captureCooldown');
     }
@@ -90,6 +95,7 @@ final class CameraEngineConfig {
       maximumMotionThreshold: maximumMotionThreshold,
       requireAllMarkers: requireAllMarkers,
       markerIds: markerIds,
+      pageMarkerSignatures: List.unmodifiable(pageMarkerSignatures),
       minimumPageAreaRatio: minimumPageAreaRatio,
       maximumPerspectiveRatio: maximumPerspectiveRatio,
       minimumMarkerSidePixels: minimumMarkerSidePixels,
@@ -113,6 +119,7 @@ final class CameraEngineConfig {
     required this.maximumMotionThreshold,
     required this.requireAllMarkers,
     required this.markerIds,
+    required this.pageMarkerSignatures,
     required this.minimumPageAreaRatio,
     required this.maximumPerspectiveRatio,
     required this.minimumMarkerSidePixels,
@@ -134,6 +141,7 @@ final class CameraEngineConfig {
   final double maximumMotionThreshold;
   final bool requireAllMarkers;
   final MarkerIds markerIds;
+  final List<PageMarkerSignature> pageMarkerSignatures;
   final double minimumPageAreaRatio;
   final double maximumPerspectiveRatio;
   final double minimumMarkerSidePixels;

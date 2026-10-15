@@ -75,6 +75,7 @@ final class PageAlignmentDiagnostics {
     this.detectionPreparationDuration = Duration.zero,
     this.detectionDuration = Duration.zero,
     this.coordinateRemapDuration = Duration.zero,
+    this.pageResolutionDuration = Duration.zero,
     this.correspondenceDuration = Duration.zero,
     this.homographyDuration = Duration.zero,
     this.warpDuration = Duration.zero,
@@ -110,6 +111,7 @@ final class PageAlignmentDiagnostics {
   final Duration detectionPreparationDuration;
   final Duration detectionDuration;
   final Duration coordinateRemapDuration;
+  final Duration pageResolutionDuration;
   final Duration correspondenceDuration;
   final Duration homographyDuration;
   final Duration warpDuration;

@@ -18,8 +18,8 @@ void main() {
     ).readAsStringSync();
 
     expect(RegExp(r'OpenCvArucoDetector\(\)').allMatches(source).length, 1);
-    expect(source, contains('final detector = OpenCvArucoDetector();'));
-    expect(source, contains('_analyzeInWorker(message, detector)'));
+    expect(source, contains('final OpenCvArucoDetector detector'));
+    expect(source, contains('_analyzeInWorker(message, state)'));
     expect(source, contains('detector.dispose();'));
   });
 

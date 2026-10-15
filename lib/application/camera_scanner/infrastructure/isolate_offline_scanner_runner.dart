@@ -5,11 +5,9 @@ import 'dart:typed_data';
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../../../engines/aruco/infrastructure/opencv_aruco_vision_backend.dart';
-import '../../../engines/pdf/domain/template_page_identity_codec.dart';
 import '../../../engines/preprocessing/infrastructure/opencv_preprocessing_backend.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
 import '../../../engines/scanner/infrastructure/offline_scanner_composition.dart';
-import '../../../engines/scanner/infrastructure/opencv_qr_identity_stage.dart';
 import '../../real_scanner/scanner_identity_validation.dart';
 import '../domain/camera_scan_context.dart';
 import '../domain/camera_scan_ports.dart';
@@ -18,20 +16,15 @@ import '../domain/camera_scan_ports.dart';
 /// cross this boundary; OpenCV resources are constructed and disposed inside
 /// the worker isolate by the P5-P9 composition.
 final class IsolateOfflineScannerRunner implements OfflineScanRunner {
-  IsolateOfflineScannerRunner({
-    ScanResult? testResult,
-    EngineError? testError,
-    String? testIdentityPayload,
-  }) : assert(testResult == null || testError == null),
-       _testResult = testResult,
-       _testError = testError,
-       _testIdentityPayload = testIdentityPayload;
+  IsolateOfflineScannerRunner({ScanResult? testResult, EngineError? testError})
+    : assert(testResult == null || testError == null),
+      _testResult = testResult,
+      _testError = testError;
 
   /// Pure-Dart result injection is used only to test the real isolate protocol
   /// on hosts where native OpenCV is intentionally unavailable.
   final ScanResult? _testResult;
   final EngineError? _testError;
-  final String? _testIdentityPayload;
   Isolate? _isolate;
   ReceivePort? _responses;
   ReceivePort? _errors;
@@ -121,12 +114,7 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
     _exits!.listen((_) => _failWorker('Final scanner worker exited.'));
     _isolate = await Isolate.spawn<_WorkerBootstrap>(
       _finalScannerWorkerMain,
-      _WorkerBootstrap(
-        _responses!.sendPort,
-        _testResult,
-        _testError,
-        _testIdentityPayload,
-      ),
+      _WorkerBootstrap(_responses!.sendPort, _testResult, _testError),
       debugName: 'final-scanner-worker',
       onError: _errors!.sendPort,
       onExit: _exits!.sendPort,
@@ -229,17 +217,11 @@ final class _WorkerDisposed {
 }
 
 final class _WorkerBootstrap {
-  const _WorkerBootstrap(
-    this.mainPort,
-    this.testResult,
-    this.testError,
-    this.testIdentityPayload,
-  );
+  const _WorkerBootstrap(this.mainPort, this.testResult, this.testError);
 
   final SendPort mainPort;
   final ScanResult? testResult;
   final EngineError? testError;
-  final String? testIdentityPayload;
 }
 
 void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
@@ -252,13 +234,11 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
       ? OfflineScannerComposition.create(
           alignmentBackend: alignmentBackend!,
           preprocessingBackend: const OpenCvPreprocessingBackend(),
-          identity: OpenCvQrIdentityStage(),
         )
       : null;
   bootstrap.mainPort.send(inbox.sendPort);
   inbox.listen((message) {
     if (message is _WorkerDispose) {
-      scanner?.identity?.dispose();
       alignmentBackend?.dispose();
       inbox.close();
       bootstrap.mainPort.send(const _WorkerDisposed());
@@ -288,29 +268,9 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
           config: message.context.scannerConfig,
         );
       } else {
-        final identity = const TemplatePageIdentityCodec().decode(
-          bootstrap.testIdentityPayload ??
-              const TemplatePageIdentityCodec().encode(
-                templateId: message.context.templateId,
-                templateVersion: message.context.templateVersion,
-                pageId: message.context.pageId,
-              ),
-        );
-        if (identity.isFailure) {
-          result = EngineResult.failure(identity.error);
-        } else {
-          final identityValidation = validateCapturedPageIdentity(
-            identity.value,
-            message.context,
-          );
-          if (identityValidation.isFailure) {
-            result = EngineResult.failure(identityValidation.error);
-          } else {
-            result = bootstrap.testError != null
-                ? EngineResult.failure(bootstrap.testError!)
-                : EngineResult.success(bootstrap.testResult!);
-          }
-        }
+        result = bootstrap.testError != null
+            ? EngineResult.failure(bootstrap.testError!)
+            : EngineResult.success(bootstrap.testResult!);
       }
       if (result.isSuccess) {
         final resultIdentity = validateScanResultIdentity(

@@ -65,6 +65,40 @@ void main() {
     expect(result.error.code, 'ARUCO_REPROJECTION_FAILED');
     expect(backend.session!.disposed, isTrue);
   });
+
+  test('final still rejects a different page marker signature', () {
+    final pages = buildLayout(longTemplate(30)).pages;
+    final backend = _FakeBackend(_detectionFor(pages[1]));
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), pages[0]);
+
+    expect(result.error.code, 'SCAN_UNKNOWN_PAGE_MARKERS');
+    expect(backend.session!.disposed, isTrue);
+  });
+
+  test('final still rejects duplicate marker IDs', () {
+    final page = _page();
+    final detection = _detectionFor(page);
+    final duplicate = ArucoDetection(
+      sourceSize: detection.sourceSize,
+      markers: [
+        detection.markers[0],
+        detection.markers[0],
+        detection.markers[2],
+        detection.markers[3],
+      ],
+    );
+    final backend = _FakeBackend(duplicate);
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.error.code, 'SCAN_DUPLICATE_PAGE_MARKERS');
+    expect(backend.session!.disposed, isTrue);
+  });
 }
 
 PageLayout _page() => buildLayout(fullTemplate()).pages.single;

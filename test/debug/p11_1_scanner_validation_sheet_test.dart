@@ -62,11 +62,12 @@ void main() {
 
       expect(plan.pages.map((page) => page.layout), inputs.layout.pages);
       for (final page in inputs.layout.pages) {
+        final firstMarkerId = 10 + page.pageIndex * 4;
         expect(page.markerRegions.map((marker) => marker.markerId), [
-          10,
-          11,
-          12,
-          13,
+          firstMarkerId,
+          firstMarkerId + 1,
+          firstMarkerId + 2,
+          firstMarkerId + 3,
         ]);
         final context = CameraScanContext(
           template: inputs.template,

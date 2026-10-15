@@ -10,6 +10,7 @@ import '../domain/bubble_measurement.dart';
 import '../domain/bubble_measurement_config.dart';
 import '../domain/canonical_bubble_roi.dart';
 import 'canonical_bubble_mapper.dart';
+import 'grayscale_sample_histogram.dart';
 
 final class BubbleMeasurementEngine {
   const BubbleMeasurementEngine({this.mapper = const CanonicalBubbleMapper()});
@@ -69,13 +70,13 @@ final class BubbleMeasurementEngine {
         rois.add(roi);
       }
 
+      final baselineNeighbors = _baselineNeighbors(rois);
       final measurements = <BubbleMeasurement>[];
       for (var index = 0; index < layout.bubbleRegions.length; index++) {
         final result = _measureBubble(
           bubble: layout.bubbleRegions[index],
           roi: rois[index],
-          allRois: rois,
-          ownIndex: index,
+          baselineNeighbors: baselineNeighbors[index],
           page: page,
           config: config,
         );
@@ -97,8 +98,7 @@ final class BubbleMeasurementEngine {
   EngineResult<BubbleMeasurement> _measureBubble({
     required BubbleRegion bubble,
     required CanonicalBubbleRoi roi,
-    required List<CanonicalBubbleRoi> allRois,
-    required int ownIndex,
+    required List<CanonicalBubbleRoi> baselineNeighbors,
     required PreprocessedPage page,
     required BubbleMeasurementConfig config,
   }) {
@@ -106,7 +106,7 @@ final class BubbleMeasurementEngine {
     final height = page.size.height;
     final grayscale = page.normalizedGrayscale.pixels;
     final binary = page.binary.pixels;
-    final interiorValues = <int>[];
+    final interiorSamples = GrayscaleSampleHistogram();
     var interiorExpected = 0;
     var foregroundCount = 0;
     final interiorRadius = roi.interiorRadius;
@@ -120,14 +120,14 @@ final class BubbleMeasurementEngine {
         interiorExpected++;
         if (!_insideImage(x, y, width, height)) continue;
         final pixelIndex = y * width + x;
-        interiorValues.add(grayscale[pixelIndex]);
+        interiorSamples.add(grayscale[pixelIndex]);
         foregroundCount += binary[pixelIndex];
       }
     }
     final interiorRatio = interiorExpected == 0
         ? 0.0
-        : interiorValues.length / interiorExpected;
-    if (interiorValues.length < config.minimumInteriorPixels ||
+        : interiorSamples.count / interiorExpected;
+    if (interiorSamples.count < config.minimumInteriorPixels ||
         interiorRatio < config.minimumValidSampleRatio ||
         (!config.allowPartialClipping && interiorRatio < 1)) {
       return _bubbleFailure(
@@ -135,14 +135,14 @@ final class BubbleMeasurementEngine {
         'Bubble interior does not contain enough valid canonical pixels.',
         bubble,
         {
-          'sampleCount': interiorValues.length,
+          'sampleCount': interiorSamples.count,
           'expectedCount': interiorExpected,
           'validSampleRatio': interiorRatio,
         },
       );
     }
 
-    final baselineValues = <int>[];
+    final baselineSamples = GrayscaleSampleHistogram();
     var baselineExpected = 0;
     var baselineValid = 0;
     var baselineForeground = 0;
@@ -159,7 +159,7 @@ final class BubbleMeasurementEngine {
         if (!_insideImage(x, y, width, height)) continue;
         baselineValid++;
         if (config.excludeNeighborBubbles &&
-            _insideOtherBubble(x, y, allRois, ownIndex)) {
+            _insideNeighborBubble(x, y, baselineNeighbors)) {
           neighborMasked++;
           continue;
         }
@@ -167,13 +167,13 @@ final class BubbleMeasurementEngine {
         final isForeground = binary[pixelIndex] == 1;
         if (isForeground) baselineForeground++;
         if (config.excludeBaselineForeground && isForeground) continue;
-        baselineValues.add(grayscale[pixelIndex]);
+        baselineSamples.add(grayscale[pixelIndex]);
       }
     }
     final baselineValidRatio = baselineExpected == 0
         ? 0.0
         : baselineValid / baselineExpected;
-    if (baselineValues.length < config.minimumBaselinePixels ||
+    if (baselineSamples.count < config.minimumBaselinePixels ||
         baselineValidRatio < config.minimumValidSampleRatio ||
         (!config.allowPartialClipping && baselineValidRatio < 1)) {
       return _bubbleFailure(
@@ -181,7 +181,7 @@ final class BubbleMeasurementEngine {
         'Bubble baseline does not contain enough valid paper samples.',
         bubble,
         {
-          'sampleCount': baselineValues.length,
+          'sampleCount': baselineSamples.count,
           'expectedCount': baselineExpected,
           'validSampleRatio': baselineValidRatio,
           'neighborMaskedPixelCount': neighborMasked,
@@ -193,9 +193,9 @@ final class BubbleMeasurementEngine {
     final baselineForegroundRatio = baselineCandidateCount == 0
         ? 1.0
         : baselineForeground / baselineCandidateCount;
-    final interiorMean = _mean(interiorValues);
-    final interiorMedian = _percentile(interiorValues, 0.5);
-    final baseline = _percentile(baselineValues, config.baselinePercentile);
+    final interiorMean = interiorSamples.mean;
+    final interiorMedian = interiorSamples.percentile(0.5);
+    final baseline = baselineSamples.percentile(config.baselinePercentile);
     final darkness = baseline - interiorMean;
     final normalizedDarkness = darkness / math.max(baseline, config.epsilon);
     final clipped = interiorRatio < 1 || baselineValidRatio < 1;
@@ -207,15 +207,15 @@ final class BubbleMeasurementEngine {
         numericColumnIndex: bubble.numericColumnIndex,
         numericDigitValue: bubble.numericDigitValue,
         roi: roi,
-        sampledInteriorPixelCount: interiorValues.length,
-        sampledBaselinePixelCount: baselineValues.length,
+        sampledInteriorPixelCount: interiorSamples.count,
+        sampledBaselinePixelCount: baselineSamples.count,
         interiorMeanIntensity: interiorMean,
         interiorMedianIntensity: interiorMedian,
         localBaselineIntensity: baseline,
         darknessContrast: darkness,
         normalizedDarkness: normalizedDarkness,
         foregroundPixelCount: foregroundCount,
-        fillRatio: foregroundCount / interiorValues.length,
+        fillRatio: foregroundCount / interiorSamples.count,
         quality: BubbleMeasurementQuality(
           interiorValidSampleRatio: interiorRatio,
           baselineValidSampleRatio: baselineValidRatio,
@@ -242,35 +242,37 @@ final class BubbleMeasurementEngine {
       roi.interiorRadius > 0 &&
       roi.baselineOuterRadius.isFinite;
 
-  bool _insideOtherBubble(
-    int x,
-    int y,
+  List<List<CanonicalBubbleRoi>> _baselineNeighbors(
     List<CanonicalBubbleRoi> rois,
-    int ownIndex,
   ) {
-    for (var index = 0; index < rois.length; index++) {
-      if (index != ownIndex && rois[index].containsPrintedPixel(x, y)) {
-        return true;
+    final neighbors = List.generate(rois.length, (_) => <CanonicalBubbleRoi>[]);
+    for (var ownIndex = 0; ownIndex < rois.length; ownIndex++) {
+      final own = rois[ownIndex];
+      for (
+        var candidateIndex = 0;
+        candidateIndex < rois.length;
+        candidateIndex++
+      ) {
+        if (candidateIndex == ownIndex) continue;
+        final candidate = rois[candidateIndex];
+        if (own.center.distanceTo(candidate.center) <=
+            own.baselineOuterRadius + candidate.printedRadius) {
+          neighbors[ownIndex].add(candidate);
+        }
       }
+    }
+    return neighbors;
+  }
+
+  bool _insideNeighborBubble(int x, int y, List<CanonicalBubbleRoi> neighbors) {
+    for (final roi in neighbors) {
+      if (roi.containsPrintedPixel(x, y)) return true;
     }
     return false;
   }
 
   bool _insideImage(int x, int y, int width, int height) =>
       x >= 0 && x < width && y >= 0 && y < height;
-
-  double _mean(List<int> values) =>
-      values.fold<int>(0, (sum, value) => sum + value) / values.length;
-
-  double _percentile(List<int> values, double percentile) {
-    final sorted = List<int>.of(values)..sort();
-    final position = percentile * (sorted.length - 1);
-    final lower = position.floor();
-    final upper = position.ceil();
-    if (lower == upper) return sorted[lower].toDouble();
-    final fraction = position - lower;
-    return sorted[lower] * (1 - fraction) + sorted[upper] * fraction;
-  }
 
   EngineResult<T> _bubbleFailure<T>(
     String code,

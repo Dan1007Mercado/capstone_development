@@ -12,6 +12,7 @@ final class CameraScanContext {
     required this.templateVersion,
     required this.pageId,
     required this.scannerConfig,
+    this.candidatePageLayouts = const [],
   });
 
   final TemplateDefinition template;
@@ -20,13 +21,32 @@ final class CameraScanContext {
   final TemplateVersion templateVersion;
   final PageId pageId;
   final ScannerConfig scannerConfig;
+  final List<PageLayout> candidatePageLayouts;
+
+  List<PageLayout> get availablePages =>
+      candidatePageLayouts.isEmpty ? [pageLayout] : candidatePageLayouts;
+
+  CameraScanContext withPage(PageLayout page) => CameraScanContext(
+    template: template,
+    pageLayout: page,
+    templateId: templateId,
+    templateVersion: templateVersion,
+    pageId: page.pageId,
+    scannerConfig: scannerConfig,
+    candidatePageLayouts: availablePages,
+  );
 
   EngineError? validate() {
     if (template.id != templateId ||
         template.version != templateVersion ||
         pageLayout.templateId != templateId ||
         pageLayout.templateVersion != templateVersion ||
-        pageLayout.pageId != pageId) {
+        pageLayout.pageId != pageId ||
+        availablePages.any(
+          (page) =>
+              page.templateId != templateId ||
+              page.templateVersion != templateVersion,
+        )) {
       return EngineError(
         code: 'CAPTURE_SCAN_CONTEXT_INVALID',
         message: 'The expected template identity and PageLayout do not match.',

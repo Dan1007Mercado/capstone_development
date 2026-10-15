@@ -69,4 +69,39 @@ void main() {
 
     expect(pages.map((page) => page.totalPageCount).toSet(), {pages.length});
   });
+
+  test('page-specific IDs change without changing marker geometry', () {
+    final pages = buildLayout(longTemplate(30)).pages;
+    expect(pages.length, greaterThan(1));
+    expect(pages[0].markerRegions.map((marker) => marker.markerId), [
+      10,
+      11,
+      12,
+      13,
+    ]);
+    expect(pages[1].markerRegions.map((marker) => marker.markerId), [
+      14,
+      15,
+      16,
+      17,
+    ]);
+    for (var index = 0; index < 4; index++) {
+      expect(
+        pages[1].markerRegions[index].physicalBounds,
+        pages[0].markerRegions[index].physicalBounds,
+      );
+      expect(
+        pages[1].markerRegions[index].role,
+        pages[0].markerRegions[index].role,
+      );
+    }
+  });
+
+  test('layout fails explicitly when pagination exceeds marker capacity', () {
+    final result = LayoutEngine().build(longTemplate(120), testConfig());
+
+    expect(result.isFailure, isTrue);
+    expect(result.error.code, 'ARUCO_PAGE_ID_CAPACITY_EXCEEDED');
+    expect(result.error.details['maximumPageCount'], 10);
+  });
 }

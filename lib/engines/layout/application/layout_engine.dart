@@ -14,13 +14,17 @@ import '../../template/domain/template_section.dart';
 import '../domain/layout_config.dart';
 import '../domain/layout_regions.dart';
 import '../domain/page_layout.dart';
+import '../domain/page_marker_id_allocator.dart';
 
 /// Deterministic bridge from validated template semantics to page geometry.
 final class LayoutEngine {
-  LayoutEngine({TemplateValidator? templateValidator})
-    : _templateValidator = templateValidator ?? TemplateValidator();
+  LayoutEngine({
+    TemplateValidator? templateValidator,
+    this.pageMarkerIdAllocator = const PageMarkerIdAllocator(),
+  }) : _templateValidator = templateValidator ?? TemplateValidator();
 
   final TemplateValidator _templateValidator;
+  final PageMarkerIdAllocator pageMarkerIdAllocator;
 
   EngineResult<LayoutDocument> build(
     TemplateDefinition template,
@@ -53,17 +57,33 @@ final class LayoutEngine {
 
       final drafts = draftsResult.value;
       final totalPageCount = drafts.length;
-      final pages = drafts
-          .map(
-            (draft) => _materializePage(
-              template,
-              config,
-              geometry,
-              draft,
-              totalPageCount,
+      final pages = <PageLayout>[];
+      final allocatedIds = <int>{};
+      for (final draft in drafts) {
+        final allocation = pageMarkerIdAllocator.allocate(
+          config.markerIds,
+          draft.pageIndex,
+        );
+        if (allocation.isFailure) return EngineResult.failure(allocation.error);
+        if (allocation.value.values.any((id) => !allocatedIds.add(id))) {
+          return EngineResult.failure(
+            EngineError(
+              code: 'ARUCO_PAGE_ID_CAPACITY_EXCEEDED',
+              message: 'Page marker signatures must not collide.',
             ),
-          )
-          .toList(growable: false);
+          );
+        }
+        pages.add(
+          _materializePage(
+            template,
+            config,
+            geometry,
+            draft,
+            totalPageCount,
+            allocation.value,
+          ),
+        );
+      }
 
       final geometryError = _validateGeneratedGeometry(pages);
       if (geometryError != null) return EngineResult.failure(geometryError);
@@ -703,6 +723,7 @@ final class LayoutEngine {
     _StaticPageGeometry geometry,
     _PageDraft draft,
     int totalPageCount,
+    MarkerIds markerIds,
   ) {
     final sections = draft.sections
         .map((section) {
@@ -756,7 +777,24 @@ final class LayoutEngine {
       normalizedPrintableBounds: geometry.normalizedPrintableBounds,
       safeBounds: geometry.safeBounds,
       normalizedSafeBounds: geometry.normalizedSafeBounds,
-      markerRegions: geometry.markerRegions,
+      markerRegions: [
+        for (final marker in geometry.markerRegions)
+          MarkerRegion(
+            markerId: switch (marker.role) {
+              MarkerRole.topLeft => markerIds.topLeft,
+              MarkerRole.topRight => markerIds.topRight,
+              MarkerRole.bottomLeft => markerIds.bottomLeft,
+              MarkerRole.bottomRight => markerIds.bottomRight,
+            },
+            role: marker.role,
+            physicalBounds: marker.physicalBounds,
+            normalizedBounds: marker.normalizedBounds,
+            physicalMarkerBounds: marker.physicalMarkerBounds,
+            normalizedMarkerBounds: marker.normalizedMarkerBounds,
+            physicalRegistrationPoint: marker.physicalRegistrationPoint,
+            normalizedRegistrationPoint: marker.normalizedRegistrationPoint,
+          ),
+      ],
       templateIdentityRegion: geometry.identityRegion,
       headerRegion: geometry.headerRegion,
       sectionRegions: sections,

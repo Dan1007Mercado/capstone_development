@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../../core/errors/engine_error.dart';
+import '../../../core/ids/identifiers.dart';
 import '../../../core/result/engine_result.dart';
 import '../../../engines/camera/domain/camera_models.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
@@ -39,11 +40,16 @@ final class CameraScannerCoordinator {
   int _readinessProcessedFrameBaseline = 0;
   bool _cameraSessionRequested = false;
   bool _disposed = false;
+  Set<PageId> _completedPageIds = const {};
 
   CameraScanState get state => _state;
   Stream<CameraScanState> get states => _states.stream;
 
   CameraScanContext get activeContext => _context;
+
+  void updateCompletedPages(Iterable<PageId> pageIds) {
+    _completedPageIds = Set.unmodifiable(pageIds);
+  }
 
   EngineResult<bool> updateContext(CameraScanContext value) {
     if (_disposed) return _disposedFailure();
@@ -150,6 +156,7 @@ final class CameraScannerCoordinator {
     _operationInProgress = true;
     _autoCaptureArmed = false;
     final totalStopwatch = Stopwatch()..start();
+    var stopAnalysisDuration = Duration.zero;
     var captureDuration = Duration.zero;
     var byteLoadDuration = Duration.zero;
     var scannerDuration = Duration.zero;
@@ -168,7 +175,10 @@ final class CameraScannerCoordinator {
     );
 
     try {
+      final stopAnalysisStopwatch = Stopwatch()..start();
       final stopped = await camera.stopAnalysis();
+      stopAnalysisStopwatch.stop();
+      stopAnalysisDuration = stopAnalysisStopwatch.elapsed;
       if (_disposed) return EngineResult.failure(_disposedError());
       if (stopped.isFailure) {
         return await _finishFailure(
@@ -176,6 +186,7 @@ final class CameraScannerCoordinator {
           message: 'Camera analysis could not pause for still capture.',
           cause: stopped.error,
           totalStopwatch: totalStopwatch,
+          stopAnalysisDuration: stopAnalysisDuration,
           captureDuration: captureDuration,
           byteLoadDuration: byteLoadDuration,
           scannerDuration: scannerDuration,
@@ -195,6 +206,7 @@ final class CameraScannerCoordinator {
           message: 'High-quality still capture failed.',
           cause: capture.error,
           totalStopwatch: totalStopwatch,
+          stopAnalysisDuration: stopAnalysisDuration,
           captureDuration: captureDuration,
           byteLoadDuration: byteLoadDuration,
           scannerDuration: scannerDuration,
@@ -219,6 +231,7 @@ final class CameraScannerCoordinator {
           message: 'The high-quality captured image could not be loaded.',
           cause: cause,
           totalStopwatch: totalStopwatch,
+          stopAnalysisDuration: stopAnalysisDuration,
           captureDuration: captureDuration,
           byteLoadDuration: byteLoadDuration,
           scannerDuration: scannerDuration,
@@ -237,6 +250,7 @@ final class CameraScannerCoordinator {
           message: 'Camera analysis could not resume after still capture.',
           cause: earlyRestart.error,
           totalStopwatch: totalStopwatch,
+          stopAnalysisDuration: stopAnalysisDuration,
           captureDuration: captureDuration,
           byteLoadDuration: byteLoadDuration,
           scannerDuration: scannerDuration,
@@ -250,6 +264,7 @@ final class CameraScannerCoordinator {
           phase: CameraScanPhase.scanning,
           cameraState: _latestCameraState,
           finalScanTimings: FinalScanTimings(
+            stopAnalysisDuration: stopAnalysisDuration,
             captureDuration: captureDuration,
             byteLoadDuration: byteLoadDuration,
           ),
@@ -272,6 +287,7 @@ final class CameraScannerCoordinator {
       if (_disposed) return EngineResult.failure(_disposedError());
 
       final timings = FinalScanTimings(
+        stopAnalysisDuration: stopAnalysisDuration,
         captureDuration: captureDuration,
         byteLoadDuration: byteLoadDuration,
         scannerDuration: scannerDuration,
@@ -282,7 +298,7 @@ final class CameraScannerCoordinator {
         workerStartupDuration: workerStartupDuration,
       );
       if (scan.isFailure) {
-        final error = _isPageIdentityFailure(scan.error.code)
+        final error = _isPageResolutionFailure(scan.error.code)
             ? scan.error
             : _wrapFailure(
                 'CAPTURE_SCAN_SCANNER_FAILED',
@@ -311,6 +327,7 @@ final class CameraScannerCoordinator {
         details: {'cause': error.toString()},
       );
       final timings = FinalScanTimings(
+        stopAnalysisDuration: stopAnalysisDuration,
         captureDuration: captureDuration,
         byteLoadDuration: byteLoadDuration,
         scannerDuration: scannerDuration,
@@ -373,6 +390,7 @@ final class CameraScannerCoordinator {
     required String message,
     required EngineError cause,
     required Stopwatch totalStopwatch,
+    required Duration stopAnalysisDuration,
     required Duration captureDuration,
     required Duration byteLoadDuration,
     required Duration scannerDuration,
@@ -389,6 +407,7 @@ final class CameraScannerCoordinator {
       );
     }
     final timings = FinalScanTimings(
+      stopAnalysisDuration: stopAnalysisDuration,
       captureDuration: captureDuration,
       byteLoadDuration: byteLoadDuration,
       scannerDuration: scannerDuration,
@@ -408,6 +427,21 @@ final class CameraScannerCoordinator {
   void _onCameraState(CameraEngineState cameraState) {
     _latestCameraState = cameraState;
     if (_disposed || _operationInProgress) return;
+    final resolvedPageId = cameraState.analysis?.tracking.resolvedPageId;
+    if (resolvedPageId != null) {
+      final matching = _context.availablePages
+          .where((page) => page.pageId == resolvedPageId)
+          .firstOrNull;
+      if (matching != null && _context.pageId != resolvedPageId) {
+        _context = _context.withPage(matching);
+        _autoCaptureArmed = true;
+      }
+      if (_completedPageIds.contains(resolvedPageId)) {
+        _autoCaptureArmed = false;
+        _publishCameraPhase();
+        return;
+      }
+    }
     if (_requiresFreshReadiness &&
         cameraState.diagnostics.processedFrameCount >
             _readinessProcessedFrameBaseline) {
@@ -494,12 +528,10 @@ final class CameraScannerCoordinator {
         },
       );
 
-  bool _isPageIdentityFailure(String code) => const {
-    'SCAN_PAGE_IDENTITY_NOT_FOUND',
-    'SCAN_PAGE_IDENTITY_INVALID',
-    'SCAN_TEMPLATE_ID_MISMATCH',
-    'SCAN_TEMPLATE_VERSION_MISMATCH',
-    'SCAN_PAGE_ID_MISMATCH',
+  bool _isPageResolutionFailure(String code) => const {
+    'SCAN_UNKNOWN_PAGE_MARKERS',
+    'SCAN_DUPLICATE_PAGE_MARKERS',
+    'SCAN_PAGE_ALREADY_COMPLETED',
   }.contains(code);
 
   EngineResult<bool> _busyFailure() => EngineResult.failure(_busyError());

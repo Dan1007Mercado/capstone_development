@@ -46,7 +46,16 @@ String scannerStatusText(
   CameraScanState state, {
   required int pageNumber,
   required int pageCount,
+  bool pageDetected = false,
+  bool pageAlreadyCompleted = false,
 }) {
+  if (pageAlreadyCompleted) return 'Page $pageNumber already scanned.';
+  final resolutionCode =
+      state.cameraState.analysis?.tracking.pageResolutionErrorCode;
+  if (resolutionCode == 'SCAN_UNKNOWN_PAGE_MARKERS' ||
+      resolutionCode == 'SCAN_DUPLICATE_PAGE_MARKERS') {
+    return 'Sheet does not belong to selected template';
+  }
   final readiness = state.cameraState.readiness.status;
   return switch (scannerOverlayState(state)) {
     ScannerOverlayState.searching => 'Searching for sheet...',
@@ -57,10 +66,13 @@ String scannerStatusText(
       CaptureReadinessStatus.tooBlurry => 'Hold steady',
       CaptureReadinessStatus.tooDark => 'Find brighter light',
       CaptureReadinessStatus.tooBright => 'Reduce glare',
-      _ => 'Hold steady',
+      _ =>
+        pageDetected
+            ? 'Page $pageNumber detected · Hold steady'
+            : 'Hold steady',
     },
-    ScannerOverlayState.ready => 'Ready to capture',
-    ScannerOverlayState.capturing => 'Capturing...',
+    ScannerOverlayState.ready => 'Page $pageNumber detected · Ready',
+    ScannerOverlayState.capturing => 'Capturing Page $pageNumber...',
     ScannerOverlayState.processing =>
       'Processing page $pageNumber of $pageCount',
     ScannerOverlayState.success => 'Page $pageNumber scanned',

@@ -17,6 +17,7 @@ enum CameraScanPhase {
 
 final class FinalScanTimings {
   const FinalScanTimings({
+    this.stopAnalysisDuration = Duration.zero,
     this.captureDuration = Duration.zero,
     this.byteLoadDuration = Duration.zero,
     this.scannerDuration = Duration.zero,
@@ -29,6 +30,7 @@ final class FinalScanTimings {
 
   static const zero = FinalScanTimings();
 
+  final Duration stopAnalysisDuration;
   final Duration captureDuration;
   final Duration byteLoadDuration;
   final Duration scannerDuration;

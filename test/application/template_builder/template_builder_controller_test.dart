@@ -242,11 +242,12 @@ void main() {
         expect(laidOutIds.toSet(), originalIds.toSet());
         expect(laidOutIds.length, originalIds.length);
         for (final page in preview.value.layout.pages) {
+          final firstMarkerId = 10 + page.pageIndex * 4;
           expect(page.markerRegions.map((marker) => marker.markerId), [
-            10,
-            11,
-            12,
-            13,
+            firstMarkerId,
+            firstMarkerId + 1,
+            firstMarkerId + 2,
+            firstMarkerId + 3,
           ]);
         }
 

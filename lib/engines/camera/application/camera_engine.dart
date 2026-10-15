@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import '../../../core/errors/engine_error.dart';
+import '../../../core/ids/identifiers.dart';
 import '../../../core/result/engine_result.dart';
 import '../../aruco/domain/image_geometry.dart';
 import '../domain/camera_backend.dart';
@@ -29,6 +30,7 @@ final class CameraEngine {
   DateTime? _lastAutoCaptureRequestAt;
   List<ImagePoint>? _previousRegistrationPoints;
   double? _previousAreaRatio;
+  PageId? _previousPageId;
   int _stableFrameCount = 0;
   int _receivedFrames = 0;
   int _acceptedFrames = 0;
@@ -36,6 +38,11 @@ final class CameraEngine {
   int _droppedFrames = 0;
   Duration _totalAnalysisDuration = Duration.zero;
   final Queue<DateTime> _processedFrameTimes = Queue<DateTime>();
+  final Map<CaptureReadinessStatus, Duration> _readinessDurations = {};
+  CaptureReadinessStatus? _lastReadinessStatus;
+  DateTime? _lastReadinessEvaluatedAt;
+  DateTime? _firstPageRecognizedAt;
+  Duration? _firstRecognitionToReadyDuration;
 
   CameraEngineState get state => _state;
   CameraDiagnostics get diagnostics => _diagnostics;
@@ -261,6 +268,8 @@ final class CameraEngine {
           tracking: MarkerTrackingState(
             detectedMarkerIds: result.value.detectedMarkerIds,
             registrationPoints: result.value.registrationPoints,
+            resolvedPageId: result.value.resolvedPageId,
+            pageResolutionErrorCode: result.value.pageResolutionErrorCode,
           ),
           quality: FrameQuality(
             brightness: result.value.brightness,
@@ -293,7 +302,12 @@ final class CameraEngine {
     final expected = config.markerIds.values.toSet();
     final detected = observation.detectedMarkerIds.toSet();
     CaptureReadinessStatus? failure;
-    if (config.requireAllMarkers && !detected.containsAll(expected)) {
+    if (config.pageMarkerSignatures.isNotEmpty &&
+        observation.resolvedPageId == null) {
+      failure = CaptureReadinessStatus.markersMissing;
+    } else if (config.requireAllMarkers &&
+        config.pageMarkerSignatures.isEmpty &&
+        !detected.containsAll(expected)) {
       failure = CaptureReadinessStatus.markersMissing;
     } else if ((observation.pageAreaRatio ?? 0) < config.minimumPageAreaRatio ||
         (observation.minimumMarkerSidePixels ?? 0) <
@@ -311,7 +325,10 @@ final class CameraEngine {
     }
 
     var stabilityScore = 0.0;
-    if (failure != null || observation.registrationPoints.length != 4) {
+    if (failure != null ||
+        observation.registrationPoints.length != 4 ||
+        (_previousPageId != null &&
+            observation.resolvedPageId != _previousPageId)) {
       _resetStability();
     } else {
       final previous = _previousRegistrationPoints;
@@ -350,6 +367,7 @@ final class CameraEngine {
       }
       _previousRegistrationPoints = List.of(observation.registrationPoints);
       _previousAreaRatio = observation.pageAreaRatio;
+      _previousPageId = observation.resolvedPageId;
       if (_stableFrameCount < config.minimumStableFrames) {
         failure = CaptureReadinessStatus.unstable;
       }
@@ -360,6 +378,7 @@ final class CameraEngine {
       stableFrameCount: _stableFrameCount,
       requiredStableFrameCount: config.minimumStableFrames,
     );
+    _recordReadinessTiming(observation, readiness.status, timestamp);
     var autoCaptureRequested = false;
     if (readiness.isReady && config.autoCaptureEnabled) {
       final lastRequest = _lastAutoCaptureRequestAt;
@@ -396,12 +415,44 @@ final class CameraEngine {
               microseconds:
                   _totalAnalysisDuration.inMicroseconds ~/ _processedFrames,
             ),
+      readinessDurations: Map.unmodifiable(_readinessDurations),
+      firstRecognitionToReadyDuration: _firstRecognitionToReadyDuration,
     );
+  }
+
+  void _recordReadinessTiming(
+    CameraFrameObservation observation,
+    CaptureReadinessStatus status,
+    DateTime timestamp,
+  ) {
+    final previousAt = _lastReadinessEvaluatedAt;
+    final previousStatus = _lastReadinessStatus;
+    if (previousAt != null && previousStatus != null) {
+      final elapsed = timestamp.difference(previousAt);
+      if (!elapsed.isNegative) {
+        _readinessDurations[previousStatus] =
+            (_readinessDurations[previousStatus] ?? Duration.zero) + elapsed;
+      }
+    }
+    _lastReadinessEvaluatedAt = timestamp;
+    _lastReadinessStatus = status;
+    if (observation.resolvedPageId != null) {
+      _firstPageRecognizedAt ??= timestamp;
+    }
+    if (status == CaptureReadinessStatus.ready &&
+        _firstRecognitionToReadyDuration == null &&
+        _firstPageRecognizedAt != null) {
+      final elapsed = timestamp.difference(_firstPageRecognizedAt!);
+      _firstRecognitionToReadyDuration = elapsed.isNegative
+          ? Duration.zero
+          : elapsed;
+    }
   }
 
   void _resetStability() {
     _previousRegistrationPoints = null;
     _previousAreaRatio = null;
+    _previousPageId = null;
     _stableFrameCount = 0;
   }
 

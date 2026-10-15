@@ -48,7 +48,7 @@ void main() {
     () async {
       final controller = _realTemplate(templateId: 'long-survey');
       final section = controller.snapshot.definition.sections.first.id;
-      for (var index = 0; index < 55; index++) {
+      for (var index = 0; index < 20; index++) {
         controller.addQuestion(
           section,
           type: index.isEven

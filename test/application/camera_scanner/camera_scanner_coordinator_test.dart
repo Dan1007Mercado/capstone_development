@@ -95,36 +95,7 @@ void main() {
   });
 
   test(
-    'scanner isolate rejects a printed identity from another version',
-    () async {
-      final template = buildP5NativeValidationTemplate();
-      final page = buildP5NativeValidationPage();
-      final context = CameraScanContext(
-        template: template,
-        pageLayout: page,
-        templateId: template.id,
-        templateVersion: template.version,
-        pageId: page.pageId,
-        scannerConfig: ScannerConfig(),
-      );
-      final runner = IsolateOfflineScannerRunner(
-        testResult: _scanResult(context: context),
-        testIdentityPayload:
-            'TS1|${template.id.value}|${template.version.value + 1}|${page.pageId.value}',
-      );
-
-      final result = await runner.scan(
-        encodedImage: Uint8List.fromList([1, 2, 3]),
-        context: context,
-      );
-
-      expect(result.error.code, 'SCAN_TEMPLATE_VERSION_MISMATCH');
-      await runner.dispose();
-    },
-  );
-
-  test(
-    'validation session advances exact ordered pages without duplicates',
+    'validation session accepts out-of-order pages and rejects duplicates',
     () {
       final inputs = buildP11ScannerValidationSheetInputs();
       var session = ScannerValidationSession.start(
@@ -133,9 +104,9 @@ void main() {
           layout: inputs.layout,
         ),
       );
-      final firstPage = session.currentPage;
+      final firstPage = session.pages.last;
       final first = session.recordResult(
-        _scanResult(context: session.currentContext),
+        _scanResult(context: session.contextForPage(firstPage.pageId).value),
       );
       expect(first.isSuccess, isTrue);
       session = first.value;
@@ -144,7 +115,6 @@ void main() {
 
       session = session.continueAfterReview().value;
       expect(session.state, ScannerValidationSessionState.scanning);
-      expect(session.currentPage.pageId, isNot(firstPage.pageId));
       final duplicate = session.recordResult(
         _scanResult(
           context: CameraScanContext(
@@ -157,7 +127,17 @@ void main() {
           ),
         ),
       );
-      expect(duplicate.error.code, 'SCAN_PAGE_ID_MISMATCH');
+      expect(duplicate.error.code, 'SCAN_PAGE_ALREADY_COMPLETED');
+
+      for (final pageId in List.of(session.remainingPageIds)) {
+        final result = session.recordResult(
+          _scanResult(context: session.contextForPage(pageId).value),
+        );
+        expect(result.isSuccess, isTrue);
+        session = result.value.continueAfterReview().value;
+      }
+      expect(session.isComplete, isTrue);
+      expect(session.state, ScannerValidationSessionState.complete);
     },
   );
 
@@ -263,19 +243,22 @@ void main() {
   });
 
   test(
-    'wrong-page identity remains an exact typed coordinator failure',
+    'wrong final marker signature remains an exact typed coordinator failure',
     () async {
       final fixture = _Fixture(
         scannerResults: [
-          _failure('SCAN_PAGE_ID_MISMATCH', 'wrong physical page'),
+          _failure('SCAN_UNKNOWN_PAGE_MARKERS', 'wrong physical page'),
         ],
       );
       await fixture.initialize();
 
       final result = await fixture.coordinator.captureAndScan();
 
-      expect(result.error.code, 'SCAN_PAGE_ID_MISMATCH');
-      expect(fixture.coordinator.state.error?.code, 'SCAN_PAGE_ID_MISMATCH');
+      expect(result.error.code, 'SCAN_UNKNOWN_PAGE_MARKERS');
+      expect(
+        fixture.coordinator.state.error?.code,
+        'SCAN_UNKNOWN_PAGE_MARKERS',
+      );
       await fixture.dispose();
     },
   );

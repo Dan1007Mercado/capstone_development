@@ -477,7 +477,6 @@ final class PdfEngine {
         if (style.debugOverlays) {
           children.addAll(_debugWidgets(page));
         }
-        children.add(_identityWidget(plan.identity));
         children.addAll(plan.markers.map(_markerWidget));
         children.addAll(
           plan.text.map((command) => _textWidget(command, fonts)),
@@ -485,27 +484,6 @@ final class PdfEngine {
         children.addAll(plan.bubbles.map(_bubbleWidget));
         return pw.Stack(fit: pw.StackFit.expand, children: children);
       },
-    );
-  }
-
-  pw.Widget _identityWidget(PdfIdentityCommand command) {
-    final rect = PdfUnits.rectToPoints(command.bounds);
-    final qrSize = math.min(rect.width, rect.height);
-    return _positioned(
-      command.bounds,
-      pw.Align(
-        alignment: pw.Alignment.centerLeft,
-        child: pw.SizedBox(
-          width: qrSize,
-          height: qrSize,
-          child: pw.BarcodeWidget(
-            barcode: pw.Barcode.qrCode(),
-            data: command.payload,
-            drawText: false,
-            backgroundColor: PdfColors.white,
-          ),
-        ),
-      ),
     );
   }
 

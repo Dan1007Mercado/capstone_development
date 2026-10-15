@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import '../../../core/errors/engine_error.dart';
+import '../../../core/ids/identifiers.dart';
 import '../../aruco/domain/image_geometry.dart';
 import 'camera_engine_config.dart';
 
@@ -169,6 +170,8 @@ final class CameraFrameObservation {
     this.timings = CameraAnalysisTimings.zero,
     this.sensorOrientationDegrees = 0,
     this.deviceOrientation = CameraDeviceOrientation.unknown,
+    this.resolvedPageId,
+    this.pageResolutionErrorCode,
   }) : analysisFrameSize = analysisFrameSize ?? frameSize,
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        registrationPoints = UnmodifiableListView(List.of(registrationPoints));
@@ -187,6 +190,8 @@ final class CameraFrameObservation {
   final CameraAnalysisTimings timings;
   final int sensorOrientationDegrees;
   final CameraDeviceOrientation deviceOrientation;
+  final PageId? resolvedPageId;
+  final String? pageResolutionErrorCode;
 }
 
 final class FrameQuality {
@@ -207,11 +212,15 @@ final class MarkerTrackingState {
   MarkerTrackingState({
     required Iterable<int> detectedMarkerIds,
     required Iterable<ImagePoint> registrationPoints,
+    this.resolvedPageId,
+    this.pageResolutionErrorCode,
   }) : detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        registrationPoints = UnmodifiableListView(List.of(registrationPoints));
 
   final List<int> detectedMarkerIds;
   final List<ImagePoint> registrationPoints;
+  final PageId? resolvedPageId;
+  final String? pageResolutionErrorCode;
 }
 
 final class CaptureReadiness {
@@ -271,6 +280,8 @@ final class CameraDiagnostics {
     this.droppedFrameCount = 0,
     this.estimatedAnalysisFps = 0,
     this.averageAnalysisDuration = Duration.zero,
+    this.readinessDurations = const {},
+    this.firstRecognitionToReadyDuration,
   });
 
   final int receivedFrameCount;
@@ -279,6 +290,8 @@ final class CameraDiagnostics {
   final int droppedFrameCount;
   final double estimatedAnalysisFps;
   final Duration averageAnalysisDuration;
+  final Map<CaptureReadinessStatus, Duration> readinessDurations;
+  final Duration? firstRecognitionToReadyDuration;
 }
 
 final class CameraEngineState {

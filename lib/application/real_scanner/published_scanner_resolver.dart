@@ -98,6 +98,9 @@ final class PublishedScannerResolver {
     }
     final layout = _layoutEngine.build(template, _layoutConfig);
     if (layout.isFailure) {
+      if (layout.error.code == 'ARUCO_PAGE_ID_CAPACITY_EXCEEDED') {
+        return EngineResult.failure(layout.error);
+      }
       return EngineResult.failure(
         EngineError(
           code: 'PAGE_LAYOUT_NOT_FOUND',

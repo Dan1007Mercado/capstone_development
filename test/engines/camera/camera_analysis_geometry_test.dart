@@ -140,9 +140,9 @@ void main() {
     expect(source, isNot(contains('encodePng')));
     expect(source, isNot(contains('decodePng')));
     expect(source, isNot(contains("package:image/image.dart")));
-    expect(source, contains('final detector = OpenCvArucoDetector();'));
-    expect(source, contains('_analyzeInWorker(message, detector)'));
-    expect(source, contains('detector.detectGray('));
+    expect(source, contains('final OpenCvArucoDetector detector'));
+    expect(source, contains('_analyzeInWorker(message, state)'));
+    expect(source, contains('state.detector.detectGray('));
     expect(source, contains('detector.dispose();'));
   });
 }
