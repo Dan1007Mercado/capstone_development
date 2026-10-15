@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart' as camera;
 import 'package:flutter/services.dart' show DeviceOrientation;
 
@@ -167,8 +169,10 @@ final class FlutterCameraBackend implements CameraBackend {
     if (controller == null || !controller.value.isInitialized) {
       return _failure('CAMERA_CAPTURE_FAILED', 'Camera is not initialized.');
     }
+    String? capturedPath;
     try {
       final captured = await controller.takePicture();
+      capturedPath = captured.path;
       final bytes = await captured.readAsBytes();
       if (bytes.isEmpty) {
         return _failure(
@@ -197,6 +201,17 @@ final class FlutterCameraBackend implements CameraBackend {
         'High-quality still capture failed.',
         {'cause': error.toString()},
       );
+    } finally {
+      final path = capturedPath;
+      if (path != null && path.isNotEmpty) {
+        try {
+          final temporaryFile = File(path);
+          if (await temporaryFile.exists()) await temporaryFile.delete();
+        } on Object {
+          // The bytes are already owned. Platform temporary-file cleanup is
+          // best effort and must not turn a valid capture into a failure.
+        }
+      }
     }
   }
 

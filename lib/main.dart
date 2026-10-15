@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import 'debug/p5_native_validation_screen.dart';
 import 'debug/p10_camera_diagnostics_screen.dart';
+import 'debug/p11_camera_scanner_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -131,6 +132,15 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                 ),
                 child: const Text('Open P10 Camera Diagnostics'),
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const P11CameraScannerScreen(),
+                  ),
+                ),
+                child: const Text('Open P11 Camera Scanner Diagnostics'),
               ),
             ],
           ],

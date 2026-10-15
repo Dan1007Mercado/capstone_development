@@ -1,0 +1,595 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:capstone_development/application/camera_scanner/application/camera_scanner_coordinator.dart';
+import 'package:capstone_development/application/camera_scanner/domain/camera_scan_context.dart';
+import 'package:capstone_development/application/camera_scanner/domain/camera_scan_ports.dart';
+import 'package:capstone_development/application/camera_scanner/domain/camera_scan_state.dart';
+import 'package:capstone_development/core/errors/engine_error.dart';
+import 'package:capstone_development/core/result/engine_result.dart';
+import 'package:capstone_development/debug/p5_native_validation_fixture.dart';
+import 'package:capstone_development/engines/aruco/domain/marker_correspondence.dart';
+import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
+import 'package:capstone_development/engines/camera/domain/camera_engine_config.dart';
+import 'package:capstone_development/engines/camera/domain/camera_models.dart';
+import 'package:capstone_development/engines/preprocessing/domain/preprocessed_page.dart';
+import 'package:capstone_development/engines/scanner/domain/scan_result.dart';
+import 'package:capstone_development/engines/scanner/domain/scanner_config.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test(
+    'ready camera captures once and scans high-quality bytes once',
+    () async {
+      final fixture = _Fixture();
+      await fixture.initialize();
+
+      final result = await fixture.coordinator.captureAndScan();
+
+      expect(result.isSuccess, isTrue);
+      expect(fixture.camera.captureCalls, 1);
+      expect(fixture.scanner.calls, 1);
+      expect(fixture.scanner.encodedImages.single, fixture.camera.stillBytes);
+      expect(fixture.scanner.contexts.single, same(fixture.context));
+      expect(
+        fixture.scanner.contexts.single.template,
+        same(fixture.context.template),
+      );
+      expect(
+        fixture.scanner.contexts.single.pageLayout,
+        same(fixture.context.pageLayout),
+      );
+      expect(fixture.coordinator.state.phase, CameraScanPhase.scanCompleted);
+      expect(fixture.camera.stopCalls, 1);
+      expect(fixture.camera.startCalls, 2);
+      await fixture.dispose();
+    },
+  );
+
+  test('normal capture is rejected until P10 readiness is ready', () async {
+    final fixture = _Fixture(readyOnStart: false);
+    await fixture.initialize();
+
+    final result = await fixture.coordinator.captureAndScan();
+
+    expect(result.error.code, 'CAPTURE_SCAN_NOT_READY');
+    expect(fixture.camera.captureCalls, 0);
+    expect(fixture.scanner.calls, 0);
+    expect(fixture.coordinator.state.phase, CameraScanPhase.tracking);
+    await fixture.dispose();
+  });
+
+  test('duplicate requests never overlap capture or scanner work', () async {
+    final gate = Completer<void>();
+    final fixture = _Fixture(captureGate: gate);
+    await fixture.initialize();
+
+    final first = fixture.coordinator.captureAndScan();
+    await _waitFor(() => fixture.camera.captureCalls == 1);
+    final duplicate = await fixture.coordinator.captureAndScan();
+
+    expect(duplicate.error.code, 'CAPTURE_SCAN_BUSY');
+    expect(fixture.camera.captureCalls, 1);
+    gate.complete();
+    expect((await first).isSuccess, isTrue);
+    expect(fixture.scanner.maximumActiveCalls, 1);
+    await fixture.dispose();
+  });
+
+  test('one auto-capture request starts exactly one scan', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+
+    fixture.camera.emitAnalyzing(ready: true, autoCaptureRequested: true);
+    await _waitFor(() => fixture.scanner.calls == 1);
+
+    expect(fixture.camera.captureCalls, 1);
+    expect(fixture.coordinator.state.phase, CameraScanPhase.scanCompleted);
+    await fixture.dispose();
+  });
+
+  test('repeated ready auto signals remain latched after completion', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+    fixture.camera.emitAnalyzing(ready: true, autoCaptureRequested: true);
+    await _waitFor(() => fixture.scanner.calls == 1);
+
+    for (var index = 0; index < 5; index++) {
+      fixture.camera.emitAnalyzing(ready: true, autoCaptureRequested: true);
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+
+    expect(fixture.camera.captureCalls, 1);
+    expect(fixture.scanner.calls, 1);
+    await fixture.dispose();
+  });
+
+  test('scanner failure preserves the structured P9 cause', () async {
+    final fixture = _Fixture(
+      scannerResults: [_failure('SCAN_ALIGNMENT_FAILED', 'alignment failed')],
+    );
+    await fixture.initialize();
+
+    final result = await fixture.coordinator.captureAndScan();
+
+    expect(result.error.code, 'CAPTURE_SCAN_SCANNER_FAILED');
+    expect(result.error.details['causeCode'], 'SCAN_ALIGNMENT_FAILED');
+    expect(fixture.coordinator.state.phase, CameraScanPhase.scanFailed);
+    expect(fixture.coordinator.state.result, isNull);
+    await fixture.dispose();
+  });
+
+  test('capture failure does not call the scanner', () async {
+    final fixture = _Fixture(
+      captureResult: _failure('CAMERA_CAPTURE_FAILED', 'capture failed'),
+    );
+    await fixture.initialize();
+
+    final result = await fixture.coordinator.captureAndScan();
+
+    expect(result.error.code, 'CAPTURE_SCAN_CAPTURE_FAILED');
+    expect(fixture.scanner.calls, 0);
+    expect(fixture.camera.startCalls, 2);
+    await fixture.dispose();
+  });
+
+  test('byte load failure does not call the scanner', () async {
+    final fixture = _Fixture(
+      loadResult: _failure('CAPTURE_FILE_READ_FAILED', 'read failed'),
+    );
+    await fixture.initialize();
+
+    final result = await fixture.coordinator.captureAndScan();
+
+    expect(result.error.code, 'CAPTURE_SCAN_IMAGE_LOAD_FAILED');
+    expect(result.error.details['causeCode'], 'CAPTURE_FILE_READ_FAILED');
+    expect(fixture.scanner.calls, 0);
+    await fixture.dispose();
+  });
+
+  test('success reset second success clears stale result', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+    final first = await fixture.coordinator.captureAndScan();
+    expect(first.isSuccess, isTrue);
+
+    expect(fixture.coordinator.reset().isSuccess, isTrue);
+    expect(fixture.coordinator.state.result, isNull);
+    expect(fixture.coordinator.state.phase, CameraScanPhase.tracking);
+    expect(
+      (await fixture.coordinator.captureAndScan()).error.code,
+      'CAPTURE_SCAN_NOT_READY',
+    );
+    fixture.camera.emitAnalyzing(ready: true);
+    await Future<void>.delayed(Duration.zero);
+    final second = await fixture.coordinator.captureAndScan();
+
+    expect(second.isSuccess, isTrue);
+    expect(fixture.camera.captureCalls, 2);
+    expect(fixture.scanner.calls, 2);
+    await fixture.dispose();
+  });
+
+  test('failure retry success clears stale error', () async {
+    final fixture = _Fixture(
+      scannerResults: [
+        _failure('SCAN_ALIGNMENT_FAILED', 'alignment failed'),
+        EngineResult.success(_scanResult()),
+      ],
+    );
+    await fixture.initialize();
+    expect((await fixture.coordinator.captureAndScan()).isFailure, isTrue);
+
+    fixture.coordinator.reset();
+    fixture.camera.emitAnalyzing(ready: true);
+    await Future<void>.delayed(Duration.zero);
+    final retry = await fixture.coordinator.captureAndScan();
+
+    expect(retry.isSuccess, isTrue);
+    expect(fixture.coordinator.state.error, isNull);
+    expect(fixture.coordinator.state.phase, CameraScanPhase.scanCompleted);
+    await fixture.dispose();
+  });
+
+  test(
+    'dispose during pending scan publishes no state after disposed',
+    () async {
+      final scannerGate = Completer<void>();
+      final fixture = _Fixture(scannerGate: scannerGate);
+      await fixture.initialize();
+      final operation = fixture.coordinator.captureAndScan();
+      await _waitFor(() => fixture.scanner.calls == 1);
+
+      await fixture.coordinator.dispose();
+      scannerGate.complete();
+      final result = await operation;
+
+      expect(result.error.code, 'CAPTURE_SCAN_DISPOSED');
+      expect(fixture.coordinator.state.phase, CameraScanPhase.disposed);
+    },
+  );
+
+  test(
+    'dispose during pending capture is idempotent and never scans',
+    () async {
+      final captureGate = Completer<void>();
+      final fixture = _Fixture(captureGate: captureGate);
+      await fixture.initialize();
+      final operation = fixture.coordinator.captureAndScan();
+      await _waitFor(() => fixture.camera.captureCalls == 1);
+
+      await fixture.coordinator.dispose();
+      await fixture.coordinator.dispose();
+      captureGate.complete();
+      final result = await operation;
+
+      expect(result.error.code, 'CAPTURE_SCAN_DISPOSED');
+      expect(fixture.scanner.calls, 0);
+      expect(fixture.coordinator.state.phase, CameraScanPhase.disposed);
+    },
+  );
+
+  test('workflow emits only valid capture and scan phases', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+    final phases = <CameraScanPhase>[];
+    final subscription = fixture.coordinator.states.listen(
+      (state) => phases.add(state.phase),
+    );
+
+    await fixture.coordinator.captureAndScan();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(
+      phases,
+      containsAllInOrder([
+        CameraScanPhase.capturing,
+        CameraScanPhase.scanning,
+        CameraScanPhase.scanCompleted,
+      ]),
+    );
+    expect(
+      phases.where((phase) => phase == CameraScanPhase.capturing).length,
+      1,
+    );
+    expect(
+      phases.where((phase) => phase == CameraScanPhase.scanning).length,
+      1,
+    );
+    expect(
+      fixture.coordinator.state.finalScanTimings.totalDuration,
+      greaterThanOrEqualTo(
+        fixture.coordinator.state.finalScanTimings.scannerDuration,
+      ),
+    );
+    await subscription.cancel();
+    await fixture.dispose();
+  });
+
+  test('P11 contains no LayoutEngine or widget-owned scanner logic', () {
+    final coordinator = File(
+      'lib/application/camera_scanner/application/'
+      'camera_scanner_coordinator.dart',
+    ).readAsStringSync();
+    final screen = File(
+      'lib/debug/p11_camera_scanner_screen.dart',
+    ).readAsStringSync();
+
+    expect(coordinator, isNot(contains('LayoutEngine')));
+    expect(coordinator, isNot(contains('BubbleMeasurementEngine')));
+    expect(screen, isNot(contains('OfflineScannerEngine')));
+    expect(screen, isNot(contains('.scan(')));
+  });
+}
+
+final class _Fixture {
+  _Fixture({
+    bool readyOnStart = true,
+    Completer<void>? captureGate,
+    Completer<void>? scannerGate,
+    EngineResult<CapturedPageImage>? captureResult,
+    EngineResult<Uint8List>? loadResult,
+    List<EngineResult<ScanResult>>? scannerResults,
+  }) : camera = _FakeCamera(
+         readyOnStart: readyOnStart,
+         captureGate: captureGate,
+         captureResult: captureResult,
+       ),
+       loader = _FakeLoader(loadResult),
+       scanner = _FakeScanner(gate: scannerGate, results: scannerResults) {
+    final template = buildP5NativeValidationTemplate();
+    final page = buildP5NativeValidationPage();
+    context = CameraScanContext(
+      template: template,
+      pageLayout: page,
+      templateId: template.id,
+      templateVersion: template.version,
+      pageId: page.pageId,
+      scannerConfig: ScannerConfig(),
+    );
+    coordinator = CameraScannerCoordinator(
+      camera: camera,
+      imageLoader: loader,
+      scanner: scanner,
+      context: context,
+    );
+  }
+
+  final _FakeCamera camera;
+  final _FakeLoader loader;
+  final _FakeScanner scanner;
+  late final CameraScanContext context;
+  late final CameraScannerCoordinator coordinator;
+
+  Future<void> initialize() async {
+    expect((await coordinator.initialize()).isSuccess, isTrue);
+  }
+
+  Future<void> dispose() async {
+    if (coordinator.state.phase != CameraScanPhase.disposed) {
+      await coordinator.dispose();
+    }
+  }
+}
+
+final class _FakeCamera implements CameraScanCamera {
+  _FakeCamera({
+    required this.readyOnStart,
+    this.captureGate,
+    EngineResult<CapturedPageImage>? captureResult,
+  }) : captureResult =
+           captureResult ??
+           EngineResult.success(
+             CapturedPageImage(
+               encodedBytes: Uint8List.fromList(const [91, 92, 93, 94]),
+               timestamp: DateTime.utc(2026),
+               sensorOrientationDegrees: 90,
+               deviceOrientation: CameraDeviceOrientation.portraitUp,
+               orientationAppliedByBackend: true,
+               width: 4000,
+               height: 3000,
+             ),
+           );
+
+  final bool readyOnStart;
+  final Completer<void>? captureGate;
+  final EngineResult<CapturedPageImage> captureResult;
+  final StreamController<CameraEngineState> _states =
+      StreamController<CameraEngineState>.broadcast();
+  CameraEngineState _state = const CameraEngineState.uninitialized();
+  int startCalls = 0;
+  int stopCalls = 0;
+  int captureCalls = 0;
+  int processedFrames = 0;
+  bool disposed = false;
+
+  Uint8List get stillBytes => captureResult.value.encodedBytes;
+
+  @override
+  CameraEngineState get state => _state;
+
+  @override
+  Stream<CameraEngineState> get states => _states.stream;
+
+  @override
+  Future<EngineResult<bool>> initialize() async {
+    _publish(_cameraState(lifecycle: CameraLifecycleState.ready));
+    return EngineResult.success(true);
+  }
+
+  @override
+  Future<EngineResult<bool>> startAnalysis() async {
+    startCalls++;
+    _publishAnalyzing(ready: readyOnStart);
+    return EngineResult.success(true);
+  }
+
+  @override
+  Future<EngineResult<bool>> stopAnalysis() async {
+    stopCalls++;
+    _publish(
+      _cameraState(
+        lifecycle: CameraLifecycleState.ready,
+        ready: _state.readiness.isReady,
+        processedFrames: processedFrames,
+      ),
+    );
+    return EngineResult.success(true);
+  }
+
+  @override
+  Future<EngineResult<CapturedPageImage>> capture() async {
+    captureCalls++;
+    if (captureGate != null) await captureGate!.future;
+    return captureResult;
+  }
+
+  void emitAnalyzing({required bool ready, bool autoCaptureRequested = false}) {
+    processedFrames++;
+    _publishAnalyzing(ready: ready, autoCaptureRequested: autoCaptureRequested);
+  }
+
+  void _publishAnalyzing({
+    required bool ready,
+    bool autoCaptureRequested = false,
+  }) {
+    _publish(
+      _cameraState(
+        lifecycle: CameraLifecycleState.analyzing,
+        ready: ready,
+        autoCaptureRequested: autoCaptureRequested,
+        processedFrames: processedFrames,
+      ),
+    );
+  }
+
+  void _publish(CameraEngineState state) {
+    _state = state;
+    if (!_states.isClosed) _states.add(state);
+  }
+
+  @override
+  Future<EngineResult<bool>> suspend() async {
+    _publish(const CameraEngineState.uninitialized());
+    return EngineResult.success(true);
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (disposed) return;
+    disposed = true;
+    _publish(
+      const CameraEngineState(
+        lifecycle: CameraLifecycleState.disposed,
+        diagnostics: CameraDiagnostics(),
+        readiness: CaptureReadiness.notReady(),
+      ),
+    );
+    await _states.close();
+  }
+}
+
+final class _FakeLoader implements CapturedImageBytesLoader {
+  _FakeLoader(this.result);
+
+  final EngineResult<Uint8List>? result;
+
+  @override
+  Future<EngineResult<Uint8List>> load(CapturedPageImage capture) async =>
+      result ?? EngineResult.success(Uint8List.fromList(capture.encodedBytes));
+}
+
+final class _FakeScanner implements OfflineScanRunner {
+  _FakeScanner({this.gate, List<EngineResult<ScanResult>>? results})
+    : results = results == null ? [] : List.of(results);
+
+  final Completer<void>? gate;
+  final List<EngineResult<ScanResult>> results;
+  final List<Uint8List> encodedImages = [];
+  final List<CameraScanContext> contexts = [];
+  int calls = 0;
+  int activeCalls = 0;
+  int maximumActiveCalls = 0;
+
+  @override
+  Future<EngineResult<ScanResult>> scan({
+    required Uint8List encodedImage,
+    required CameraScanContext context,
+  }) async {
+    calls++;
+    activeCalls++;
+    if (activeCalls > maximumActiveCalls) maximumActiveCalls = activeCalls;
+    encodedImages.add(Uint8List.fromList(encodedImage));
+    contexts.add(context);
+    if (gate != null) await gate!.future;
+    activeCalls--;
+    return results.isEmpty
+        ? EngineResult.success(_scanResult(context: context))
+        : results.removeAt(0);
+  }
+}
+
+CameraEngineState _cameraState({
+  required CameraLifecycleState lifecycle,
+  bool ready = false,
+  bool autoCaptureRequested = false,
+  int processedFrames = 0,
+}) => CameraEngineState(
+  lifecycle: lifecycle,
+  previewInfo: const CameraPreviewInfo(
+    width: 1920,
+    height: 1080,
+    sensorOrientationDegrees: 90,
+    lens: CameraLensPreference.rear,
+    automaticFocusEnabled: true,
+    automaticExposureEnabled: true,
+    requestedPreviewFps: 60,
+  ),
+  diagnostics: CameraDiagnostics(
+    processedFrameCount: processedFrames,
+    estimatedAnalysisFps: 8,
+  ),
+  readiness: CaptureReadiness(
+    status: ready
+        ? CaptureReadinessStatus.ready
+        : CaptureReadinessStatus.unstable,
+    stableFrameCount: ready ? 3 : 1,
+    requiredStableFrameCount: 3,
+  ),
+  autoCaptureRequested: autoCaptureRequested,
+);
+
+ScanResult _scanResult({CameraScanContext? context}) {
+  final template = context?.template ?? buildP5NativeValidationTemplate();
+  final page = context?.pageLayout ?? buildP5NativeValidationPage();
+  const statistics = ImageStatistics(
+    meanIntensity: 200,
+    intensityStandardDeviation: 20,
+    minimumIntensity: 0,
+    maximumIntensity: 255,
+    darkPixelRatio: 0.1,
+    brightPixelRatio: 0.8,
+  );
+  return ScanResult(
+    templateId: template.id,
+    templateVersion: template.version,
+    pageId: page.pageId,
+    questions: const [],
+    pageState: ScanPageState.accepted,
+    reviewReasons: const [],
+    reviewQuestionIds: const [],
+    diagnostics: ScanDiagnostics(
+      totalProcessingDuration: Duration.zero,
+      stageDurations: const ScanStageDurations(
+        alignment: Duration.zero,
+        preprocessing: Duration.zero,
+        measurement: Duration.zero,
+        classification: Duration.zero,
+      ),
+      alignment: PageAlignmentDiagnostics(
+        expectedMarkerIds: const [10, 11, 12, 13],
+        detectedMarkerIds: const [10, 11, 12, 13],
+        sourceMarkerSideLengths: const [20, 20, 20, 20],
+        sourceRegistrationPoints: const [],
+        destinationRegistrationPoints: const [],
+        registrationQuality: const RegistrationQuality(
+          quadrilateralAreaRatio: 0.5,
+          minimumMarkerSidePixels: 20,
+          maximumPerspectiveRatio: 1,
+        ),
+        reprojectionErrors: const [0, 0, 0, 0],
+        meanReprojectionError: 0,
+        maxReprojectionError: 0,
+        processingDuration: Duration.zero,
+      ),
+      preprocessing: const PreprocessingDiagnostics(
+        sourceStatistics: statistics,
+        normalizedStatistics: statistics,
+        binaryForegroundRatio: 0.1,
+        processingDuration: Duration.zero,
+      ),
+      summary: const ScanSummary(
+        totalQuestions: 0,
+        marked: 0,
+        blank: 0,
+        multiple: 0,
+        ambiguous: 0,
+        invalid: 0,
+        requiredBlank: 0,
+        measuredBubbles: 0,
+      ),
+    ),
+  );
+}
+
+EngineResult<T> _failure<T>(String code, String message) =>
+    EngineResult.failure(EngineError(code: code, message: message));
+
+Future<void> _waitFor(bool Function() condition) async {
+  for (var attempt = 0; attempt < 100; attempt++) {
+    if (condition()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+  }
+  fail('Condition did not become true.');
+}
