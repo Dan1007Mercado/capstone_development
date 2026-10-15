@@ -125,6 +125,7 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
     final timings = state.finalScanTimings;
     final scanDiagnostics = result?.diagnostics;
     final alignment = scanDiagnostics?.alignment;
+    final identity = scanDiagnostics?.identity;
     final stages = scanDiagnostics?.stageDurations;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -252,6 +253,19 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
         Text('Homography: ${_milliseconds(alignment?.homographyDuration)} ms'),
         Text(
           'Warp/canonicalization: ${_milliseconds(alignment?.warpDuration)} ms',
+        ),
+        Text('QR identity: ${_milliseconds(stages?.identity)} ms'),
+        Text('  Source: ${identity?.source?.name ?? 'unavailable'}'),
+        Text(
+          '  Crop: ${identity == null ? 'unavailable' : '${identity.cropSize.width}x${identity.cropSize.height}'}',
+        ),
+        Text('  Upscale: ${identity?.upscaleFactor ?? '-'}x'),
+        Text(
+          '  Payload decoded: ${identity?.payloadDecoded == true
+              ? 'yes'
+              : identity == null
+              ? 'unavailable'
+              : 'no'}',
         ),
         Text('Preprocessing: ${_milliseconds(stages?.preprocessing)} ms'),
         Text(

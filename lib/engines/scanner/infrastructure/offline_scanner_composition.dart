@@ -4,12 +4,14 @@ import '../../preprocessing/domain/preprocessing_backend.dart';
 import '../../recognition/application/bubble_measurement_engine.dart';
 import '../../recognition/application/mark_classification_engine.dart';
 import '../application/offline_scanner_engine.dart';
+import '../domain/scanner_stages.dart';
 import 'scanner_stage_adapters.dart';
 
 abstract final class OfflineScannerComposition {
   static OfflineScannerEngine create({
     required ArucoVisionBackend alignmentBackend,
     required PreprocessingBackend preprocessingBackend,
+    ScannerIdentityStage? identity,
   }) => OfflineScannerEngine(
     alignment: ArucoAlignmentStageAdapter(backend: alignmentBackend),
     preprocessing: PreprocessingStageAdapter(
@@ -19,5 +21,6 @@ abstract final class OfflineScannerComposition {
     classification: const MarkClassificationStageAdapter(
       MarkClassificationEngine(),
     ),
+    identity: identity,
   );
 }

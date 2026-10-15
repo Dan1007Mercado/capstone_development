@@ -20,7 +20,9 @@ import 'package:capstone_development/engines/recognition/domain/mark_classificat
 import 'package:capstone_development/engines/scanner/application/offline_scanner_engine.dart';
 import 'package:capstone_development/engines/scanner/domain/scan_result.dart';
 import 'package:capstone_development/engines/scanner/domain/scanner_config.dart';
+import 'package:capstone_development/engines/scanner/domain/scanner_identity.dart';
 import 'package:capstone_development/engines/scanner/domain/scanner_stages.dart';
+import 'package:capstone_development/engines/pdf/domain/template_page_identity_codec.dart';
 import 'package:capstone_development/engines/template/domain/question_type.dart';
 import 'package:capstone_development/engines/template/domain/template_definition.dart';
 import 'package:capstone_development/engines/template/domain/template_option.dart';
@@ -86,6 +88,78 @@ void main() {
       questionIds,
     );
     expect(result.value.pageState, ScanPageState.accepted);
+  });
+
+  test('identity stage reuses aligned canonical page before preprocessing', () {
+    final pipeline = _FakePipeline(
+      page,
+      _classifications(questionIds, const [
+        MarkState.marked,
+        MarkState.marked,
+        MarkState.blank,
+      ]),
+    );
+    final identity = _FakeIdentityStage(
+      TemplatePageIdentity(
+        templateId: template.id,
+        templateVersion: template.version,
+        pageId: page.pageId,
+      ),
+    );
+    final scanner = OfflineScannerEngine(
+      alignment: pipeline,
+      identity: identity,
+      preprocessing: pipeline,
+      measurement: pipeline,
+      classification: pipeline,
+    );
+
+    final result = scanner.scan(
+      encodedImage: Uint8List.fromList([1, 2, 3]),
+      template: template,
+      pageLayout: page,
+      config: ScannerConfig(),
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(identity.canonicalPage, same(pipeline.alignedCanonicalPage));
+    expect(pipeline.preprocessedCanonicalPage, same(identity.canonicalPage));
+    expect(result.value.diagnostics.identity?.payloadDecoded, isTrue);
+  });
+
+  test('identity mismatch remains an exact typed scanner failure', () {
+    final pipeline = _FakePipeline(
+      page,
+      _classifications(questionIds, const [
+        MarkState.marked,
+        MarkState.marked,
+        MarkState.blank,
+      ]),
+    );
+    final scanner = OfflineScannerEngine(
+      alignment: pipeline,
+      identity: _FakeIdentityStage(
+        TemplatePageIdentity(
+          templateId: template.id,
+          templateVersion: TemplateVersion(template.version.value + 1),
+          pageId: page.pageId,
+        ),
+      ),
+      preprocessing: pipeline,
+      measurement: pipeline,
+      classification: pipeline,
+    );
+
+    final result = scanner.scan(
+      encodedImage: Uint8List.fromList([1]),
+      template: template,
+      pageLayout: page,
+      config: ScannerConfig(),
+    );
+
+    expect(result.error.code, 'SCAN_TEMPLATE_VERSION_MISMATCH');
+    expect(result.error.details['identityPayloadDecoded'], isTrue);
+    expect(pipeline.calls, [ScanStage.alignment]);
   });
 
   for (final failureStage in [
@@ -454,6 +528,8 @@ final class _FakePipeline
   final ScanStage? failAt;
   final bool mutateInput;
   final List<ScanStage> calls = [];
+  CanonicalPageImage? alignedCanonicalPage;
+  CanonicalPageImage? preprocessedCanonicalPage;
 
   EngineResult<T>? _failure<T>(ScanStage stage) {
     calls.add(stage);
@@ -477,9 +553,10 @@ final class _FakePipeline
     if (failure != null) return failure;
     if (mutateInput) encodedImage[0] = 99;
     final size = _size(page);
+    alignedCanonicalPage = CanonicalPageImage(size: size, pngBytes: const [1]);
     return EngineResult.success(
       PageAlignmentResult(
-        canonicalPage: CanonicalPageImage(size: size, pngBytes: const [1]),
+        canonicalPage: alignedCanonicalPage!,
         homography: HomographyMatrix(const [1, 0, 0, 0, 1, 0, 0, 0, 1]),
         observations: const [],
         correspondences: const [],
@@ -508,6 +585,7 @@ final class _FakePipeline
     CanonicalPageImage canonicalPage,
     PreprocessingConfig config,
   ) {
+    preprocessedCanonicalPage = canonicalPage;
     final failure = _failure<PreprocessedPage>(ScanStage.preprocessing);
     if (failure != null) return failure;
     final pixels = Uint8List(canonicalPage.size.area);
@@ -600,6 +678,37 @@ final class _FakePipeline
       neighborMaskedPixelCount: 0,
     ),
   );
+}
+
+final class _FakeIdentityStage implements ScannerIdentityStage {
+  _FakeIdentityStage(this.identity);
+
+  final TemplatePageIdentity identity;
+  CanonicalPageImage? canonicalPage;
+
+  @override
+  EngineResult<ScannerIdentityResult> identify(
+    CanonicalPageImage page,
+    PageLayout layout,
+  ) {
+    canonicalPage = page;
+    return EngineResult.success(
+      ScannerIdentityResult(
+        identity: identity,
+        diagnostics: ScannerIdentityDiagnostics(
+          source: ScannerIdentitySource.canonicalCrop,
+          cropSize: ImageSize(width: 10, height: 10),
+          upscaleFactor: 1,
+          payloadDecoded: true,
+          processingDuration: Duration.zero,
+          attemptCount: 1,
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {}
 }
 
 ImageSize _size(PageLayout page) => ImageSize(

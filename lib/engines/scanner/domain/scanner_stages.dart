@@ -11,6 +11,7 @@ import '../../recognition/domain/bubble_measurement_config.dart';
 import '../../recognition/domain/mark_classification.dart';
 import '../../recognition/domain/mark_classification_config.dart';
 import '../../template/domain/template_definition.dart';
+import 'scanner_identity.dart';
 
 abstract interface class ScannerAlignmentStage {
   EngineResult<PageAlignmentResult> align(
@@ -18,6 +19,15 @@ abstract interface class ScannerAlignmentStage {
     PageLayout page,
     ArucoAlignmentConfig config,
   );
+}
+
+abstract interface class ScannerIdentityStage {
+  EngineResult<ScannerIdentityResult> identify(
+    CanonicalPageImage page,
+    PageLayout layout,
+  );
+
+  void dispose();
 }
 
 abstract interface class ScannerPreprocessingStage {

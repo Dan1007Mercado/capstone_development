@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:opencv_dart/opencv_dart.dart' as cv;
-
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../../../engines/aruco/infrastructure/opencv_aruco_vision_backend.dart';
@@ -11,6 +9,7 @@ import '../../../engines/pdf/domain/template_page_identity_codec.dart';
 import '../../../engines/preprocessing/infrastructure/opencv_preprocessing_backend.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
 import '../../../engines/scanner/infrastructure/offline_scanner_composition.dart';
+import '../../../engines/scanner/infrastructure/opencv_qr_identity_stage.dart';
 import '../../real_scanner/scanner_identity_validation.dart';
 import '../domain/camera_scan_context.dart';
 import '../domain/camera_scan_ports.dart';
@@ -253,16 +252,13 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
       ? OfflineScannerComposition.create(
           alignmentBackend: alignmentBackend!,
           preprocessingBackend: const OpenCvPreprocessingBackend(),
+          identity: OpenCvQrIdentityStage(),
         )
-      : null;
-  final identityDetector =
-      bootstrap.testResult == null && bootstrap.testError == null
-      ? cv.QRCodeDetector.empty()
       : null;
   bootstrap.mainPort.send(inbox.sendPort);
   inbox.listen((message) {
     if (message is _WorkerDispose) {
-      identityDetector?.dispose();
+      scanner?.identity?.dispose();
       alignmentBackend?.dispose();
       inbox.close();
       bootstrap.mainPort.send(const _WorkerDisposed());
@@ -284,46 +280,45 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
           (sum, byte) => (sum + byte) & 0x7fffffff,
         );
       }
-      final identity =
-          bootstrap.testResult == null && bootstrap.testError == null
-          ? _readPrintedIdentity(bytes, identityDetector!)
-          : const TemplatePageIdentityCodec().decode(
-              bootstrap.testIdentityPayload ??
-                  const TemplatePageIdentityCodec().encode(
-                    templateId: message.context.templateId,
-                    templateVersion: message.context.templateVersion,
-                    pageId: message.context.pageId,
-                  ),
-            );
-      if (identity.isFailure) {
-        result = EngineResult.failure(identity.error);
+      if (scanner != null) {
+        result = scanner.scan(
+          encodedImage: bytes,
+          template: message.context.template,
+          pageLayout: message.context.pageLayout,
+          config: message.context.scannerConfig,
+        );
       } else {
-        final identityValidation = validateCapturedPageIdentity(
-          identity.value,
+        final identity = const TemplatePageIdentityCodec().decode(
+          bootstrap.testIdentityPayload ??
+              const TemplatePageIdentityCodec().encode(
+                templateId: message.context.templateId,
+                templateVersion: message.context.templateVersion,
+                pageId: message.context.pageId,
+              ),
+        );
+        if (identity.isFailure) {
+          result = EngineResult.failure(identity.error);
+        } else {
+          final identityValidation = validateCapturedPageIdentity(
+            identity.value,
+            message.context,
+          );
+          if (identityValidation.isFailure) {
+            result = EngineResult.failure(identityValidation.error);
+          } else {
+            result = bootstrap.testError != null
+                ? EngineResult.failure(bootstrap.testError!)
+                : EngineResult.success(bootstrap.testResult!);
+          }
+        }
+      }
+      if (result.isSuccess) {
+        final resultIdentity = validateScanResultIdentity(
+          result.value,
           message.context,
         );
-        if (identityValidation.isFailure) {
-          result = EngineResult.failure(identityValidation.error);
-        } else {
-          result = bootstrap.testError != null
-              ? EngineResult.failure(bootstrap.testError!)
-              : bootstrap.testResult == null
-              ? scanner!.scan(
-                  encodedImage: bytes,
-                  template: message.context.template,
-                  pageLayout: message.context.pageLayout,
-                  config: message.context.scannerConfig,
-                )
-              : EngineResult.success(bootstrap.testResult!);
-          if (result.isSuccess) {
-            final resultIdentity = validateScanResultIdentity(
-              result.value,
-              message.context,
-            );
-            if (resultIdentity.isFailure) {
-              result = EngineResult.failure(resultIdentity.error);
-            }
-          }
+        if (resultIdentity.isFailure) {
+          result = EngineResult.failure(resultIdentity.error);
         }
       }
     } on Object catch (error) {
@@ -346,61 +341,4 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
       ),
     );
   });
-}
-
-EngineResult<TemplatePageIdentity> _readPrintedIdentity(
-  Uint8List encodedImage,
-  cv.QRCodeDetector detector,
-) {
-  cv.Mat? image;
-  cv.VecPoint? points;
-  cv.Mat? straightCode;
-  try {
-    image = cv.imdecode(encodedImage, cv.IMREAD_GRAYSCALE);
-    if (image.isEmpty) {
-      return EngineResult.failure(
-        EngineError(
-          code: 'SCAN_PAGE_IDENTITY_NOT_FOUND',
-          message: 'The captured image could not be decoded for page identity.',
-        ),
-      );
-    }
-    final decoded = detector.detectAndDecode(image);
-    points = decoded.$2;
-    straightCode = decoded.$3;
-    if (decoded.$1.isEmpty) {
-      return EngineResult.failure(
-        EngineError(
-          code: 'SCAN_PAGE_IDENTITY_NOT_FOUND',
-          message: 'No readable TalaanScan page identity was found.',
-        ),
-      );
-    }
-    final identity = const TemplatePageIdentityCodec().decode(decoded.$1);
-    if (identity.isFailure) {
-      return EngineResult.failure(
-        EngineError(
-          code: 'SCAN_PAGE_IDENTITY_INVALID',
-          message: 'The captured page identity is malformed.',
-          details: {
-            'causeCode': identity.error.code,
-            'causeMessage': identity.error.message,
-          },
-        ),
-      );
-    }
-    return identity;
-  } on Object catch (error) {
-    return EngineResult.failure(
-      EngineError(
-        code: 'SCAN_PAGE_IDENTITY_NOT_FOUND',
-        message: 'The captured page identity could not be read.',
-        details: {'cause': error.toString()},
-      ),
-    );
-  } finally {
-    straightCode?.dispose();
-    points?.dispose();
-    image?.dispose();
-  }
 }
