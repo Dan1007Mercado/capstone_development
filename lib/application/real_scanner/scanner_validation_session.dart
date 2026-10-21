@@ -7,6 +7,7 @@ import '../../engines/layout/domain/page_layout.dart';
 import '../../engines/scanner/domain/scan_result.dart';
 import '../../engines/scanner/domain/scanner_config.dart';
 import '../camera_scanner/domain/camera_scan_context.dart';
+import 'physical_validation_recorder.dart';
 import 'published_scanner_resolver.dart';
 
 enum ScannerValidationSessionState { scanning, reviewing, complete }
@@ -18,24 +19,37 @@ final class ScannerValidationSession {
     required this.scannerConfig,
     required Map<PageId, ScanResult> resultsByPageId,
     required this.state,
+    this.validationPlan,
     this.reviewingPageId,
   }) : resultsByPageId = UnmodifiableMapView(resultsByPageId);
 
   factory ScannerValidationSession.start({
     required PublishedScannerArtifact artifact,
     ScannerConfig? scannerConfig,
+    PhysicalValidationPlan? validationPlan,
   }) => ScannerValidationSession._(
     artifact: artifact,
     scannerConfig: scannerConfig ?? ScannerConfig(),
     resultsByPageId: const {},
     state: ScannerValidationSessionState.scanning,
+    validationPlan: validationPlan,
   );
 
   final PublishedScannerArtifact artifact;
   final ScannerConfig scannerConfig;
   final Map<PageId, ScanResult> resultsByPageId;
   final ScannerValidationSessionState state;
+  final PhysicalValidationPlan? validationPlan;
   final PageId? reviewingPageId;
+
+  PhysicalValidationReport? get validationReport {
+    final plan = validationPlan;
+    if (plan == null) return null;
+    return PhysicalValidationReport.record(
+      plan: plan,
+      results: [for (final page in pages) ?resultsByPageId[page.pageId]],
+    );
+  }
 
   List<PageLayout> get pages => artifact.layout.pages;
   int get pageCount => pages.length;
@@ -121,6 +135,7 @@ final class ScannerValidationSession {
         scannerConfig: scannerConfig,
         resultsByPageId: {...resultsByPageId, result.pageId: result},
         state: ScannerValidationSessionState.reviewing,
+        validationPlan: validationPlan,
         reviewingPageId: result.pageId,
       ),
     );
@@ -146,6 +161,7 @@ final class ScannerValidationSession {
         state: complete
             ? ScannerValidationSessionState.complete
             : ScannerValidationSessionState.scanning,
+        validationPlan: validationPlan,
         reviewingPageId: null,
       ),
     );

@@ -48,24 +48,25 @@ final class BubbleEvidenceEvaluator {
       measurement.darknessContrast >= config.minimumDarknessContrast,
     ].where((passes) => passes).length;
     final binaryStrong = measurement.fillRatio >= config.strongFillRatio;
-    final grayscaleSignals = [
-      measurement.normalizedDarkness >= config.minimumNormalizedDarkness,
-      measurement.darknessContrast >= config.minimumDarknessContrast,
-    ].where((passes) => passes).length;
+    final normalizedDarknessStrong =
+        measurement.normalizedDarkness >= config.strongNormalizedDarkness;
+    final darknessContrastStrong =
+        measurement.darknessContrast >= config.strongDarknessContrast;
+    final unsupportedStrongSignal =
+        minimumSignals < 2 &&
+        (binaryStrong || normalizedDarknessStrong || darknessContrastStrong);
 
     final category = severeQuality
         ? BubbleEvidenceCategory.invalid
         : unreliableQuality
         ? BubbleEvidenceCategory.unreliable
-        : binaryStrong && grayscaleSignals == 0
+        : unsupportedStrongSignal
         ? BubbleEvidenceCategory.conflicting
         : combinedScore >= config.strongCombinedScore && minimumSignals >= 2
         ? BubbleEvidenceCategory.strongMark
         : combinedScore >= config.minimumCombinedScore && minimumSignals >= 2
         ? BubbleEvidenceCategory.possibleMark
-        : combinedScore < config.minimumCombinedScore && minimumSignals == 0
-        ? BubbleEvidenceCategory.clearBlank
-        : BubbleEvidenceCategory.conflicting;
+        : BubbleEvidenceCategory.clearBlank;
     final state = switch (category) {
       BubbleEvidenceCategory.strongMark => BubbleDecisionState.selected,
       BubbleEvidenceCategory.clearBlank => BubbleDecisionState.notSelected,

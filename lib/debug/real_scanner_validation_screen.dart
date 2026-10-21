@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../application/camera_scanner/domain/camera_scan_state.dart';
 import '../application/camera_scanner/domain/detected_page_geometry.dart';
 import '../application/camera_scanner/domain/preview_coordinate_mapper.dart';
 import '../application/real_scanner/published_scanner_resolver.dart';
+import '../application/real_scanner/physical_validation_recorder.dart';
 import '../application/real_scanner/real_scanner_runtime.dart';
 import '../application/real_scanner/scanner_validation_flow.dart';
 import '../application/real_scanner/scanner_validation_session.dart';
@@ -83,7 +85,10 @@ class _RealScannerSelectionScreenState
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => RealScannerCameraScreen(
-          session: ScannerValidationSession.start(artifact: selected),
+          session: ScannerValidationSession.start(
+            artifact: selected,
+            validationPlan: buildP13_8DenseKnownAnswerPlan(selected.template),
+          ),
         ),
       ),
     );
@@ -137,6 +142,14 @@ class _RealScannerSelectionScreenState
               Text('Pages: ${selected.layout.pages.length}'),
               for (final page in selected.layout.pages)
                 Text('Page ${page.pageIndex + 1}: ${page.pageId.value}'),
+              if (buildP13_8DenseKnownAnswerPlan(selected.template) != null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'P13.8 known answer: mark Q01 = B and Q21 = C; leave '
+                    'all other bubbles untouched.',
+                  ),
+                ),
             ],
             if (error != null) ...[
               const SizedBox(height: 12),
@@ -482,6 +495,11 @@ class ScannerPageResultScreen extends StatelessWidget {
       for (final section in session.artifact.template.sections)
         for (final question in section.questions) question.id: question,
     };
+    final validation = session.validationReport;
+    final validationByQuestion = {
+      for (final record in validation?.questions ?? const [])
+        record.expected.questionId: record,
+    };
     return Scaffold(
       appBar: AppBar(title: const Text('Page scan result')),
       body: ListView(
@@ -501,7 +519,12 @@ class ScannerPageResultScreen extends StatelessWidget {
             _QuestionResultTile(
               classification: classification,
               question: questions[classification.questionId],
+              validation: validationByQuestion[classification.questionId],
             ),
+          if (validation != null) ...[
+            const Divider(),
+            _PhysicalValidationSummaryPanel(report: validation),
+          ],
           const SizedBox(height: 16),
           FilledButton(
             key: const Key('continue-after-page-review'),
@@ -529,10 +552,15 @@ class ScannerPageResultScreen extends StatelessWidget {
 }
 
 class _QuestionResultTile extends StatelessWidget {
-  const _QuestionResultTile({required this.classification, this.question});
+  const _QuestionResultTile({
+    required this.classification,
+    this.question,
+    this.validation,
+  });
 
   final QuestionClassification classification;
   final TemplateQuestion? question;
+  final PhysicalValidationQuestionRecord? validation;
 
   @override
   Widget build(BuildContext context) {
@@ -545,11 +573,92 @@ class _QuestionResultTile extends StatelessWidget {
         .map((id) => labels[id] ?? id.value)
         .join(' + ');
     final answer = numeric ?? (selected.isEmpty ? '—' : selected);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
+    final diagnostics = classification.diagnostics;
+    final expected = validation?.expected;
+    final expectedAnswer =
+        expected?.numericAnswer ??
+        expected?.optionIds.map((id) => labels[id] ?? id.value).join(' + ');
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
       title: Text(question?.prompt ?? classification.questionId.value),
-      subtitle: Text(answer),
+      subtitle: Text(
+        expected == null
+            ? answer
+            : 'Expected: ${expected.state.name.toUpperCase()} '
+                  '${expectedAnswer?.isNotEmpty == true ? expectedAnswer : '—'}\n'
+                  'Detected: ${classification.state.name.toUpperCase()} '
+                  '$answer\n'
+                  'top ${diagnostics.topScore.toStringAsFixed(3)} · '
+                  'second ${diagnostics.secondScore.toStringAsFixed(3)} · '
+                  'gap ${diagnostics.scoreGap.toStringAsFixed(3)}',
+      ),
       trailing: Text(classification.state.name.toUpperCase()),
+      children: [
+        for (final decision in classification.bubbleDecisions)
+          ListTile(
+            dense: true,
+            title: Text(
+              decision.optionId?.value ??
+                  'column ${decision.numericColumnIndex}, '
+                      'digit ${decision.numericDigitValue}',
+            ),
+            subtitle: Text(
+              '${decision.category.name} · score '
+              '${decision.combinedScore.toStringAsFixed(3)} · fill '
+              '${decision.fillRatio.toStringAsFixed(3)} · normalized '
+              '${decision.normalizedDarkness.toStringAsFixed(3)} · contrast '
+              '${decision.darknessContrast.toStringAsFixed(1)}',
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PhysicalValidationSummaryPanel extends StatelessWidget {
+  const _PhysicalValidationSummaryPanel({required this.report});
+
+  final PhysicalValidationReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = report.summary;
+    String percent(double value) => '${(value * 100).toStringAsFixed(1)}%';
+    return ExpansionTile(
+      key: const Key('p13-8-validation-summary'),
+      title: const Text('P13.8 validation summary'),
+      subtitle: Text(
+        '${summary.correct}/${summary.totalQuestions} correct · '
+        '${summary.wrongConfidentCount} wrong-confident',
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: SelectableText(
+            'Accuracy: ${summary.accuracyPercentage.toStringAsFixed(1)}%\n'
+            'Ambiguous: ${summary.ambiguous} '
+            '(${summary.ambiguousPercentage.toStringAsFixed(1)}%)\n'
+            'Blank accuracy: ${percent(summary.blankAccuracy)}\n'
+            'Marked accuracy: ${percent(summary.markedAccuracy)}\n'
+            'Multiple accuracy: ${percent(summary.multipleAccuracy)}\n'
+            'False positive marks: ${summary.falsePositiveMarks}\n'
+            'False blank: ${summary.falseBlank}\n'
+            'Average processing: '
+            '${summary.averageProcessingDuration.inMilliseconds} ms',
+          ),
+        ),
+        ExpansionTile(
+          title: const Text('Structured JSON evidence'),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: SelectableText(
+                const JsonEncoder.withIndent('  ').convert(report.toJson()),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -560,28 +669,35 @@ class _ScannerCompleteScreen extends StatelessWidget {
   final ScannerValidationSession session;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Scan complete')),
-    body: Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, size: 64),
-            const SizedBox(height: 12),
-            Text('${session.completedPageCount} pages scanned'),
-            Text(
-              '${session.artifact.template.name} · v${session.artifact.templateVersion.value}',
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Finish'),
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final validation = session.validationReport;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Scan complete')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle, size: 64),
+              const SizedBox(height: 12),
+              Text('${session.completedPageCount} pages scanned'),
+              Text(
+                '${session.artifact.template.name} · v${session.artifact.templateVersion.value}',
+              ),
+              if (validation != null) ...[
+                const SizedBox(height: 16),
+                _PhysicalValidationSummaryPanel(report: validation),
+              ],
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Finish'),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

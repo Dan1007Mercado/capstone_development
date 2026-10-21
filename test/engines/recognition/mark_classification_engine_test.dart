@@ -25,6 +25,23 @@ void main() {
       expect(_classify(engine, scenario).state, MarkState.blank);
     });
 
+    test('one weak print-noise signal remains BLANK', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.weakOutlineNoise
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.blank);
+      expect(
+        result.bubbleDecisions.first.category,
+        BubbleEvidenceCategory.clearBlank,
+      );
+    });
+
     test('one strong mark returns MARKED with its OptionId', () {
       final scenario = _singleChoice();
       final result = _classify(
@@ -72,6 +89,32 @@ void main() {
       expect(result.diagnostics.reason, ClassificationReason.closeCandidates);
     });
 
+    test('one possible but clearly dominant candidate returns MARKED', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.possibleTop
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.marked);
+      expect(
+        result.bubbleDecisions.first.category,
+        BubbleEvidenceCategory.possibleMark,
+      );
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions.first.optionId,
+      ]);
+      expect(
+        result.diagnostics.scoreGap,
+        greaterThanOrEqualTo(
+          const MarkClassificationConfig().minimumTopSecondGap,
+        ),
+      );
+    });
+
     test('faint but isolated multi-signal mark can return MARKED', () {
       final scenario = _singleChoice();
       final result = _classify(
@@ -104,6 +147,45 @@ void main() {
 
       expect(result.state, MarkState.blank);
       expect(result.selectedOptionIds, isEmpty);
+    });
+
+    test(
+      'printed-paper outline noise across untouched bubbles stays BLANK',
+      () {
+        final scenario = _singleChoice(optionCount: 4);
+        const fillNoise = [0.13, 0.16, 0.14, 0.18];
+        final result = _classify(
+          engine,
+          scenario,
+          evidence: (bubble) => _Evidence(
+            fill: fillNoise[scenario.page.bubbleRegions.indexOf(bubble)],
+            normalized: 0.03,
+            contrast: 6,
+          ),
+        );
+
+        expect(result.state, MarkState.blank);
+        expect(
+          result.bubbleDecisions.map((decision) => decision.category),
+          everyElement(BubbleEvidenceCategory.clearBlank),
+        );
+      },
+    );
+
+    test('weak printed noise does not reject one credible winner', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.strong
+            : _Evidence.weakOutlineNoise,
+      );
+
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions.first.optionId,
+      ]);
     });
 
     test('binary-strong grayscale-weak conflict returns AMBIGUOUS', () {
@@ -637,6 +719,11 @@ final class _Evidence {
   final BubbleMeasurementQuality quality;
 
   static const blank = _Evidence(fill: 0.02, normalized: 0.02, contrast: 3);
+  static const weakOutlineNoise = _Evidence(
+    fill: 0.16,
+    normalized: 0.03,
+    contrast: 6,
+  );
   static const strong = _Evidence(fill: 0.80, normalized: 0.45, contrast: 90);
   static const possibleTop = _Evidence(
     fill: 0.30,
