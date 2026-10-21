@@ -1,15 +1,21 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_state.dart';
 import 'package:capstone_development/application/real_scanner/published_scanner_resolver.dart';
+import 'package:capstone_development/application/real_scanner/multi_page_validation_recorder.dart';
 import 'package:capstone_development/application/real_scanner/scanner_validation_flow.dart';
 import 'package:capstone_development/application/real_scanner/scanner_validation_session.dart';
+import 'package:capstone_development/application/published_templates/in_memory_published_template_artifact_repository.dart';
+import 'package:capstone_development/application/published_templates/published_template_artifact_service.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
+import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p11_1_scanner_validation_sheet.dart';
 import 'package:capstone_development/debug/real_scanner_validation_screen.dart';
 import 'package:capstone_development/engines/aruco/domain/marker_correspondence.dart';
 import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
 import 'package:capstone_development/engines/camera/domain/camera_models.dart';
+import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/preprocessing/domain/preprocessed_page.dart';
 import 'package:capstone_development/engines/scanner/domain/scan_result.dart';
 import 'package:flutter/material.dart';
@@ -205,6 +211,62 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('final multi-page review exposes the Page 2 duplicate check', (
+    tester,
+  ) async {
+    final fixture = _FlowFixture(multiPage: true);
+    for (final index in const [1, 0]) {
+      fixture.flow.handleCoordinatorState(
+        _completed(fixture.resultForPage(index)),
+      );
+      fixture.flow.continueAfterReview();
+    }
+    final finalResult = fixture.resultForPage(2);
+    fixture.flow.handleCoordinatorState(_completed(finalResult));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScannerReviewStateView(
+          session: fixture.flow.session,
+          reviewResult: fixture.flow.reviewResult,
+          onContinue: () {},
+        ),
+      ),
+    );
+
+    expect(find.text('Check duplicate Page 2'), findsOneWidget);
+    expect(find.byKey(const Key('p13-9-validation-summary')), findsOneWidget);
+    expect(find.textContaining('3/3 unique pages'), findsOneWidget);
+  });
+
+  testWidgets('known multi-page selection shows the required scan order', (
+    tester,
+  ) async {
+    final repository = InMemoryPublishedTemplateArtifactRepository();
+    final inputs = buildP11ScannerValidationSheetInputs();
+    final published = await PublishedTemplateArtifactService(
+      repository: repository,
+      pdfRenderer: (_, _) async =>
+          EngineResult.success(Uint8List.fromList([37, 80, 68, 70, 45])),
+    ).publish(draft: inputs.template, layoutConfig: LayoutConfig.a4Default());
+    expect(published.isSuccess, isTrue);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RealScannerSelectionScreen(
+          resolver: PublishedScannerResolver(artifactRepository: repository),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Page 2 -> Page 1 -> Page 3 -> Page 2'),
+      findsOne,
+    );
+    expect(find.textContaining('rejected as a duplicate'), findsOne);
+  });
+
   test('review and worker response models retain no full image buffers', () {
     final resultSource = File(
       'lib/engines/scanner/domain/scan_result.dart',
@@ -231,13 +293,17 @@ void main() {
 }
 
 final class _FlowFixture {
-  _FlowFixture() {
+  _FlowFixture({bool multiPage = false}) {
     final inputs = buildP11ScannerValidationSheetInputs();
+    final artifact = PublishedScannerArtifact(
+      template: inputs.template,
+      layout: inputs.layout,
+    );
     final session = ScannerValidationSession.start(
-      artifact: PublishedScannerArtifact(
-        template: inputs.template,
-        layout: inputs.layout,
-      ),
+      artifact: artifact,
+      multiPageValidationPlan: multiPage
+          ? buildP13_9MultiPageValidationPlan(artifact)
+          : null,
     );
     flow = ScannerValidationFlowController(
       session: session,

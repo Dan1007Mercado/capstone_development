@@ -20,79 +20,7 @@ const p11ScannerValidationSheetOutputPath =
 
 ({TemplateDefinition template, LayoutDocument layout})
 buildP11ScannerValidationSheetInputs() {
-  final template = TemplateDefinition(
-    id: TemplateId('p11-1-scanner-validation'),
-    version: TemplateVersion(1),
-    name: 'P11.1 Scanner Validation Sheet',
-    description: 'Performance and multi-semantics physical scanner fixture.',
-    status: TemplateStatus.draft,
-    sections: [
-      TemplateSection(
-        id: SectionId('section-likert'),
-        title: 'SECTION A - Likert',
-        questions: [
-          _choice('q1', QuestionType.likert, 'Q1: Rate statement one', 5),
-          _choice('q2', QuestionType.likert, 'Q2: Rate statement two', 5),
-          _choice('q3', QuestionType.likert, 'Q3: Rate statement three', 5),
-        ],
-      ),
-      TemplateSection(
-        id: SectionId('section-single'),
-        title: 'SECTION B - Single Choice',
-        questions: [
-          _choice('q4', QuestionType.singleChoice, 'Q4: Select one option', 4),
-          _choice('q5', QuestionType.singleChoice, 'Q5: Select one option', 4),
-        ],
-      ),
-      TemplateSection(
-        id: SectionId('section-multiple'),
-        title: 'SECTION C - Multiple Choice / Checklist',
-        questions: [
-          _choice(
-            'q6',
-            QuestionType.multipleChoice,
-            'Q6: Select all that apply',
-            5,
-          ),
-          _choice(
-            'q7',
-            QuestionType.multipleChoice,
-            'Q7: Select all that apply',
-            5,
-          ),
-        ],
-      ),
-      TemplateSection(
-        id: SectionId('section-yes-no'),
-        title: 'SECTION D - Yes / No',
-        questions: [
-          TemplateQuestion.yesNo(
-            id: QuestionId('q8'),
-            prompt: 'Q8: Confirm YES or NO',
-            yesOptionId: OptionId('q8-yes'),
-            noOptionId: OptionId('q8-no'),
-          ),
-          TemplateQuestion.yesNo(
-            id: QuestionId('q9'),
-            prompt: 'Q9: Confirm YES or NO',
-            yesOptionId: OptionId('q9-yes'),
-            noOptionId: OptionId('q9-no'),
-          ),
-        ],
-      ),
-      TemplateSection(
-        id: SectionId('section-numeric'),
-        title: 'SECTION E - Numeric Grid',
-        questions: [
-          TemplateQuestion.numericGrid(
-            id: QuestionId('q10'),
-            prompt: 'Q10: Fill one digit in each column',
-            spec: NumericGridSpec(columnCount: 3),
-          ),
-        ],
-      ),
-    ],
-  );
+  final template = buildP11ScannerValidationTemplate();
   final validation = TemplateValidator().validate(template);
   if (!validation.isValid) {
     throw StateError(
@@ -108,6 +36,80 @@ buildP11ScannerValidationSheetInputs() {
   }
   return (template: template, layout: layoutResult.value);
 }
+
+TemplateDefinition buildP11ScannerValidationTemplate() => TemplateDefinition(
+  id: TemplateId('p11-1-scanner-validation'),
+  version: TemplateVersion(1),
+  name: 'P11.1 Scanner Validation Sheet',
+  description: 'Performance and multi-semantics physical scanner fixture.',
+  status: TemplateStatus.draft,
+  sections: [
+    TemplateSection(
+      id: SectionId('section-likert'),
+      title: 'SECTION A - Likert',
+      questions: [
+        _choice('q1', QuestionType.likert, 'Q1: Rate statement one', 5),
+        _choice('q2', QuestionType.likert, 'Q2: Rate statement two', 5),
+        _choice('q3', QuestionType.likert, 'Q3: Rate statement three', 5),
+      ],
+    ),
+    TemplateSection(
+      id: SectionId('section-single'),
+      title: 'SECTION B - Single Choice',
+      questions: [
+        _choice('q4', QuestionType.singleChoice, 'Q4: Select one option', 4),
+        _choice('q5', QuestionType.singleChoice, 'Q5: Select one option', 4),
+      ],
+    ),
+    TemplateSection(
+      id: SectionId('section-multiple'),
+      title: 'SECTION C - Multiple Choice / Checklist',
+      questions: [
+        _choice(
+          'q6',
+          QuestionType.multipleChoice,
+          'Q6: Select all that apply',
+          5,
+        ),
+        _choice(
+          'q7',
+          QuestionType.multipleChoice,
+          'Q7: Select all that apply',
+          5,
+        ),
+      ],
+    ),
+    TemplateSection(
+      id: SectionId('section-yes-no'),
+      title: 'SECTION D - Yes / No',
+      questions: [
+        TemplateQuestion.yesNo(
+          id: QuestionId('q8'),
+          prompt: 'Q8: Confirm YES or NO',
+          yesOptionId: OptionId('q8-yes'),
+          noOptionId: OptionId('q8-no'),
+        ),
+        TemplateQuestion.yesNo(
+          id: QuestionId('q9'),
+          prompt: 'Q9: Confirm YES or NO',
+          yesOptionId: OptionId('q9-yes'),
+          noOptionId: OptionId('q9-no'),
+        ),
+      ],
+    ),
+    TemplateSection(
+      id: SectionId('section-numeric'),
+      title: 'SECTION E - Numeric Grid',
+      questions: [
+        TemplateQuestion.numericGrid(
+          id: QuestionId('q10'),
+          prompt: 'Q10: Fill one digit in each column',
+          spec: NumericGridSpec(columnCount: 3),
+        ),
+      ],
+    ),
+  ],
+);
 
 TemplateQuestion _choice(
   String id,

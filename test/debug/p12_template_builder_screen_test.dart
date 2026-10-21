@@ -8,6 +8,7 @@ import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p12_template_builder_fixture.dart';
 import 'package:capstone_development/debug/p12_template_builder_screen.dart';
+import 'package:capstone_development/debug/p11_1_scanner_validation_sheet.dart';
 import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/template/application/template_publication_service.dart';
 import 'package:capstone_development/engines/template/infrastructure/in_memory_template_repository.dart';
@@ -210,6 +211,85 @@ void main() {
     expect(
       stored.value.single.layout.pages.single.bubbleRegions,
       hasLength(160),
+    );
+  });
+
+  testWidgets('multi-page PDF action exposes the exact three-page fixture', (
+    tester,
+  ) async {
+    final inputs = buildP11ScannerValidationSheetInputs();
+    final artifact = TemplatePdfArtifact(
+      definition: inputs.template,
+      layout: inputs.layout,
+      bytes: Uint8List.fromList([37, 80, 68, 70, 45]),
+    );
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          multiPagePdfGenerator: () async {
+            calls++;
+            return EngineResult.success(artifact);
+          },
+        ),
+      ),
+    );
+
+    await _tapVisible(tester, const Key('generate-multi-page-validation-pdf'));
+    await tester.dragUntilVisible(
+      find.byKey(const Key('pdf-export-result')),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+
+    expect(calls, 1);
+    expect(
+      find.byKey(const Key('pdf-export-result'), skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('save-pdf'), skipOffstage: false), findsOne);
+  });
+
+  testWidgets('multi-page publication stores exact identities and signatures', (
+    tester,
+  ) async {
+    final repository = InMemoryPublishedTemplateArtifactRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          densePublicationService: PublishedTemplateArtifactService(
+            repository: repository,
+            pdfRenderer: (_, _) async =>
+                EngineResult.success(Uint8List.fromList([37, 80, 68, 70, 45])),
+          ),
+        ),
+      ),
+    );
+
+    await _tapVisible(tester, const Key('publish-multi-page-template-v1'));
+
+    final stored = await repository.list();
+    expect(stored.value, hasLength(1));
+    expect(stored.value.single.templateId.value, 'p11-1-scanner-validation');
+    expect(stored.value.single.layout.pages, hasLength(3));
+    expect(
+      stored.value.single.layout.pages.map(
+        (page) => page.markerRegions
+            .map((marker) => marker.markerId)
+            .toList(growable: false),
+      ),
+      [
+        [10, 11, 12, 13],
+        [14, 15, 16, 17],
+        [18, 19, 20, 21],
+      ],
+    );
+    expect(
+      find.byKey(
+        const Key('multi-page-publication-result'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
     );
   });
 

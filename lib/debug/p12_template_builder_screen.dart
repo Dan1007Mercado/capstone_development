@@ -20,6 +20,7 @@ import '../engines/template/domain/template_question.dart';
 import '../engines/template/domain/template_section.dart';
 import '../engines/template/domain/template_status.dart';
 import '../engines/template/infrastructure/in_memory_template_repository.dart';
+import 'p11_1_scanner_validation_sheet.dart';
 import 'p12_template_builder_fixture.dart';
 import 'p13_6_dense_validation_sheet.dart';
 
@@ -33,6 +34,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.exporter,
     this.pdfGenerator,
     this.densePdfGenerator,
+    this.multiPagePdfGenerator,
     this.publicationService,
     this.densePublicationService,
   });
@@ -41,6 +43,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
   final TemplatePdfExporter? exporter;
   final TemplatePdfGenerator? pdfGenerator;
   final TemplatePdfGenerator? densePdfGenerator;
+  final TemplatePdfGenerator? multiPagePdfGenerator;
   final TemplatePublicationService? publicationService;
   final PublishedTemplateArtifactService? densePublicationService;
 
@@ -54,6 +57,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplatePdfExporter _exporter;
   late TemplatePdfGenerator _pdfGenerator;
   late TemplatePdfGenerator _densePdfGenerator;
+  late TemplatePdfGenerator _multiPagePdfGenerator;
   late TemplatePublicationService _publicationService;
   late PublishedTemplateArtifactService _densePublicationService;
   final TemplateValidator _validator = TemplateValidator();
@@ -69,6 +73,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   List<TemplateDefinition> _publishedVersions = const [];
   String? _lifecycleMessage;
   String? _densePublicationMessage;
+  String? _multiPagePublicationMessage;
 
   @override
   void initState() {
@@ -77,6 +82,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     _exporter = widget.exporter ?? UserAccessibleTemplatePdfExporter();
     _pdfGenerator = widget.pdfGenerator ?? () => _controller.generatePdf();
     _densePdfGenerator = widget.densePdfGenerator ?? _generateDenseArtifact;
+    _multiPagePdfGenerator =
+        widget.multiPagePdfGenerator ?? _generateMultiPageArtifact;
     _publicationService =
         widget.publicationService ??
         TemplatePublicationService(repository: InMemoryTemplateRepository());
@@ -185,11 +192,49 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     );
   }
 
+  Future<void> _generateMultiPagePdf() async {
+    setState(() {
+      _generatingPdf = true;
+      _error = null;
+    });
+    final result = await _multiPagePdfGenerator();
+    if (!mounted) return;
+    setState(() {
+      _generatingPdf = false;
+      _pdf = result.valueOrNull;
+      _exportOutcome = null;
+      _preview = result.isSuccess
+          ? TemplateLayoutPreview(
+              definition: result.value.definition,
+              layout: result.value.layout,
+            )
+          : null;
+      _error = result.errorOrNull;
+      _validation = result.isSuccess
+          ? _validator.validate(result.value.definition)
+          : null;
+    });
+  }
+
+  Future<EngineResult<TemplatePdfArtifact>> _generateMultiPageArtifact() async {
+    final inputs = buildP11ScannerValidationSheetInputs();
+    final rendered = await PdfEngine().render(inputs.template, inputs.layout);
+    if (rendered.isFailure) return EngineResult.failure(rendered.error);
+    return EngineResult.success(
+      TemplatePdfArtifact(
+        definition: inputs.template,
+        layout: inputs.layout,
+        bytes: rendered.value,
+      ),
+    );
+  }
+
   Future<void> _publishDenseArtifact() async {
     setState(() {
       _publishing = true;
       _error = null;
       _densePublicationMessage = null;
+      _multiPagePublicationMessage = null;
     });
     final result = await _densePublicationService.publish(
       draft: buildP13_6DenseValidationTemplate(),
@@ -213,6 +258,40 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         _densePublicationMessage =
             'Dense Template v${artifact.templateVersion.value} saved locally '
             'with exact PDF and PageLayout.';
+      }
+    });
+  }
+
+  Future<void> _publishMultiPageArtifact() async {
+    setState(() {
+      _publishing = true;
+      _error = null;
+      _densePublicationMessage = null;
+      _multiPagePublicationMessage = null;
+    });
+    final result = await _densePublicationService.publish(
+      draft: buildP11ScannerValidationTemplate(),
+      layoutConfig: LayoutConfig.a4Default(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _publishing = false;
+      _error = result.errorOrNull;
+      if (result.isSuccess) {
+        final artifact = result.value;
+        _pdf = TemplatePdfArtifact(
+          definition: artifact.template,
+          layout: artifact.layout,
+          bytes: artifact.pdfBytes,
+        );
+        _preview = TemplateLayoutPreview(
+          definition: artifact.template,
+          layout: artifact.layout,
+        );
+        _multiPagePublicationMessage =
+            'Multi-Page Validation Template '
+            'v${artifact.templateVersion.value} saved locally with exact '
+            '3-page PDF and PageLayout.';
       }
     });
   }
@@ -446,12 +525,26 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     : _generateDensePdf,
                 child: const Text('Generate Dense Validation PDF'),
               ),
+              OutlinedButton(
+                key: const Key('generate-multi-page-validation-pdf'),
+                onPressed: _generatingPdf || _savingPdf
+                    ? null
+                    : _generateMultiPagePdf,
+                child: const Text('Generate Multi-Page Validation PDF'),
+              ),
               FilledButton.tonal(
                 key: const Key('publish-dense-template-v1'),
                 onPressed: _publishing || _generatingPdf || _savingPdf
                     ? null
                     : _publishDenseArtifact,
                 child: const Text('Publish Dense Template v1'),
+              ),
+              FilledButton.tonal(
+                key: const Key('publish-multi-page-template-v1'),
+                onPressed: _publishing || _generatingPdf || _savingPdf
+                    ? null
+                    : _publishMultiPageArtifact,
+                child: const Text('Publish Multi-Page Validation Template v1'),
               ),
               FilledButton.tonal(
                 key: const Key('publish-template'),
@@ -482,6 +575,14 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
               child: SelectableText(
                 message,
                 key: const Key('dense-publication-result'),
+              ),
+            ),
+          if (_multiPagePublicationMessage case final message?)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: SelectableText(
+                message,
+                key: const Key('multi-page-publication-result'),
               ),
             ),
           if (_error case final error?) _ErrorPanel(error: error),

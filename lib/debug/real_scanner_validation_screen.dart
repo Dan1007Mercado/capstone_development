@@ -8,6 +8,7 @@ import '../application/camera_scanner/domain/camera_scan_state.dart';
 import '../application/camera_scanner/domain/detected_page_geometry.dart';
 import '../application/camera_scanner/domain/preview_coordinate_mapper.dart';
 import '../application/real_scanner/published_scanner_resolver.dart';
+import '../application/real_scanner/multi_page_validation_recorder.dart';
 import '../application/real_scanner/physical_validation_recorder.dart';
 import '../application/real_scanner/real_scanner_runtime.dart';
 import '../application/real_scanner/scanner_validation_flow.dart';
@@ -88,6 +89,9 @@ class _RealScannerSelectionScreenState
           session: ScannerValidationSession.start(
             artifact: selected,
             validationPlan: buildP13_8DenseKnownAnswerPlan(selected.template),
+            multiPageValidationPlan: buildP13_9MultiPageValidationPlan(
+              selected,
+            ),
           ),
         ),
       ),
@@ -111,8 +115,8 @@ class _RealScannerSelectionScreenState
               const Center(child: CircularProgressIndicator())
             else if (_artifacts.isEmpty)
               const Text(
-                'No durable published artifacts are available. Publish Dense '
-                'Template v1 in the template builder first.',
+                'No durable published artifacts are available. Publish a '
+                'validation template in the template builder first.',
               )
             else
               DropdownButtonFormField<PublishedScannerArtifact>(
@@ -126,7 +130,7 @@ class _RealScannerSelectionScreenState
                     DropdownMenuItem(
                       value: artifact,
                       child: Text(
-                        '${artifact.template.name} · v${artifact.templateVersion.value}',
+                        '${artifact.template.name} - v${artifact.templateVersion.value}',
                       ),
                     ),
                 ],
@@ -141,13 +145,25 @@ class _RealScannerSelectionScreenState
               Text('Version: ${selected.templateVersion.value}'),
               Text('Pages: ${selected.layout.pages.length}'),
               for (final page in selected.layout.pages)
-                Text('Page ${page.pageIndex + 1}: ${page.pageId.value}'),
+                Text(
+                  'Page ${page.pageIndex + 1}: ${page.pageId.value} '
+                  '[${markerIdsForPage(page).join('/')}]',
+                ),
               if (buildP13_8DenseKnownAnswerPlan(selected.template) != null)
                 const Padding(
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
                     'P13.8 known answer: mark Q01 = B and Q21 = C; leave '
                     'all other bubbles untouched.',
+                  ),
+                ),
+              if (buildP13_9MultiPageValidationPlan(selected) != null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'P13.9 scan order: Page 2 -> Page 1 -> Page 3 -> Page 2 '
+                    'again. The final Page 2 attempt must be rejected as a '
+                    'duplicate without overwriting its first result.',
                   ),
                 ),
             ],
@@ -231,7 +247,13 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
   }
 
   void _continue() {
-    final advanced = _flow.continueAfterReview();
+    final current = _flow.session;
+    final advanced =
+        current.isComplete &&
+            current.multiPageValidationPlan != null &&
+            current.multiPageAttempts.every((attempt) => !attempt.duplicate)
+        ? _flow.beginDuplicateCheck()
+        : _flow.continueAfterReview();
     if (advanced.isFailure) {
       setState(() {});
       return;
@@ -243,6 +265,10 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     }
     _runtime.coordinator.reset();
     setState(() {});
+  }
+
+  void _captureDuplicate() {
+    unawaited(_runtime.coordinator.captureAndScan(force: true));
   }
 
   @override
@@ -278,6 +304,8 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     final pageNumber =
         (detectedPage?.pageIndex ?? session.currentPageIndex) + 1;
     final pageCount = session.pages.length;
+    final duplicateChecking =
+        session.state == ScannerValidationSessionState.duplicateChecking;
     final displayedError = _flow.sessionError ?? state.error;
     return Scaffold(
       backgroundColor: Colors.black,
@@ -331,7 +359,8 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                                       session.isPageCompleted(detectedPageId),
                                 ),
                                 progress:
-                                    '${session.completedPageCount} of $pageCount completed',
+                                    '${session.completedPageCount} of $pageCount completed · '
+                                    'Missing: ${session.remainingPageIds.isEmpty ? 'none' : session.remainingPageIds.map((id) => id.value).join(', ')}',
                               ),
                             ),
                           ],
@@ -366,6 +395,28 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                         style: TextStyle(color: Colors.white),
                       ),
                     ),
+                ],
+              ),
+            ),
+          if (duplicateChecking)
+            Container(
+              width: double.infinity,
+              color: Theme.of(context).colorScheme.surface,
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  const Text(
+                    'Duplicate check: align Page 2, then capture it again. '
+                    'The original Page 2 result must remain unchanged.',
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    key: const Key('capture-duplicate-page-2'),
+                    onPressed: state.operationInProgress
+                        ? null
+                        : _captureDuplicate,
+                    child: const Text('Capture duplicate Page 2'),
+                  ),
                 ],
               ),
             ),
@@ -496,6 +547,7 @@ class ScannerPageResultScreen extends StatelessWidget {
         for (final question in section.questions) question.id: question,
     };
     final validation = session.validationReport;
+    final multiPageValidation = session.multiPageValidationReport;
     final validationByQuestion = {
       for (final record in validation?.questions ?? const [])
         record.expected.questionId: record,
@@ -525,11 +577,21 @@ class ScannerPageResultScreen extends StatelessWidget {
             const Divider(),
             _PhysicalValidationSummaryPanel(report: validation),
           ],
+          if (multiPageValidation != null) ...[
+            const Divider(),
+            _MultiPageValidationSummaryPanel(report: multiPageValidation),
+          ],
           const SizedBox(height: 16),
           FilledButton(
             key: const Key('continue-after-page-review'),
             onPressed: onContinue,
-            child: Text(session.isComplete ? 'Done' : 'Continue'),
+            child: Text(
+              session.isComplete && session.multiPageValidationPlan != null
+                  ? 'Check duplicate Page 2'
+                  : session.isComplete
+                  ? 'Done'
+                  : 'Continue',
+            ),
           ),
           ExpansionTile(
             title: const Text('Show diagnostics'),
@@ -663,6 +725,52 @@ class _PhysicalValidationSummaryPanel extends StatelessWidget {
   }
 }
 
+class _MultiPageValidationSummaryPanel extends StatelessWidget {
+  const _MultiPageValidationSummaryPanel({required this.report});
+
+  final MultiPageValidationReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = report.summary;
+    return ExpansionTile(
+      key: const Key('p13-9-validation-summary'),
+      title: const Text('P13.9 multi-page validation'),
+      subtitle: Text(
+        '${summary.uniqueAcceptedPages}/${summary.requiredPages} unique pages · '
+        '${summary.duplicateAttempts} duplicate attempt(s)',
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: SelectableText(
+            'Wrong-page detections: ${summary.wrongPageDetections}\n'
+            'Rejected identity attempts: ${summary.rejectedIdentityAttempts}\n'
+            'Session complete: ${summary.sessionComplete ? 'yes' : 'no'}\n'
+            'Final order: '
+            '${summary.finalPageOrder.map((id) => id.value).join(' → ')}\n'
+            'Total processing: '
+            '${summary.totalProcessingDuration.inMilliseconds} ms\n'
+            'Average processing: '
+            '${summary.averageProcessingDuration.inMilliseconds} ms',
+          ),
+        ),
+        ExpansionTile(
+          title: const Text('Attempt evidence JSON'),
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: SelectableText(
+                const JsonEncoder.withIndent('  ').convert(report.toJson()),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _ScannerCompleteScreen extends StatelessWidget {
   const _ScannerCompleteScreen({required this.session});
 
@@ -671,6 +779,7 @@ class _ScannerCompleteScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final validation = session.validationReport;
+    final multiPageValidation = session.multiPageValidationReport;
     return Scaffold(
       appBar: AppBar(title: const Text('Scan complete')),
       body: Center(
@@ -688,6 +797,10 @@ class _ScannerCompleteScreen extends StatelessWidget {
               if (validation != null) ...[
                 const SizedBox(height: 16),
                 _PhysicalValidationSummaryPanel(report: validation),
+              ],
+              if (multiPageValidation != null) ...[
+                const SizedBox(height: 16),
+                _MultiPageValidationSummaryPanel(report: multiPageValidation),
               ],
               const SizedBox(height: 16),
               FilledButton(
