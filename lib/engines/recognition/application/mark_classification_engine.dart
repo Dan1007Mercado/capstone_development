@@ -205,42 +205,47 @@ final class MarkClassificationEngine {
     TemplateQuestion question,
     List<BubbleMarkDecision> decisions,
   ) {
-    final scores = _scores(decisions);
-    if (decisions.any(
+    final checklistDecisions = decisions
+        .map(
+          (decision) => decision.category == BubbleEvidenceCategory.possibleMark
+              ? decision.withState(BubbleDecisionState.selected)
+              : decision,
+        )
+        .toList(growable: false);
+    final scores = _scores(checklistDecisions);
+    if (checklistDecisions.any(
       (decision) => decision.category == BubbleEvidenceCategory.invalid,
     )) {
       return _question(
         question,
         MarkState.invalid,
-        decisions,
+        checklistDecisions,
         const [],
         scores,
         ClassificationReason.unusableQuality,
       );
     }
-    if (decisions.any(
+    if (checklistDecisions.any(
       (decision) =>
-          decision.category != BubbleEvidenceCategory.strongMark &&
-          decision.category != BubbleEvidenceCategory.clearBlank,
+          decision.category == BubbleEvidenceCategory.conflicting ||
+          decision.category == BubbleEvidenceCategory.unreliable,
     )) {
       return _question(
         question,
         MarkState.ambiguous,
-        decisions,
+        checklistDecisions,
         const [],
         scores,
         ClassificationReason.uncertainEvidence,
       );
     }
-    final selected = decisions
-        .where(
-          (decision) => decision.category == BubbleEvidenceCategory.strongMark,
-        )
+    final selected = checklistDecisions
+        .where((decision) => decision.state == BubbleDecisionState.selected)
         .toList(growable: false);
     return _question(
       question,
       selected.isEmpty ? MarkState.blank : MarkState.marked,
-      decisions,
+      checklistDecisions,
       selected.map((decision) => decision.optionId).whereType<OptionId>(),
       scores,
       selected.isEmpty

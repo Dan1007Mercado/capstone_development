@@ -255,6 +255,13 @@ void main() {
   });
 
   group('question-type semantics', () {
+    test('multiple-choice all clear blanks return BLANK', () {
+      final result = _classify(engine, _multipleChoice());
+
+      expect(result.state, MarkState.blank);
+      expect(result.selectedOptionIds, isEmpty);
+    });
+
     test('multiple-choice one clear mark returns MARKED', () {
       final scenario = _multipleChoice();
       final result = _classify(
@@ -279,9 +286,10 @@ void main() {
       );
       expect(result.state, MarkState.marked);
       expect(result.selectedOptionIds, hasLength(2));
+      expect(result.state, isNot(MarkState.multiple));
     });
 
-    test('multiple-choice uncertain candidate returns AMBIGUOUS', () {
+    test('multiple-choice one credible possible mark returns MARKED', () {
       final scenario = _multipleChoice();
       final result = _classify(
         engine,
@@ -290,7 +298,173 @@ void main() {
             ? _Evidence.possibleTop
             : _Evidence.blank,
       );
+
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions[0].optionId,
+      ]);
+      expect(
+        result.bubbleDecisions[0].category,
+        BubbleEvidenceCategory.possibleMark,
+      );
+      expect(result.bubbleDecisions[0].state, BubbleDecisionState.selected);
+    });
+
+    test('multiple-choice several possible marks select each bubble', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.last
+            ? _Evidence.blank
+            : _Evidence.possibleTop,
+      );
+
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions[0].optionId,
+        scenario.page.bubbleRegions[1].optionId,
+      ]);
+    });
+
+    test('multiple-choice strong and possible marks are both selected', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) =>
+            switch (scenario.page.bubbleRegions.indexOf(bubble)) {
+              0 => _Evidence.strong,
+              1 => _Evidence.possibleTop,
+              _ => _Evidence.blank,
+            },
+      );
+
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions[0].optionId,
+        scenario.page.bubbleRegions[1].optionId,
+      ]);
+    });
+
+    test('multiple-choice possible mark plus conflict returns AMBIGUOUS', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) =>
+            switch (scenario.page.bubbleRegions.indexOf(bubble)) {
+              0 => _Evidence.possibleTop,
+              1 => _Evidence.binaryConflict,
+              _ => _Evidence.blank,
+            },
+      );
+
       expect(result.state, MarkState.ambiguous);
+      expect(result.diagnostics.reason, ClassificationReason.uncertainEvidence);
+      expect(
+        result.bubbleDecisions[1].category,
+        BubbleEvidenceCategory.conflicting,
+      );
+      expect(result.bubbleDecisions[1].fillRatio, 0.80);
+      expect(result.bubbleDecisions[1].normalizedDarkness, 0.01);
+      expect(result.bubbleDecisions[1].darknessContrast, 3);
+      expect(result.bubbleDecisions[1].combinedScore, greaterThan(0));
+    });
+
+    test('multiple-choice conflicting evidence returns AMBIGUOUS', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.binaryConflict
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.ambiguous);
+    });
+
+    test('multiple-choice unreliable measurement returns AMBIGUOUS', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.strongUnreliable
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.ambiguous);
+      expect(
+        result.bubbleDecisions.first.category,
+        BubbleEvidenceCategory.unreliable,
+      );
+    });
+
+    test('multiple-choice unusable measurement returns INVALID', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.strongInvalid
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.invalid);
+    });
+
+    test('multiple-choice weak outline noise remains unselected', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.weakOutlineNoise
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.blank);
+      expect(result.selectedOptionIds, isEmpty);
+      expect(
+        result.bubbleDecisions.first.category,
+        BubbleEvidenceCategory.clearBlank,
+      );
+    });
+
+    test('multiple-choice unsupported faint evidence remains unselected', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? _Evidence.unsupportedFaint
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.blank);
+      expect(result.selectedOptionIds, isEmpty);
+    });
+
+    test('multiple-choice selections preserve template option order', () {
+      final scenario = _multipleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) {
+          final index = scenario.page.bubbleRegions.indexOf(bubble);
+          return index == 0 || index == 2
+              ? _Evidence.possibleTop
+              : _Evidence.blank;
+        },
+      );
+
+      expect(result.state, isNot(MarkState.multiple));
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions[0].optionId,
+        scenario.page.bubbleRegions[2].optionId,
+      ]);
     });
 
     test('yes/no preserves one clear selected option', () {
@@ -739,6 +913,11 @@ final class _Evidence {
     fill: 0.08,
     normalized: 0.35,
     contrast: 70,
+  );
+  static const unsupportedFaint = _Evidence(
+    fill: 0.07,
+    normalized: 0.07,
+    contrast: 10,
   );
   static const binaryConflict = _Evidence(
     fill: 0.80,
