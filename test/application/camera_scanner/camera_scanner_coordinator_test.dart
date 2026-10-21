@@ -169,6 +169,29 @@ void main() {
     },
   );
 
+  test('diagnostic capture is explicit and forwarded once', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+
+    final result = await fixture.coordinator.captureAndScan(
+      includeDiagnostics: true,
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(fixture.scanner.includeDiagnosticsRequests, [isTrue]);
+    await fixture.dispose();
+  });
+
+  test('normal capture does not request diagnostic evidence', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+
+    expect((await fixture.coordinator.captureAndScan()).isSuccess, isTrue);
+
+    expect(fixture.scanner.includeDiagnosticsRequests, [isFalse]);
+    await fixture.dispose();
+  });
+
   test('normal capture is rejected until P10 readiness is ready', () async {
     final fixture = _Fixture(readyOnStart: false);
     await fixture.initialize();
@@ -208,6 +231,19 @@ void main() {
 
     expect(fixture.camera.captureCalls, 1);
     expect(fixture.coordinator.state.phase, CameraScanPhase.scanCompleted);
+    await fixture.dispose();
+  });
+
+  test('diagnostic mode ignores automatic capture requests', () async {
+    final fixture = _Fixture(autoCaptureEnabled: false);
+    await fixture.initialize();
+
+    fixture.camera.emitAnalyzing(ready: true, autoCaptureRequested: true);
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+
+    expect(fixture.camera.captureCalls, 0);
+    expect(fixture.scanner.calls, 0);
+    expect(fixture.coordinator.state.canCapture, isTrue);
     await fixture.dispose();
   });
 
@@ -483,6 +519,7 @@ void main() {
 final class _Fixture {
   _Fixture({
     bool readyOnStart = true,
+    bool autoCaptureEnabled = true,
     Completer<void>? captureGate,
     Completer<void>? scannerGate,
     EngineResult<CapturedPageImage>? captureResult,
@@ -510,6 +547,7 @@ final class _Fixture {
       imageLoader: loader,
       scanner: scanner,
       context: context,
+      autoCaptureEnabled: autoCaptureEnabled,
     );
   }
 
@@ -665,6 +703,7 @@ final class _FakeScanner implements OfflineScanRunner {
   final List<EngineResult<ScanResult>> results;
   final List<Uint8List> encodedImages = [];
   final List<CameraScanContext> contexts = [];
+  final List<bool> includeDiagnosticsRequests = [];
   int calls = 0;
   int activeCalls = 0;
   int maximumActiveCalls = 0;
@@ -673,12 +712,14 @@ final class _FakeScanner implements OfflineScanRunner {
   Future<EngineResult<FinalScannerRun>> scan({
     required Uint8List encodedImage,
     required CameraScanContext context,
+    bool includeDiagnostics = false,
   }) async {
     calls++;
     activeCalls++;
     if (activeCalls > maximumActiveCalls) maximumActiveCalls = activeCalls;
     encodedImages.add(Uint8List.fromList(encodedImage));
     contexts.add(context);
+    includeDiagnosticsRequests.add(includeDiagnostics);
     if (gate != null) await gate!.future;
     activeCalls--;
     final result = results.isEmpty

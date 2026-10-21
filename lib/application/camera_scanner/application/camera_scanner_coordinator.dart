@@ -5,6 +5,7 @@ import '../../../core/ids/identifiers.dart';
 import '../../../core/result/engine_result.dart';
 import '../../../engines/camera/domain/camera_models.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
+import '../../../engines/scanner/domain/scanner_diagnostic_snapshot.dart';
 import '../domain/camera_scan_context.dart';
 import '../domain/camera_scan_ports.dart';
 import '../domain/camera_scan_state.dart';
@@ -15,6 +16,7 @@ final class CameraScannerCoordinator {
     required this.imageLoader,
     required this.scanner,
     required CameraScanContext context,
+    this.autoCaptureEnabled = true,
   }) : _context = context {
     _latestCameraState = camera.state;
     _state = CameraScanState(
@@ -27,6 +29,7 @@ final class CameraScannerCoordinator {
   final CameraScanCamera camera;
   final CapturedImageBytesLoader imageLoader;
   final OfflineScanRunner scanner;
+  final bool autoCaptureEnabled;
   CameraScanContext _context;
 
   final StreamController<CameraScanState> _states =
@@ -41,6 +44,7 @@ final class CameraScannerCoordinator {
   bool _cameraSessionRequested = false;
   bool _disposed = false;
   Set<PageId> _completedPageIds = const {};
+  int _diagnosticScanCount = 0;
 
   CameraScanState get state => _state;
   Stream<CameraScanState> get states => _states.stream;
@@ -115,7 +119,10 @@ final class CameraScannerCoordinator {
     return EngineResult.success(true);
   }
 
-  Future<EngineResult<ScanResult>> captureAndScan({bool force = false}) async {
+  Future<EngineResult<ScanResult>> captureAndScan({
+    bool force = false,
+    bool includeDiagnostics = false,
+  }) async {
     if (_disposed) return EngineResult.failure(_disposedError());
     if (_operationInProgress) {
       return EngineResult.failure(_busyError());
@@ -275,6 +282,7 @@ final class CameraScannerCoordinator {
       final scan = await scanner.scan(
         encodedImage: encodedImage,
         context: _context,
+        includeDiagnostics: includeDiagnostics,
       );
       scannerStopwatch.stop();
       scannerDuration = scannerStopwatch.elapsed;
@@ -310,12 +318,16 @@ final class CameraScannerCoordinator {
         return EngineResult.failure(error);
       }
 
+      final sequencedDiagnostic = _sequenceDiagnostic(
+        scan.value.diagnosticSnapshot,
+      );
       _emit(
         CameraScanState(
           phase: CameraScanPhase.scanCompleted,
           cameraState: _latestCameraState,
           result: scan.value.result,
           finalScanTimings: timings,
+          diagnosticSnapshot: sequencedDiagnostic,
         ),
       );
       return EngineResult.success(scan.value.result);
@@ -355,6 +367,14 @@ final class CameraScannerCoordinator {
       ),
     );
     return EngineResult.success(true);
+  }
+
+  ScannerDiagnosticSnapshot? _sequenceDiagnostic(
+    ScannerDiagnosticSnapshot? snapshot,
+  ) {
+    if (snapshot == null) return null;
+    _diagnosticScanCount++;
+    return snapshot.withScanSequenceIndex(_diagnosticScanCount);
   }
 
   Future<EngineResult<bool>> suspend() async {
@@ -453,7 +473,8 @@ final class CameraScannerCoordinator {
       return;
     }
     _publishCameraPhase();
-    if (_autoCaptureArmed &&
+    if (autoCaptureEnabled &&
+        _autoCaptureArmed &&
         !_requiresFreshReadiness &&
         cameraState.autoCaptureRequested &&
         cameraState.readiness.isReady) {

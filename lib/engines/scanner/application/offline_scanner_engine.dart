@@ -10,6 +10,7 @@ import '../../template/domain/template_definition.dart';
 import '../../template/domain/template_question.dart';
 import '../domain/scan_result.dart';
 import '../domain/scanner_config.dart';
+import '../domain/scanner_diagnostic_snapshot.dart';
 import '../domain/scanner_stages.dart';
 
 final class OfflineScannerEngine {
@@ -30,6 +31,7 @@ final class OfflineScannerEngine {
     required TemplateDefinition template,
     required PageLayout pageLayout,
     required ScannerConfig config,
+    ScannerDiagnosticSink? diagnosticSink,
   }) {
     final validation = _validateTemplateLayout(template, pageLayout);
     if (validation != null) return EngineResult.failure(validation);
@@ -198,30 +200,54 @@ final class OfflineScannerEngine {
       requiredBlank: requiredBlank,
       measuredBubbles: measurementResult.value.measurements.length,
     );
-    return EngineResult.success(
-      ScanResult(
-        templateId: template.id,
-        templateVersion: template.version,
-        pageId: pageLayout.pageId,
-        questions: questions,
-        pageState: pageState,
-        reviewReasons: reviewReasons,
-        reviewQuestionIds: reviewQuestionIds,
-        diagnostics: ScanDiagnostics(
-          totalProcessingDuration: totalStopwatch.elapsed,
-          stageDurations: ScanStageDurations(
-            alignment: alignmentStopwatch.elapsed,
-            preprocessing: preprocessingStopwatch.elapsed,
-            measurement: measurementStopwatch.elapsed,
-            classification: classificationStopwatch.elapsed,
-            validation: validationStopwatch.elapsed,
-          ),
-          alignment: alignmentResult.value.diagnostics,
-          preprocessing: preprocessingResult.value.diagnostics,
-          summary: summary,
+    final result = ScanResult(
+      templateId: template.id,
+      templateVersion: template.version,
+      pageId: pageLayout.pageId,
+      questions: questions,
+      pageState: pageState,
+      reviewReasons: reviewReasons,
+      reviewQuestionIds: reviewQuestionIds,
+      diagnostics: ScanDiagnostics(
+        totalProcessingDuration: totalStopwatch.elapsed,
+        stageDurations: ScanStageDurations(
+          alignment: alignmentStopwatch.elapsed,
+          preprocessing: preprocessingStopwatch.elapsed,
+          measurement: measurementStopwatch.elapsed,
+          classification: classificationStopwatch.elapsed,
+          validation: validationStopwatch.elapsed,
         ),
+        alignment: alignmentResult.value.diagnostics,
+        preprocessing: preprocessingResult.value.diagnostics,
+        summary: summary,
       ),
     );
+    if (diagnosticSink != null) {
+      final canonical = alignmentResult.value.canonicalPage;
+      final grayscale = canonical.grayscaleBytes;
+      diagnosticSink(
+        ScannerDiagnosticSnapshot(
+          templateId: template.id,
+          templateVersion: template.version,
+          pageId: pageLayout.pageId,
+          canonicalSize: canonical.size,
+          canonicalImageFormat: grayscale.isNotEmpty
+              ? ScannerDiagnosticImageFormat.grayscale8
+              : ScannerDiagnosticImageFormat.png,
+          canonicalImageBytes: grayscale.isNotEmpty
+              ? grayscale
+              : canonical.pngBytes,
+          homography: alignmentResult.value.homography,
+          measurements: measurementResult.value,
+          classification: classificationResult.value,
+          result: result,
+          preprocessingConfig: config.preprocessing,
+          measurementConfig: config.measurement,
+          classificationConfig: config.classification,
+        ),
+      );
+    }
+    return EngineResult.success(result);
   }
 
   EngineError? _validateTemplateLayout(

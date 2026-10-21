@@ -5,6 +5,7 @@ import '../../../core/result/engine_result.dart';
 import '../../../engines/camera/application/camera_engine.dart';
 import '../../../engines/camera/domain/camera_models.dart';
 import '../../../engines/scanner/application/offline_scanner_engine.dart';
+import '../../../engines/scanner/domain/scanner_diagnostic_snapshot.dart';
 import '../domain/camera_scan_context.dart';
 import '../domain/camera_scan_ports.dart';
 
@@ -69,14 +70,19 @@ final class OfflineScannerRunnerAdapter implements OfflineScanRunner {
   Future<EngineResult<FinalScannerRun>> scan({
     required Uint8List encodedImage,
     required CameraScanContext context,
+    bool includeDiagnostics = false,
   }) async {
     await Future<void>.delayed(Duration.zero);
     final stopwatch = Stopwatch()..start();
+    ScannerDiagnosticSnapshot? diagnosticSnapshot;
     final result = engine.scan(
       encodedImage: encodedImage,
       template: context.template,
       pageLayout: context.pageLayout,
       config: context.scannerConfig,
+      diagnosticSink: includeDiagnostics
+          ? (snapshot) => diagnosticSnapshot = snapshot
+          : null,
     );
     stopwatch.stop();
     if (result.isFailure) return EngineResult.failure(result.error);
@@ -86,6 +92,7 @@ final class OfflineScannerRunnerAdapter implements OfflineScanRunner {
         workerDuration: stopwatch.elapsed,
         isolateOverhead: Duration.zero,
         workerReused: false,
+        diagnosticSnapshot: diagnosticSnapshot,
       ),
     );
   }

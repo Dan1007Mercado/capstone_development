@@ -20,6 +20,7 @@ import 'package:capstone_development/engines/recognition/domain/mark_classificat
 import 'package:capstone_development/engines/scanner/application/offline_scanner_engine.dart';
 import 'package:capstone_development/engines/scanner/domain/scan_result.dart';
 import 'package:capstone_development/engines/scanner/domain/scanner_config.dart';
+import 'package:capstone_development/engines/scanner/domain/scanner_diagnostic_snapshot.dart';
 import 'package:capstone_development/engines/scanner/domain/scanner_stages.dart';
 import 'package:capstone_development/engines/template/domain/question_type.dart';
 import 'package:capstone_development/engines/template/domain/template_definition.dart';
@@ -87,6 +88,72 @@ void main() {
     );
     expect(result.value.pageState, ScanPageState.accepted);
   });
+
+  test(
+    'diagnostic hook observes exact pipeline values without changing result',
+    () {
+      final normalPipeline = _FakePipeline(
+        page,
+        _classifications(questionIds, const [
+          MarkState.marked,
+          MarkState.marked,
+          MarkState.blank,
+        ]),
+      );
+      final diagnosticPipeline = _FakePipeline(
+        page,
+        _classifications(questionIds, const [
+          MarkState.marked,
+          MarkState.marked,
+          MarkState.blank,
+        ]),
+      );
+      final config = ScannerConfig(
+        preprocessing: const PreprocessingConfig(denoiseKernelSize: 5),
+        measurement: const BubbleMeasurementConfig(interiorRadiusRatio: 0.67),
+        classification: const MarkClassificationConfig(
+          minimumCombinedScore: 0.36,
+        ),
+      );
+      final normal = _engine(normalPipeline).scan(
+        encodedImage: Uint8List.fromList([1, 2, 3]),
+        template: template,
+        pageLayout: page,
+        config: config,
+      );
+      ScannerDiagnosticSnapshot? snapshot;
+      final diagnostic = _engine(diagnosticPipeline).scan(
+        encodedImage: Uint8List.fromList([1, 2, 3]),
+        template: template,
+        pageLayout: page,
+        config: config,
+        diagnosticSink: (value) => snapshot = value,
+      );
+
+      expect(normal.isSuccess, isTrue);
+      expect(diagnostic.isSuccess, isTrue);
+      expect(
+        _semanticProjection(diagnostic.value),
+        _semanticProjection(normal.value),
+      );
+      expect(snapshot, isNotNull);
+      expect(snapshot!.result, same(diagnostic.value));
+      expect(snapshot!.measurements, same(diagnosticPipeline.measurementSet));
+      expect(
+        diagnosticPipeline.classificationMeasurements,
+        same(snapshot!.measurements),
+      );
+      expect(
+        snapshot!.classification,
+        same(diagnosticPipeline.classificationResult),
+      );
+      expect(snapshot!.preprocessingConfig, same(config.preprocessing));
+      expect(snapshot!.measurementConfig, same(config.measurement));
+      expect(snapshot!.classificationConfig, same(config.classification));
+      expect(snapshot!.canonicalImageFormat, ScannerDiagnosticImageFormat.png);
+      expect(snapshot!.canonicalImageBytes, [1]);
+    },
+  );
 
   for (final failureStage in [
     ScanStage.alignment,
@@ -454,6 +521,9 @@ final class _FakePipeline
   final ScanStage? failAt;
   final bool mutateInput;
   final List<ScanStage> calls = [];
+  BubbleMeasurementSet? measurementSet;
+  BubbleMeasurementSet? classificationMeasurements;
+  PageClassificationResult? classificationResult;
 
   EngineResult<T>? _failure<T>(ScanStage stage) {
     calls.add(stage);
@@ -539,15 +609,14 @@ final class _FakePipeline
   ) {
     final failure = _failure<BubbleMeasurementSet>(ScanStage.measurement);
     if (failure != null) return failure;
-    return EngineResult.success(
-      BubbleMeasurementSet(
-        pageId: layout.pageId,
-        measurements: [
-          for (final bubble in layout.bubbleRegions)
-            _emptyMeasurement(bubble.questionId, bubble.optionId),
-        ],
-      ),
+    measurementSet = BubbleMeasurementSet(
+      pageId: layout.pageId,
+      measurements: [
+        for (final bubble in layout.bubbleRegions)
+          _emptyMeasurement(bubble.questionId, bubble.optionId),
+      ],
     );
+    return EngineResult.success(measurementSet!);
   }
 
   @override
@@ -561,9 +630,12 @@ final class _FakePipeline
       ScanStage.classification,
     );
     if (failure != null) return failure;
-    return EngineResult.success(
-      PageClassificationResult(pageId: page.pageId, questions: classifications),
+    classificationMeasurements = measurements;
+    classificationResult = PageClassificationResult(
+      pageId: page.pageId,
+      questions: classifications,
     );
+    return EngineResult.success(classificationResult!);
   }
 
   BubbleMeasurement _emptyMeasurement(

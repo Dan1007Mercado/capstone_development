@@ -7,6 +7,7 @@ import '../../../core/result/engine_result.dart';
 import '../../../engines/aruco/infrastructure/opencv_aruco_vision_backend.dart';
 import '../../../engines/preprocessing/infrastructure/opencv_preprocessing_backend.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
+import '../../../engines/scanner/domain/scanner_diagnostic_snapshot.dart';
 import '../../../engines/scanner/infrastructure/offline_scanner_composition.dart';
 import '../../real_scanner/scanner_identity_validation.dart';
 import '../domain/camera_scan_context.dart';
@@ -41,6 +42,7 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
   Future<EngineResult<FinalScannerRun>> scan({
     required Uint8List encodedImage,
     required CameraScanContext context,
+    bool includeDiagnostics = false,
   }) async {
     if (_disposed) return EngineResult.failure(_disposedError());
     if (encodedImage.isEmpty) {
@@ -67,6 +69,7 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
           requestId: requestId,
           encodedImage: TransferableTypedData.fromList([encodedImage]),
           context: context,
+          includeDiagnostics: includeDiagnostics,
         ),
       );
       final response = await completer.future;
@@ -85,6 +88,7 @@ final class IsolateOfflineScannerRunner implements OfflineScanRunner {
             : Duration.zero,
         transferredByteCount: response.transferredByteCount,
         transferredByteChecksum: response.transferredByteChecksum,
+        diagnosticSnapshot: response.diagnosticSnapshot,
       );
       _completedScans++;
       return EngineResult.success(run);
@@ -177,11 +181,13 @@ final class _WorkerScanRequest {
     required this.requestId,
     required this.encodedImage,
     required this.context,
+    required this.includeDiagnostics,
   });
 
   final int requestId;
   final TransferableTypedData encodedImage;
   final CameraScanContext context;
+  final bool includeDiagnostics;
 }
 
 final class _WorkerScanResponse {
@@ -191,6 +197,7 @@ final class _WorkerScanResponse {
     required this.workerDuration,
     required this.transferredByteCount,
     required this.transferredByteChecksum,
+    required this.diagnosticSnapshot,
   });
 
   factory _WorkerScanResponse.failure(EngineError error) => _WorkerScanResponse(
@@ -199,6 +206,7 @@ final class _WorkerScanResponse {
     workerDuration: Duration.zero,
     transferredByteCount: 0,
     transferredByteChecksum: 0,
+    diagnosticSnapshot: null,
   );
 
   final int requestId;
@@ -206,6 +214,7 @@ final class _WorkerScanResponse {
   final Duration workerDuration;
   final int transferredByteCount;
   final int transferredByteChecksum;
+  final ScannerDiagnosticSnapshot? diagnosticSnapshot;
 }
 
 final class _WorkerDispose {
@@ -249,6 +258,7 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
     EngineResult<ScanResult> result;
     var transferredByteCount = 0;
     var transferredByteChecksum = 0;
+    ScannerDiagnosticSnapshot? diagnosticSnapshot;
     try {
       final bytes = message.encodedImage.materialize().asUint8List();
       transferredByteCount = bytes.length;
@@ -266,6 +276,9 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
           template: message.context.template,
           pageLayout: message.context.pageLayout,
           config: message.context.scannerConfig,
+          diagnosticSink: message.includeDiagnostics
+              ? (snapshot) => diagnosticSnapshot = snapshot
+              : null,
         );
       } else {
         result = bootstrap.testError != null
@@ -298,6 +311,7 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
         workerDuration: stopwatch.elapsed,
         transferredByteCount: transferredByteCount,
         transferredByteChecksum: transferredByteChecksum,
+        diagnosticSnapshot: diagnosticSnapshot,
       ),
     );
   });

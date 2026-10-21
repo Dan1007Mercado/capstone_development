@@ -21,6 +21,7 @@ import '../engines/scanner/domain/scan_result.dart';
 import '../engines/template/application/template_publication_service.dart';
 import '../engines/template/domain/template_question.dart';
 import 'p11_camera_scanner_screen.dart';
+import 'real_scanner_roi_diagnostics_screen.dart';
 import 'scanner_detection_overlay.dart';
 
 class RealScannerSelectionScreen extends StatefulWidget {
@@ -94,6 +95,16 @@ class _RealScannerSelectionScreenState
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _openRoiDiagnostics() {
+    final selected = _selected;
+    if (selected == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RealScannerRoiDiagnosticsScreen(artifact: selected),
       ),
     );
   }
@@ -172,6 +183,13 @@ class _RealScannerSelectionScreenState
               SelectableText('${error.code}: ${error.message}'),
             ],
             const Spacer(),
+            OutlinedButton.icon(
+              key: const Key('open-roi-diagnostics'),
+              onPressed: selected == null ? null : _openRoiDiagnostics,
+              icon: const Icon(Icons.center_focus_strong),
+              label: const Text('ROI Diagnostics'),
+            ),
+            const SizedBox(height: 8),
             FilledButton.icon(
               key: const Key('start-real-scanner'),
               onPressed: selected == null ? null : _start,

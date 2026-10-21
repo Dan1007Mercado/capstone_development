@@ -265,6 +265,10 @@ void main() {
       findsOne,
     );
     expect(find.textContaining('rejected as a duplicate'), findsOne);
+    final diagnostics = tester.widget<OutlinedButton>(
+      find.byKey(const Key('open-roi-diagnostics')),
+    );
+    expect(diagnostics.onPressed, isNotNull);
   });
 
   test('review and worker response models retain no full image buffers', () {

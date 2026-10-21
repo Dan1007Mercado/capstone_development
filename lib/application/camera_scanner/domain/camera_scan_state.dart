@@ -1,6 +1,7 @@
 import '../../../core/errors/engine_error.dart';
 import '../../../engines/camera/domain/camera_models.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
+import '../../../engines/scanner/domain/scanner_diagnostic_snapshot.dart';
 
 enum CameraScanPhase {
   idle,
@@ -48,6 +49,7 @@ final class CameraScanState {
     this.result,
     this.error,
     this.finalScanTimings = FinalScanTimings.zero,
+    this.diagnosticSnapshot,
   });
 
   const CameraScanState.idle()
@@ -55,13 +57,15 @@ final class CameraScanState {
       cameraState = const CameraEngineState.uninitialized(),
       result = null,
       error = null,
-      finalScanTimings = FinalScanTimings.zero;
+      finalScanTimings = FinalScanTimings.zero,
+      diagnosticSnapshot = null;
 
   final CameraScanPhase phase;
   final CameraEngineState cameraState;
   final ScanResult? result;
   final EngineError? error;
   final FinalScanTimings finalScanTimings;
+  final ScannerDiagnosticSnapshot? diagnosticSnapshot;
 
   bool get canCapture => phase == CameraScanPhase.readyToCapture;
   bool get operationInProgress =>

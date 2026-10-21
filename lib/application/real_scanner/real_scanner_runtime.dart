@@ -15,7 +15,10 @@ final class RealScannerRuntime {
   final CameraScannerCoordinator coordinator;
 }
 
-RealScannerRuntime createRealScannerRuntime(ScannerValidationSession session) {
+RealScannerRuntime createRealScannerRuntime(
+  ScannerValidationSession session, {
+  bool autoCaptureEnabled = true,
+}) {
   final backend = FlutterCameraBackend();
   final cameraEngine = CameraEngine(
     backend: backend,
@@ -33,6 +36,7 @@ RealScannerRuntime createRealScannerRuntime(ScannerValidationSession session) {
       imageLoader: const InMemoryCapturedImageBytesLoader(),
       scanner: IsolateOfflineScannerRunner(),
       context: session.currentContext,
+      autoCaptureEnabled: autoCaptureEnabled,
     ),
   );
 }
