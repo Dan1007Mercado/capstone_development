@@ -109,6 +109,10 @@ final class BubbleMeasurementEngine {
     final interiorSamples = GrayscaleSampleHistogram();
     var interiorExpected = 0;
     var foregroundCount = 0;
+    final distributionCellCount =
+        config.distributionGridSize * config.distributionGridSize;
+    final distributionSamples = List<int>.filled(distributionCellCount, 0);
+    final distributionForeground = List<int>.filled(distributionCellCount, 0);
     final interiorRadius = roi.interiorRadius;
     final interiorLeft = (roi.center.x - interiorRadius - 1).floor();
     final interiorRight = (roi.center.x + interiorRadius + 1).ceil();
@@ -121,7 +125,16 @@ final class BubbleMeasurementEngine {
         if (!_insideImage(x, y, width, height)) continue;
         final pixelIndex = y * width + x;
         interiorSamples.add(grayscale[pixelIndex]);
-        foregroundCount += binary[pixelIndex];
+        final foreground = binary[pixelIndex];
+        foregroundCount += foreground;
+        final distributionCell = _distributionCell(
+          x: x,
+          y: y,
+          roi: roi,
+          gridSize: config.distributionGridSize,
+        );
+        distributionSamples[distributionCell]++;
+        distributionForeground[distributionCell] += foreground;
       }
     }
     final interiorRatio = interiorExpected == 0
@@ -198,6 +211,20 @@ final class BubbleMeasurementEngine {
     final baseline = baselineSamples.percentile(config.baselinePercentile);
     final darkness = baseline - interiorMean;
     final normalizedDarkness = darkness / math.max(baseline, config.epsilon);
+    var eligibleDistributionCells = 0;
+    var occupiedDistributionCells = 0;
+    for (var index = 0; index < distributionCellCount; index++) {
+      final samples = distributionSamples[index];
+      if (samples == 0) continue;
+      eligibleDistributionCells++;
+      if (distributionForeground[index] / samples >=
+          config.distributionCellMinimumFillRatio) {
+        occupiedDistributionCells++;
+      }
+    }
+    final distributionScore = eligibleDistributionCells == 0
+        ? 0.0
+        : occupiedDistributionCells / eligibleDistributionCells;
     final clipped = interiorRatio < 1 || baselineValidRatio < 1;
     return EngineResult.success(
       BubbleMeasurement(
@@ -216,6 +243,7 @@ final class BubbleMeasurementEngine {
         normalizedDarkness: normalizedDarkness,
         foregroundPixelCount: foregroundCount,
         fillRatio: foregroundCount / interiorSamples.count,
+        distributionScore: distributionScore,
         quality: BubbleMeasurementQuality(
           interiorValidSampleRatio: interiorRatio,
           baselineValidSampleRatio: baselineValidRatio,
@@ -273,6 +301,26 @@ final class BubbleMeasurementEngine {
 
   bool _insideImage(int x, int y, int width, int height) =>
       x >= 0 && x < width && y >= 0 && y < height;
+
+  int _distributionCell({
+    required int x,
+    required int y,
+    required CanonicalBubbleRoi roi,
+    required int gridSize,
+  }) {
+    final diameter = roi.interiorRadius * 2;
+    final left = roi.center.x - roi.interiorRadius;
+    final top = roi.center.y - roi.interiorRadius;
+    final column = (((x + 0.5 - left) / diameter) * gridSize)
+        .floor()
+        .clamp(0, gridSize - 1)
+        .toInt();
+    final row = (((y + 0.5 - top) / diameter) * gridSize)
+        .floor()
+        .clamp(0, gridSize - 1)
+        .toInt();
+    return row * gridSize + column;
+  }
 
   EngineResult<T> _bubbleFailure<T>(
     String code,

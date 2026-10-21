@@ -11,9 +11,9 @@ final class BubbleEvidenceEvaluator {
     BubbleMeasurement measurement,
     MarkClassificationConfig config,
   ) {
-    final fillComponent = _component(
+    final coverageScore = _component(
       measurement.fillRatio,
-      config.strongFillRatio,
+      config.strongMarkCoverage,
     );
     final normalizedDarknessComponent = _component(
       measurement.normalizedDarkness,
@@ -23,10 +23,13 @@ final class BubbleEvidenceEvaluator {
       measurement.darknessContrast,
       config.strongDarknessContrast,
     );
-    final combinedScore =
-        fillComponent * config.fillWeight +
-        normalizedDarknessComponent * config.normalizedDarknessWeight +
-        darknessContrastComponent * config.darknessContrastWeight;
+    final darknessScore =
+        normalizedDarknessComponent * config.normalizedDarknessShare +
+        darknessContrastComponent * (1 - config.normalizedDarknessShare);
+    final combinedMarkScore =
+        coverageScore * config.coverageWeight +
+        darknessScore * config.darknessWeight +
+        measurement.distributionScore * config.distributionWeight;
 
     final quality = measurement.quality;
     final severeQuality =
@@ -43,11 +46,11 @@ final class BubbleEvidenceEvaluator {
         (config.requireReliableBaseline && !quality.localBaselineReliable);
 
     final minimumSignals = [
-      measurement.fillRatio >= config.minimumFillRatio,
+      measurement.fillRatio >= config.minimumMarkCoverage,
       measurement.normalizedDarkness >= config.minimumNormalizedDarkness,
       measurement.darknessContrast >= config.minimumDarknessContrast,
     ].where((passes) => passes).length;
-    final binaryStrong = measurement.fillRatio >= config.strongFillRatio;
+    final binaryStrong = measurement.fillRatio >= config.strongMarkCoverage;
     final normalizedDarknessStrong =
         measurement.normalizedDarkness >= config.strongNormalizedDarkness;
     final darknessContrastStrong =
@@ -55,6 +58,20 @@ final class BubbleEvidenceEvaluator {
     final unsupportedStrongSignal =
         minimumSignals < 2 &&
         (binaryStrong || normalizedDarknessStrong || darknessContrastStrong);
+    final credibleMark =
+        combinedMarkScore >= config.minimumCombinedMarkScore &&
+        darknessScore >= config.minimumDarknessEvidence &&
+        minimumSignals >= 2 &&
+        (measurement.fillRatio >= config.minimumMarkCoverage ||
+            measurement.distributionScore >=
+                config.minimumDistributedMarkScore);
+    final strongMark =
+        credibleMark &&
+        combinedMarkScore >= config.strongCombinedMarkScore &&
+        measurement.fillRatio >= config.multipleMarkMinimumCoverage;
+    final conservativeBlank =
+        measurement.fillRatio <= config.blankMaximumCoverage &&
+        darknessScore < config.minimumDarknessEvidence;
 
     final category = severeQuality
         ? BubbleEvidenceCategory.invalid
@@ -62,10 +79,17 @@ final class BubbleEvidenceEvaluator {
         ? BubbleEvidenceCategory.unreliable
         : unsupportedStrongSignal
         ? BubbleEvidenceCategory.conflicting
-        : combinedScore >= config.strongCombinedScore && minimumSignals >= 2
+        : strongMark
         ? BubbleEvidenceCategory.strongMark
-        : combinedScore >= config.minimumCombinedScore && minimumSignals >= 2
+        : credibleMark
         ? BubbleEvidenceCategory.possibleMark
+        : measurement.fillRatio <= config.blankMaximumCoverage &&
+              darknessScore >= config.minimumDarknessEvidence
+        ? BubbleEvidenceCategory.conflicting
+        : conservativeBlank || minimumSignals < 2
+        ? BubbleEvidenceCategory.clearBlank
+        : combinedMarkScore >= config.minimumCombinedMarkScore
+        ? BubbleEvidenceCategory.conflicting
         : BubbleEvidenceCategory.clearBlank;
     final state = switch (category) {
       BubbleEvidenceCategory.strongMark => BubbleDecisionState.selected,
@@ -82,10 +106,12 @@ final class BubbleEvidenceEvaluator {
       fillRatio: measurement.fillRatio,
       normalizedDarkness: measurement.normalizedDarkness,
       darknessContrast: measurement.darknessContrast,
-      fillComponent: fillComponent,
+      coverageScore: coverageScore,
       normalizedDarknessComponent: normalizedDarknessComponent,
       darknessContrastComponent: darknessContrastComponent,
-      combinedScore: combinedScore,
+      darknessScore: darknessScore,
+      distributionScore: measurement.distributionScore,
+      combinedMarkScore: combinedMarkScore,
       category: category,
       state: state,
       qualityUsable: !severeQuality && !unreliableQuality,

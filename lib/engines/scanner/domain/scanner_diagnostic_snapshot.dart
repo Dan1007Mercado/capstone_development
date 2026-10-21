@@ -146,23 +146,38 @@ final class ScannerDiagnosticSnapshot {
         'baselinePercentile': measurementConfig.baselinePercentile,
         'maximumBaselineForegroundRatio':
             measurementConfig.maximumBaselineForegroundRatio,
+        'distributionGridSize': measurementConfig.distributionGridSize,
+        'distributionCellMinimumFillRatio':
+            measurementConfig.distributionCellMinimumFillRatio,
       },
       'classificationConfig': {
-        'minimumFillRatio': classificationConfig.minimumFillRatio,
-        'strongFillRatio': classificationConfig.strongFillRatio,
+        'minimumMarkCoverage': classificationConfig.minimumMarkCoverage,
+        'strongMarkCoverage': classificationConfig.strongMarkCoverage,
+        'blankMaximumCoverage': classificationConfig.blankMaximumCoverage,
         'minimumNormalizedDarkness':
             classificationConfig.minimumNormalizedDarkness,
         'strongNormalizedDarkness':
             classificationConfig.strongNormalizedDarkness,
         'minimumDarknessContrast': classificationConfig.minimumDarknessContrast,
         'strongDarknessContrast': classificationConfig.strongDarknessContrast,
-        'fillWeight': classificationConfig.fillWeight,
-        'normalizedDarknessWeight':
-            classificationConfig.normalizedDarknessWeight,
-        'darknessContrastWeight': classificationConfig.darknessContrastWeight,
-        'minimumCombinedScore': classificationConfig.minimumCombinedScore,
-        'strongCombinedScore': classificationConfig.strongCombinedScore,
-        'minimumTopSecondGap': classificationConfig.minimumTopSecondGap,
+        'minimumDarknessEvidence': classificationConfig.minimumDarknessEvidence,
+        'normalizedDarknessShare': classificationConfig.normalizedDarknessShare,
+        'coverageWeight': classificationConfig.coverageWeight,
+        'darknessWeight': classificationConfig.darknessWeight,
+        'distributionWeight': classificationConfig.distributionWeight,
+        'minimumDistributedMarkScore':
+            classificationConfig.minimumDistributedMarkScore,
+        'minimumCombinedMarkScore':
+            classificationConfig.minimumCombinedMarkScore,
+        'strongCombinedMarkScore': classificationConfig.strongCombinedMarkScore,
+        'minimumTopSecondScoreGap':
+            classificationConfig.minimumTopSecondScoreGap,
+        'coverageDominanceRatio': classificationConfig.coverageDominanceRatio,
+        'coverageDominanceGap': classificationConfig.coverageDominanceGap,
+        'multipleMarkMinimumCoverage':
+            classificationConfig.multipleMarkMinimumCoverage,
+        'multipleMarkMinimumConfidence':
+            classificationConfig.multipleMarkMinimumConfidence,
         'maximumBaselineForegroundRatio':
             classificationConfig.maximumBaselineForegroundRatio,
         'severeBaselineForegroundRatio':
@@ -172,6 +187,10 @@ final class ScannerDiagnosticSnapshot {
         'severeMinimumValidSampleRatio':
             classificationConfig.severeMinimumValidSampleRatio,
       },
+      'questions': [
+        for (final question in classification.questions)
+          _questionJson(question),
+      ],
       'bubbles': [
         for (final measurement in measurements.measurements)
           _measurementJson(measurement, decisions),
@@ -204,9 +223,13 @@ final class ScannerDiagnosticSnapshot {
       'baselineInnerRadius': measurement.roi.baselineInnerRadius,
       'baselineOuterRadius': measurement.roi.baselineOuterRadius,
       'fillRatio': measurement.fillRatio,
+      'coverageScore': classified?.$2.coverageScore,
       'normalizedDarkness': measurement.normalizedDarkness,
       'darknessContrast': measurement.darknessContrast,
-      'combinedScore': classified?.$2.combinedScore,
+      'darknessScore': classified?.$2.darknessScore,
+      'distributionScore': measurement.distributionScore,
+      'combinedMarkScore': classified?.$2.combinedMarkScore,
+      'combinedScore': classified?.$2.combinedMarkScore,
       'evidenceCategory': classified?.$2.category.name,
       'decisionState': classified?.$2.state.name,
       'questionState': classified?.$1.state.name,
@@ -224,6 +247,32 @@ final class ScannerDiagnosticSnapshot {
       'neighborMaskedPixelCount': measurement.quality.neighborMaskedPixelCount,
     };
   }
+
+  Map<String, Object?> _questionJson(QuestionClassification question) {
+    final ranked = List<BubbleMarkDecision>.of(question.bubbleDecisions)
+      ..sort(
+        (first, second) =>
+            second.combinedMarkScore.compareTo(first.combinedMarkScore),
+      );
+    return {
+      'questionId': question.questionId.value,
+      'state': question.state.name,
+      'reason': question.diagnostics.reason.name,
+      'topCandidate': ranked.isEmpty ? null : _decisionLabel(ranked.first),
+      'secondCandidate': ranked.length < 2 ? null : _decisionLabel(ranked[1]),
+      'topScore': question.diagnostics.topScore,
+      'secondScore': question.diagnostics.secondScore,
+      'scoreGap': question.diagnostics.scoreGap,
+      'topCoverage': question.diagnostics.topCoverage,
+      'secondCoverage': question.diagnostics.secondCoverage,
+      'coverageGap': question.diagnostics.coverageGap,
+      'coverageRatio': question.diagnostics.coverageRatio,
+    };
+  }
+
+  String _decisionLabel(BubbleMarkDecision decision) =>
+      decision.optionId?.value ??
+      'column-${decision.numericColumnIndex}-digit-${decision.numericDigitValue}';
 
   static String _identity(
     QuestionId questionId,

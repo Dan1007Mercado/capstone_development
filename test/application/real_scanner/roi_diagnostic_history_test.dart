@@ -93,6 +93,10 @@ void main() {
     expect(summary.maximumDarknessContrast, 80);
     expect(summary.minimumCombinedScore, 0.3);
     expect(summary.maximumCombinedScore, 0.9);
+    expect(summary.minimumCoverageScore, 0.1);
+    expect(summary.maximumCoverageScore, 0.8);
+    expect(summary.minimumDistributionScore, 0.67);
+    expect(summary.maximumDistributionScore, 0.67);
     expect(summary.categoryChanges, 2);
     expect(summary.stateChanges, 2);
   });
@@ -117,6 +121,10 @@ void main() {
     expect(bubble['questionId'], 'q4');
     expect(bubble['optionId'], 'q4-2');
     expect(bubble['fillRatio'], 0.4);
+    expect(bubble['coverageScore'], 0.4);
+    expect(bubble['darknessScore'], 0.5);
+    expect(bubble['distributionScore'], 0.67);
+    expect(bubble['combinedMarkScore'], 0.6);
     expect(bubble['combinedScore'], 0.6);
     expect(bubble['evidenceCategory'], 'possibleMark');
     expect(bubble['sampledInteriorPixelCount'], 100);
@@ -124,13 +132,17 @@ void main() {
     expect(bubble['clipping'], 'none');
     final classificationConfig =
         json['classificationConfig']! as Map<String, Object?>;
-    expect(classificationConfig['minimumCombinedScore'], 0.35);
+    expect(classificationConfig['minimumCombinedMarkScore'], 0.35);
     final measurementConfig =
         json['measurementConfig']! as Map<String, Object?>;
     expect(measurementConfig['interiorRadiusRatio'], 0.68);
     final preprocessingConfig =
         json['preprocessingConfig']! as Map<String, Object?>;
     expect(preprocessingConfig['adaptiveThresholdBlockSize'], 15);
+    final questions = json['questions']! as List<Object?>;
+    final question = questions.single! as Map<String, Object?>;
+    expect(question['topCandidate'], 'q4-2');
+    expect(question['reason'], 'isolatedMark');
   });
 }
 
@@ -172,6 +184,7 @@ ScannerDiagnosticSnapshot _snapshot({
     normalizedDarkness: normalized,
     foregroundPixelCount: (fill * 100).round(),
     fillRatio: fill,
+    distributionScore: 0.67,
     quality: const BubbleMeasurementQuality(
       interiorValidSampleRatio: 1,
       baselineValidSampleRatio: 1,
@@ -190,10 +203,12 @@ ScannerDiagnosticSnapshot _snapshot({
     fillRatio: fill,
     normalizedDarkness: normalized,
     darknessContrast: contrast,
-    fillComponent: fill,
+    coverageScore: fill,
     normalizedDarknessComponent: normalized,
     darknessContrastComponent: contrast / 100,
-    combinedScore: score,
+    darknessScore: normalized,
+    distributionScore: 0.67,
+    combinedMarkScore: score,
     category: category,
     state: switch (category) {
       BubbleEvidenceCategory.strongMark => BubbleDecisionState.selected,

@@ -320,11 +320,27 @@ class _RealScannerRoiDiagnosticsScreenState
     final measurements = snapshot.measurements.measurements.where(
       (measurement) => measurement.questionId == question.questionId,
     );
+    final ranked = List<BubbleMarkDecision>.of(question.bubbleDecisions)
+      ..sort(
+        (first, second) =>
+            second.combinedMarkScore.compareTo(first.combinedMarkScore),
+      );
+    final top = ranked.firstOrNull;
+    final second = ranked.length > 1 ? ranked[1] : null;
+    String number(double value) => value.toStringAsFixed(3);
     return [
       Text(
         '${question.questionId.value.toUpperCase()} classification: '
         '${question.state.name.toUpperCase()}',
         style: Theme.of(context).textTheme.titleMedium,
+      ),
+      SelectableText(
+        'top: ${top == null ? '-' : _decisionDisplayLabel(top)} | '
+        'second: ${second == null ? '-' : _decisionDisplayLabel(second)}\n'
+        'score gap: ${number(question.diagnostics.scoreGap)} | '
+        'coverage gap: ${number(question.diagnostics.coverageGap)} | '
+        'coverage ratio: ${number(question.diagnostics.coverageRatio)}\n'
+        'reason: ${question.diagnostics.reason.name}',
       ),
       for (final measurement in measurements)
         _measurementCard(measurement, question),
@@ -354,9 +370,12 @@ class _RealScannerRoiDiagnosticsScreenState
           'center: ${number(measurement.roi.center.x, 1)}, '
           '${number(measurement.roi.center.y, 1)}\n'
           'fillRatio: ${number(measurement.fillRatio)} | '
+          'coverageScore: ${number(decision.coverageScore)}\n'
           'normalizedDarkness: ${number(measurement.normalizedDarkness)}\n'
           'darknessContrast: ${number(measurement.darknessContrast)} | '
-          'combinedScore: ${number(decision.combinedScore)}\n'
+          'darknessScore: ${number(decision.darknessScore)}\n'
+          'distributionScore: ${number(decision.distributionScore)} | '
+          'combinedMarkScore: ${number(decision.combinedMarkScore)}\n'
           'category: ${decision.category.name} | state: ${decision.state.name}\n'
           'interior mean/median: ${number(measurement.interiorMeanIntensity, 1)} / '
           '${number(measurement.interiorMedianIntensity, 1)}\n'
@@ -416,7 +435,19 @@ class _RealScannerRoiDiagnosticsScreenState
               '${range(summary.minimumDarknessContrast, summary.maximumDarknessContrast)}',
             ),
             Text(
-              'combinedScore: '
+              'coverageScore: '
+              '${range(summary.minimumCoverageScore, summary.maximumCoverageScore)}',
+            ),
+            Text(
+              'darknessScore: '
+              '${range(summary.minimumDarknessScore, summary.maximumDarknessScore)}',
+            ),
+            Text(
+              'distributionScore: '
+              '${range(summary.minimumDistributionScore, summary.maximumDistributionScore)}',
+            ),
+            Text(
+              'combinedMarkScore: '
               '${range(summary.minimumCombinedScore, summary.maximumCombinedScore)}',
             ),
             Text(
@@ -428,9 +459,10 @@ class _RealScannerRoiDiagnosticsScreenState
               Text(
                 'scan ${item.scanSequenceIndex}: '
                 'fill ${item.fillRatio.toStringAsFixed(3)}, '
-                'dark ${item.normalizedDarkness.toStringAsFixed(3)}, '
-                'contrast ${item.darknessContrast.toStringAsFixed(3)}, '
-                'score ${item.combinedScore.toStringAsFixed(3)}, '
+                'coverage ${item.coverageScore.toStringAsFixed(3)}, '
+                'darkness ${item.darknessScore.toStringAsFixed(3)}, '
+                'distribution ${item.distributionScore.toStringAsFixed(3)}, '
+                'score ${item.combinedMarkScore.toStringAsFixed(3)}, '
                 '${item.category.name}, ${item.questionState.name}',
               ),
           ],
@@ -481,6 +513,15 @@ class _RealScannerRoiDiagnosticsScreenState
     return '${identity.questionId.value.toUpperCase()}-C'
         '${identity.numericColumnIndex}-${identity.numericDigitValue}';
   }
+
+  String _decisionDisplayLabel(BubbleMarkDecision decision) => _displayLabel(
+    DiagnosticBubbleIdentity(
+      questionId: decision.questionId,
+      optionId: decision.optionId,
+      numericColumnIndex: decision.numericColumnIndex,
+      numericDigitValue: decision.numericDigitValue,
+    ),
+  );
 
   List<DiagnosticBubbleIdentity> _identitiesFor(
     ScannerDiagnosticSnapshot snapshot,

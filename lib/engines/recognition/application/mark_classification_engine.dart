@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../../core/errors/engine_error.dart';
 import '../../../core/ids/identifiers.dart';
 import '../../../core/result/engine_result.dart';
@@ -181,7 +183,7 @@ final class MarkClassificationEngine {
       return _classifyNumeric(question, decisions, config);
     }
     if (question.type == QuestionType.multipleChoice) {
-      return _classifyMultipleChoice(question, decisions);
+      return _classifyMultipleChoice(question, decisions, config);
     }
     final outcome = _classifyExclusive(decisions, config);
     return QuestionClassification(
@@ -204,6 +206,7 @@ final class MarkClassificationEngine {
   QuestionClassification _classifyMultipleChoice(
     TemplateQuestion question,
     List<BubbleMarkDecision> decisions,
+    MarkClassificationConfig config,
   ) {
     final checklistDecisions = decisions
         .map(
@@ -212,7 +215,6 @@ final class MarkClassificationEngine {
               : decision,
         )
         .toList(growable: false);
-    final scores = _scores(checklistDecisions);
     if (checklistDecisions.any(
       (decision) => decision.category == BubbleEvidenceCategory.invalid,
     )) {
@@ -221,22 +223,26 @@ final class MarkClassificationEngine {
         MarkState.invalid,
         checklistDecisions,
         const [],
-        scores,
+        config,
         ClassificationReason.unusableQuality,
       );
     }
-    if (checklistDecisions.any(
-      (decision) =>
-          decision.category == BubbleEvidenceCategory.conflicting ||
-          decision.category == BubbleEvidenceCategory.unreliable,
-    )) {
+    final unreliable = checklistDecisions.any(
+      (decision) => decision.category == BubbleEvidenceCategory.unreliable,
+    );
+    final conflicting = checklistDecisions.any(
+      (decision) => decision.category == BubbleEvidenceCategory.conflicting,
+    );
+    if (unreliable || conflicting) {
       return _question(
         question,
         MarkState.ambiguous,
         checklistDecisions,
         const [],
-        scores,
-        ClassificationReason.uncertainEvidence,
+        config,
+        unreliable
+            ? ClassificationReason.unreliableBaseline
+            : ClassificationReason.ambiguousCandidates,
       );
     }
     final selected = checklistDecisions
@@ -247,10 +253,10 @@ final class MarkClassificationEngine {
       selected.isEmpty ? MarkState.blank : MarkState.marked,
       checklistDecisions,
       selected.map((decision) => decision.optionId).whereType<OptionId>(),
-      scores,
+      config,
       selected.isEmpty
           ? ClassificationReason.clearBlank
-          : ClassificationReason.isolatedMark,
+          : ClassificationReason.singleStrongMark,
     );
   }
 
@@ -299,7 +305,6 @@ final class MarkClassificationEngine {
       state = MarkState.ambiguous;
       reason = ClassificationReason.incompleteNumericGrid;
     }
-    final scores = _scores(decisions);
     return QuestionClassification(
       questionId: question.id,
       questionType: question.type,
@@ -307,12 +312,7 @@ final class MarkClassificationEngine {
       selectedOptionIds: const [],
       numericSelection: NumericGridSelection(columns),
       bubbleDecisions: columns.expand((column) => column.decisions),
-      diagnostics: QuestionClassificationDiagnostics(
-        topScore: scores.$1,
-        secondScore: scores.$2,
-        scoreGap: scores.$1 - scores.$2,
-        reason: reason,
-      ),
+      diagnostics: _diagnostics(decisions, reason, config),
     );
   }
 
@@ -320,15 +320,9 @@ final class MarkClassificationEngine {
     List<BubbleMarkDecision> decisions,
     MarkClassificationConfig config,
   ) {
-    final scores = _scores(decisions);
     QuestionClassificationDiagnostics diagnostics(
       ClassificationReason reason,
-    ) => QuestionClassificationDiagnostics(
-      topScore: scores.$1,
-      secondScore: scores.$2,
-      scoreGap: scores.$1 - scores.$2,
-      reason: reason,
-    );
+    ) => _diagnostics(decisions, reason, config);
     final invalid = decisions.where(
       (decision) => decision.category == BubbleEvidenceCategory.invalid,
     );
@@ -340,93 +334,151 @@ final class MarkClassificationEngine {
         diagnostics(ClassificationReason.unusableQuality),
       );
     }
-    final strong = decisions
-        .where(
-          (decision) => decision.category == BubbleEvidenceCategory.strongMark,
-        )
-        .toList(growable: false);
-    if (strong.length >= 2) {
-      return _ExclusiveOutcome(
-        MarkState.multiple,
-        strong,
-        decisions,
-        diagnostics(ClassificationReason.multipleStrongMarks),
-      );
-    }
-    final unreliableOrConflicting = decisions.any(
-      (decision) =>
-          decision.category == BubbleEvidenceCategory.unreliable ||
-          decision.category == BubbleEvidenceCategory.conflicting,
+    final unreliable = decisions.any(
+      (decision) => decision.category == BubbleEvidenceCategory.unreliable,
     );
-    final possible = decisions
-        .where(
-          (decision) =>
-              decision.category == BubbleEvidenceCategory.possibleMark,
-        )
-        .toList(growable: false);
-    if (strong.length == 1) {
-      final top = strong.single;
-      final closePossible = possible.any(
-        (candidate) =>
-            top.combinedScore - candidate.combinedScore <
-            config.minimumTopSecondGap,
-      );
-      if (unreliableOrConflicting || closePossible) {
-        return _ExclusiveOutcome(
-          MarkState.ambiguous,
-          const [],
-          decisions,
-          diagnostics(ClassificationReason.uncertainEvidence),
-        );
-      }
-      return _ExclusiveOutcome(
-        MarkState.marked,
-        [top],
-        decisions,
-        diagnostics(ClassificationReason.isolatedMark),
-      );
-    }
-    if (unreliableOrConflicting) {
+    if (unreliable) {
       return _ExclusiveOutcome(
         MarkState.ambiguous,
         const [],
         decisions,
-        diagnostics(ClassificationReason.uncertainEvidence),
+        diagnostics(ClassificationReason.unreliableBaseline),
       );
     }
-    if (possible.isEmpty) {
+    final genuineStrong = decisions
+        .where(
+          (decision) =>
+              decision.category == BubbleEvidenceCategory.strongMark &&
+              decision.fillRatio >= config.multipleMarkMinimumCoverage &&
+              decision.combinedMarkScore >=
+                  config.multipleMarkMinimumConfidence,
+        )
+        .toList(growable: false);
+    if (genuineStrong.length >= 2) {
       return _ExclusiveOutcome(
-        MarkState.blank,
+        MarkState.multiple,
+        genuineStrong,
+        decisions,
+        diagnostics(ClassificationReason.multipleStrongMarks),
+      );
+    }
+    final conflicting = decisions.any(
+      (decision) => decision.category == BubbleEvidenceCategory.conflicting,
+    );
+    final credible = decisions
+        .where(
+          (decision) =>
+              decision.category == BubbleEvidenceCategory.strongMark ||
+              decision.category == BubbleEvidenceCategory.possibleMark,
+        )
+        .toList(growable: false);
+    if (credible.isEmpty) {
+      if (!conflicting) {
+        return _ExclusiveOutcome(
+          MarkState.blank,
+          const [],
+          decisions,
+          diagnostics(ClassificationReason.clearBlank),
+        );
+      }
+      return _ExclusiveOutcome(
+        MarkState.ambiguous,
         const [],
         decisions,
-        diagnostics(ClassificationReason.clearBlank),
+        diagnostics(ClassificationReason.ambiguousCandidates),
       );
     }
-    final ranked = List<BubbleMarkDecision>.of(possible)
+    final ranked = List<BubbleMarkDecision>.of(decisions)
       ..sort(
-        (first, second) => second.combinedScore.compareTo(first.combinedScore),
+        (first, second) =>
+            second.combinedMarkScore.compareTo(first.combinedMarkScore),
       );
     final candidate = ranked.first;
-    if (candidate.combinedScore - scores.$2 >= config.minimumTopSecondGap) {
-      final updated = decisions
-          .map(
-            (decision) => identical(decision, candidate)
-                ? decision.withState(BubbleDecisionState.selected)
-                : decision,
-          )
-          .toList(growable: false);
+    final second = ranked.length > 1 ? ranked[1] : null;
+    if (!credible.contains(candidate)) {
       return _ExclusiveOutcome(
-        MarkState.marked,
-        [candidate.withState(BubbleDecisionState.selected)],
-        updated,
-        diagnostics(ClassificationReason.isolatedMark),
+        MarkState.ambiguous,
+        const [],
+        decisions,
+        diagnostics(ClassificationReason.ambiguousCandidates),
+      );
+    }
+    if (second != null && _hasCoverageDominance(candidate, second, config)) {
+      return _selected(
+        candidate,
+        decisions,
+        diagnostics(ClassificationReason.strongCoverageDominance),
+      );
+    }
+    if (conflicting) {
+      return _ExclusiveOutcome(
+        MarkState.ambiguous,
+        const [],
+        decisions,
+        diagnostics(ClassificationReason.ambiguousCandidates),
+      );
+    }
+    final secondScore = second?.combinedMarkScore ?? 0;
+    if (candidate.category == BubbleEvidenceCategory.strongMark &&
+        candidate.combinedMarkScore - secondScore >=
+            config.minimumTopSecondScoreGap) {
+      return _selected(
+        candidate,
+        decisions,
+        diagnostics(ClassificationReason.singleStrongMark),
+      );
+    }
+    if (candidate.combinedMarkScore - secondScore >=
+        config.minimumTopSecondScoreGap) {
+      return _selected(
+        candidate,
+        decisions,
+        diagnostics(ClassificationReason.borderlineMark),
       );
     }
     return _ExclusiveOutcome(
       MarkState.ambiguous,
       const [],
       decisions,
-      diagnostics(ClassificationReason.closeCandidates),
+      diagnostics(ClassificationReason.ambiguousCandidates),
+    );
+  }
+
+  bool _hasCoverageDominance(
+    BubbleMarkDecision candidate,
+    BubbleMarkDecision second,
+    MarkClassificationConfig config,
+  ) {
+    if (!candidate.qualityUsable || !second.qualityUsable) return false;
+    if (candidate.fillRatio < config.multipleMarkMinimumCoverage ||
+        candidate.darknessScore < config.minimumDarknessEvidence) {
+      return false;
+    }
+    if (second.fillRatio >= config.multipleMarkMinimumCoverage &&
+        second.combinedMarkScore >= config.multipleMarkMinimumConfidence) {
+      return false;
+    }
+    final coverageGap = candidate.fillRatio - second.fillRatio;
+    final coverageRatio =
+        candidate.fillRatio / math.max(second.fillRatio, config.epsilon);
+    return coverageGap >= config.coverageDominanceGap &&
+        coverageRatio >= config.coverageDominanceRatio;
+  }
+
+  _ExclusiveOutcome _selected(
+    BubbleMarkDecision candidate,
+    List<BubbleMarkDecision> decisions,
+    QuestionClassificationDiagnostics diagnostics,
+  ) {
+    final selected = candidate.withState(BubbleDecisionState.selected);
+    final updated = decisions
+        .map((decision) => identical(decision, candidate) ? selected : decision)
+        .toList(growable: false);
+    return _ExclusiveOutcome(
+      MarkState.marked,
+      [selected],
+      updated,
+      diagnostics,
     );
   }
 
@@ -435,7 +487,7 @@ final class MarkClassificationEngine {
     MarkState state,
     List<BubbleMarkDecision> decisions,
     Iterable<OptionId> selected,
-    (double, double) scores,
+    MarkClassificationConfig config,
     ClassificationReason reason,
   ) => QuestionClassification(
     questionId: question.id,
@@ -444,20 +496,36 @@ final class MarkClassificationEngine {
     selectedOptionIds: selected,
     numericSelection: null,
     bubbleDecisions: decisions,
-    diagnostics: QuestionClassificationDiagnostics(
-      topScore: scores.$1,
-      secondScore: scores.$2,
-      scoreGap: scores.$1 - scores.$2,
-      reason: reason,
-    ),
+    diagnostics: _diagnostics(decisions, reason, config),
   );
 
-  (double, double) _scores(List<BubbleMarkDecision> decisions) {
-    final scores = decisions.map((decision) => decision.combinedScore).toList()
-      ..sort((first, second) => second.compareTo(first));
-    return (
-      scores.isEmpty ? 0 : scores.first,
-      scores.length < 2 ? 0 : scores[1],
+  QuestionClassificationDiagnostics _diagnostics(
+    List<BubbleMarkDecision> decisions,
+    ClassificationReason reason,
+    MarkClassificationConfig config,
+  ) {
+    final ranked = List<BubbleMarkDecision>.of(decisions)
+      ..sort(
+        (first, second) =>
+            second.combinedMarkScore.compareTo(first.combinedMarkScore),
+      );
+    final top = ranked.firstOrNull;
+    final second = ranked.length > 1 ? ranked[1] : null;
+    final topScore = top?.combinedMarkScore ?? 0;
+    final secondScore = second?.combinedMarkScore ?? 0;
+    final topCoverage = top?.fillRatio ?? 0;
+    final secondCoverage = second?.fillRatio ?? 0;
+    return QuestionClassificationDiagnostics(
+      topScore: topScore,
+      secondScore: secondScore,
+      scoreGap: topScore - secondScore,
+      topCoverage: topCoverage,
+      secondCoverage: secondCoverage,
+      coverageGap: topCoverage - secondCoverage,
+      coverageRatio: top == null
+          ? 0
+          : topCoverage / math.max(secondCoverage, config.epsilon),
+      reason: reason,
     );
   }
 
@@ -512,6 +580,7 @@ final class MarkClassificationEngine {
       measurement.fillRatio <= 1 &&
       measurement.normalizedDarkness.isFinite &&
       measurement.darknessContrast.isFinite &&
+      _unit(measurement.distributionScore) &&
       measurement.interiorMeanIntensity.isFinite &&
       measurement.interiorMedianIntensity.isFinite &&
       measurement.localBaselineIntensity.isFinite &&

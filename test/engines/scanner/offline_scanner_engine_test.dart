@@ -112,7 +112,7 @@ void main() {
         preprocessing: const PreprocessingConfig(denoiseKernelSize: 5),
         measurement: const BubbleMeasurementConfig(interiorRadiusRatio: 0.67),
         classification: const MarkClassificationConfig(
-          minimumCombinedScore: 0.36,
+          minimumCombinedMarkScore: 0.36,
         ),
       );
       final normal = _engine(normalPipeline).scan(
@@ -663,6 +663,7 @@ final class _FakePipeline
     normalizedDarkness: 0,
     foregroundPixelCount: 0,
     fillRatio: 0,
+    distributionScore: 0,
     quality: const BubbleMeasurementQuality(
       interiorValidSampleRatio: 1,
       baselineValidSampleRatio: 1,

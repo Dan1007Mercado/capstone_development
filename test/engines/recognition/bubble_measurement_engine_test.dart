@@ -146,6 +146,49 @@ void main() {
     expect(measurement.darknessContrast, inExclusiveRange(50, 150));
   });
 
+  test('fixed-grid distribution separates a tiny dot from broad ink', () {
+    final layout = _choiceLayout();
+    final roi = mapper.map(
+      layout.bubbleRegions.first,
+      layout,
+      const BubbleMeasurementConfig(),
+    );
+    final dot = _fixture(layout);
+    _paintInterior(
+      dot,
+      roi,
+      value: 20,
+      foreground: 1,
+      include: (x, y) {
+        final dx = x + 0.5 - roi.center.x;
+        final dy = y + 0.5 - roi.center.y;
+        return dx * dx + dy * dy <= 1;
+      },
+    );
+    final broad = _fixture(layout);
+    _paintInterior(
+      broad,
+      roi,
+      value: 90,
+      foreground: 1,
+      include: (x, y) {
+        final dx = x + 0.5 - roi.center.x;
+        final dy = y + 0.5 - roi.center.y;
+        return (dx.abs() < 1.2 || dy.abs() < 1.2);
+      },
+    );
+
+    final dotMeasurement = _measure(engine, layout, dot).measurements.first;
+    final broadMeasurement = _measure(engine, layout, broad).measurements.first;
+
+    expect(dotMeasurement.distributionScore, lessThanOrEqualTo(2 / 9));
+    expect(
+      broadMeasurement.distributionScore,
+      greaterThan(dotMeasurement.distributionScore),
+    );
+    expect(broadMeasurement.distributionScore, greaterThan(0.5));
+  });
+
   test('faint mark retains grayscale evidence when binary remains weak', () {
     final layout = _choiceLayout();
     final fixture = _fixture(layout);
@@ -344,6 +387,17 @@ void main() {
     expect(result.error.code, 'BUBBLE_MEASUREMENT_INVALID_CONFIG');
   });
 
+  test('invalid distribution grid config fails before sampling', () {
+    final layout = _choiceLayout();
+    final result = engine.measure(
+      layout,
+      _fixture(layout).page,
+      const BubbleMeasurementConfig(distributionGridSize: 1),
+    );
+
+    expect(result.error.code, 'BUBBLE_MEASUREMENT_INVALID_CONFIG');
+  });
+
   test('too-small usable interior returns insufficient-pixels failure', () {
     final layout = _choiceLayout();
     final result = engine.measure(
@@ -393,6 +447,7 @@ void main() {
       expect(first[index].canonicalCenter, second[index].canonicalCenter);
       expect(first[index].fillRatio, second[index].fillRatio);
       expect(first[index].darknessContrast, second[index].darknessContrast);
+      expect(first[index].distributionScore, second[index].distributionScore);
       expect(
         first[index].sampledBaselinePixelCount,
         second[index].sampledBaselinePixelCount,

@@ -237,10 +237,12 @@ BubbleMarkDecision _decision(
   fillRatio: selected ? 0.8 : 0.02,
   normalizedDarkness: selected ? 0.5 : 0.02,
   darknessContrast: selected ? 90 : 3,
-  fillComponent: selected ? 1 : 0.04,
+  coverageScore: selected ? 1 : 0.04,
   normalizedDarknessComponent: selected ? 1 : 0.04,
   darknessContrastComponent: selected ? 1 : 0.03,
-  combinedScore: selected ? 0.9 : 0.1,
+  darknessScore: selected ? 1 : 0.035,
+  distributionScore: selected ? 1 : 0,
+  combinedMarkScore: selected ? 0.9 : 0.1,
   category: selected
       ? BubbleEvidenceCategory.strongMark
       : BubbleEvidenceCategory.clearBlank,

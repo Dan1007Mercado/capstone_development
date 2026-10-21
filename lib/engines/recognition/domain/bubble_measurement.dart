@@ -41,6 +41,7 @@ final class BubbleMeasurement {
     required this.normalizedDarkness,
     required this.foregroundPixelCount,
     required this.fillRatio,
+    required this.distributionScore,
     required this.quality,
   });
 
@@ -59,6 +60,10 @@ final class BubbleMeasurement {
   final double normalizedDarkness;
   final int foregroundPixelCount;
   final double fillRatio;
+
+  /// Fraction of fixed-grid interior cells containing meaningful foreground.
+  /// This describes ink spread, not confidence or probability.
+  final double distributionScore;
   final BubbleMeasurementQuality quality;
 
   ImagePoint get canonicalCenter => roi.center;

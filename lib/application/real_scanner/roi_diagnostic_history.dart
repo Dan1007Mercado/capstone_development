@@ -40,9 +40,12 @@ final class DiagnosticBubbleEvidence {
     required this.scanSequenceIndex,
     required this.identity,
     required this.fillRatio,
+    required this.coverageScore,
     required this.normalizedDarkness,
     required this.darknessContrast,
-    required this.combinedScore,
+    required this.darknessScore,
+    required this.distributionScore,
+    required this.combinedMarkScore,
     required this.category,
     required this.decisionState,
     required this.questionState,
@@ -51,9 +54,14 @@ final class DiagnosticBubbleEvidence {
   final int scanSequenceIndex;
   final DiagnosticBubbleIdentity identity;
   final double fillRatio;
+  final double coverageScore;
   final double normalizedDarkness;
   final double darknessContrast;
-  final double combinedScore;
+  final double darknessScore;
+  final double distributionScore;
+  final double combinedMarkScore;
+
+  double get combinedScore => combinedMarkScore;
   final BubbleEvidenceCategory category;
   final BubbleDecisionState decisionState;
   final MarkState questionState;
@@ -117,9 +125,12 @@ final class RoiDiagnosticEvidenceScan {
         numericDigitValue: measurement.numericDigitValue,
       ),
       fillRatio: measurement.fillRatio,
+      coverageScore: decision.coverageScore,
       normalizedDarkness: measurement.normalizedDarkness,
       darknessContrast: measurement.darknessContrast,
-      combinedScore: decision.combinedScore,
+      darknessScore: decision.darknessScore,
+      distributionScore: decision.distributionScore,
+      combinedMarkScore: decision.combinedMarkScore,
       category: decision.category,
       decisionState: decision.state,
       questionState: question.state,
@@ -138,6 +149,12 @@ final class DiagnosticBubbleStabilitySummary {
     required this.maximumDarknessContrast,
     required this.minimumCombinedScore,
     required this.maximumCombinedScore,
+    required this.minimumCoverageScore,
+    required this.maximumCoverageScore,
+    required this.minimumDarknessScore,
+    required this.maximumDarknessScore,
+    required this.minimumDistributionScore,
+    required this.maximumDistributionScore,
     required this.categoryChanges,
     required this.stateChanges,
   });
@@ -151,6 +168,12 @@ final class DiagnosticBubbleStabilitySummary {
   final double maximumDarknessContrast;
   final double minimumCombinedScore;
   final double maximumCombinedScore;
+  final double minimumCoverageScore;
+  final double maximumCoverageScore;
+  final double minimumDarknessScore;
+  final double maximumDarknessScore;
+  final double minimumDistributionScore;
+  final double maximumDistributionScore;
   final int categoryChanges;
   final int stateChanges;
 }
@@ -224,7 +247,25 @@ final class RoiDiagnosticHistory {
           .map((item) => item.combinedScore)
           .reduce(_min),
       maximumCombinedScore: evidence
-          .map((item) => item.combinedScore)
+          .map((item) => item.combinedMarkScore)
+          .reduce(_max),
+      minimumCoverageScore: evidence
+          .map((item) => item.coverageScore)
+          .reduce(_min),
+      maximumCoverageScore: evidence
+          .map((item) => item.coverageScore)
+          .reduce(_max),
+      minimumDarknessScore: evidence
+          .map((item) => item.darknessScore)
+          .reduce(_min),
+      maximumDarknessScore: evidence
+          .map((item) => item.darknessScore)
+          .reduce(_max),
+      minimumDistributionScore: evidence
+          .map((item) => item.distributionScore)
+          .reduce(_min),
+      maximumDistributionScore: evidence
+          .map((item) => item.distributionScore)
           .reduce(_max),
       categoryChanges: categoryChanges,
       stateChanges: stateChanges,

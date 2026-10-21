@@ -133,6 +133,7 @@ BubbleMeasurement _measurement(
     normalizedDarkness: evidence.normalizedDarkness,
     foregroundPixelCount: (evidence.fillRatio * 100).round(),
     fillRatio: evidence.fillRatio,
+    distributionScore: evidence.fillRatio >= 0.2 ? 0.67 : 0.11,
     quality: _goodQuality,
   );
 }

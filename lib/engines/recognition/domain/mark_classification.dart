@@ -19,10 +19,15 @@ enum BubbleDecisionState { selected, notSelected, uncertain, invalid }
 
 enum ClassificationReason {
   isolatedMark,
+  singleStrongMark,
+  strongCoverageDominance,
+  borderlineMark,
   clearBlank,
   multipleStrongMarks,
   closeCandidates,
+  ambiguousCandidates,
   uncertainEvidence,
+  unreliableBaseline,
   unusableQuality,
   incompleteNumericGrid,
 }
@@ -37,10 +42,12 @@ final class BubbleMarkDecision {
     required this.fillRatio,
     required this.normalizedDarkness,
     required this.darknessContrast,
-    required this.fillComponent,
+    required this.coverageScore,
     required this.normalizedDarknessComponent,
     required this.darknessContrastComponent,
-    required this.combinedScore,
+    required this.darknessScore,
+    required this.distributionScore,
+    required this.combinedMarkScore,
     required this.category,
     required this.state,
     required this.qualityUsable,
@@ -59,10 +66,12 @@ final class BubbleMarkDecision {
   final double fillRatio;
   final double normalizedDarkness;
   final double darknessContrast;
-  final double fillComponent;
+  final double coverageScore;
   final double normalizedDarknessComponent;
   final double darknessContrastComponent;
-  final double combinedScore;
+  final double darknessScore;
+  final double distributionScore;
+  final double combinedMarkScore;
   final BubbleEvidenceCategory category;
   final BubbleDecisionState state;
   final bool qualityUsable;
@@ -71,6 +80,11 @@ final class BubbleMarkDecision {
   final double localBaselineIntensity;
   final int foregroundPixelCount;
   final BubbleMeasurementQuality quality;
+
+  /// Compatibility aliases for existing reports while callers migrate to the
+  /// explicit coverage-weighted terminology.
+  double get fillComponent => coverageScore;
+  double get combinedScore => combinedMarkScore;
 
   BubbleMarkDecision withState(BubbleDecisionState value) => BubbleMarkDecision(
     pageId: pageId,
@@ -81,10 +95,12 @@ final class BubbleMarkDecision {
     fillRatio: fillRatio,
     normalizedDarkness: normalizedDarkness,
     darknessContrast: darknessContrast,
-    fillComponent: fillComponent,
+    coverageScore: coverageScore,
     normalizedDarknessComponent: normalizedDarknessComponent,
     darknessContrastComponent: darknessContrastComponent,
-    combinedScore: combinedScore,
+    darknessScore: darknessScore,
+    distributionScore: distributionScore,
+    combinedMarkScore: combinedMarkScore,
     category: category,
     state: value,
     qualityUsable: qualityUsable,
@@ -102,11 +118,19 @@ final class QuestionClassificationDiagnostics {
     required this.secondScore,
     required this.scoreGap,
     required this.reason,
+    this.topCoverage = 0,
+    this.secondCoverage = 0,
+    this.coverageGap = 0,
+    this.coverageRatio = 0,
   });
 
   final double topScore;
   final double secondScore;
   final double scoreGap;
+  final double topCoverage;
+  final double secondCoverage;
+  final double coverageGap;
+  final double coverageRatio;
   final ClassificationReason reason;
 }
 

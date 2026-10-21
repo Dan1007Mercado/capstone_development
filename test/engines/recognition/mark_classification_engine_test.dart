@@ -86,7 +86,10 @@ void main() {
       );
 
       expect(result.state, MarkState.ambiguous);
-      expect(result.diagnostics.reason, ClassificationReason.closeCandidates);
+      expect(
+        result.diagnostics.reason,
+        ClassificationReason.ambiguousCandidates,
+      );
     });
 
     test('one possible but clearly dominant candidate returns MARKED', () {
@@ -110,7 +113,7 @@ void main() {
       expect(
         result.diagnostics.scoreGap,
         greaterThanOrEqualTo(
-          const MarkClassificationConfig().minimumTopSecondGap,
+          const MarkClassificationConfig().minimumTopSecondScoreGap,
         ),
       );
     });
@@ -147,6 +150,180 @@ void main() {
 
       expect(result.state, MarkState.blank);
       expect(result.selectedOptionIds, isEmpty);
+    });
+
+    test('tiny dark dot is not a strong marked result', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? const _Evidence(
+                fill: 0.08,
+                normalized: 0.60,
+                contrast: 100,
+                distribution: 0.11,
+              )
+            : _Evidence.blank,
+      );
+
+      expect(result.state, isNot(MarkState.marked));
+      expect(
+        result.bubbleDecisions.first.category,
+        isNot(BubbleEvidenceCategory.strongMark),
+      );
+    });
+
+    test('0.067 coverage with weak darkness remains BLANK', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions.first
+            ? const _Evidence(
+                fill: 0.067,
+                normalized: 0.02,
+                contrast: 3,
+                distribution: 0.11,
+              )
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.blank);
+      expect(result.selectedOptionIds, isEmpty);
+    });
+
+    test('broad moderate-darkness fill remains MARKED', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) => bubble == scenario.page.bubbleRegions[1]
+            ? const _Evidence(
+                fill: 0.40,
+                normalized: 0.12,
+                contrast: 25,
+                distribution: 0.78,
+              )
+            : _Evidence.blank,
+      );
+
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions[1].optionId,
+      ]);
+      expect(result.bubbleDecisions[1].coverageScore, greaterThan(0.85));
+      expect(
+        result.bubbleDecisions[1].combinedMarkScore,
+        greaterThan(result.bubbleDecisions[1].darknessScore),
+      );
+    });
+
+    test('Q4 coverage dominance selects C over darker lower-coverage B', () {
+      final scenario = _singleChoice(optionCount: 4);
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) =>
+            switch (scenario.page.bubbleRegions.indexOf(bubble)) {
+              1 => const _Evidence(
+                fill: 0.197,
+                normalized: 0.167,
+                contrast: 39.25,
+                distribution: 0.22,
+              ),
+              2 => const _Evidence(
+                fill: 0.439,
+                normalized: 0.095,
+                contrast: 21.67,
+                distribution: 0.78,
+              ),
+              _ => _Evidence.blank,
+            },
+      );
+
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions[2].optionId,
+      ]);
+      expect(
+        result.diagnostics.reason,
+        ClassificationReason.strongCoverageDominance,
+      );
+      expect(result.diagnostics.coverageGap, closeTo(0.242, 1e-9));
+      expect(result.diagnostics.coverageRatio, closeTo(0.439 / 0.197, 1e-9));
+      expect(
+        result.bubbleDecisions[2].combinedMarkScore,
+        greaterThan(result.bubbleDecisions[1].combinedMarkScore),
+      );
+    });
+
+    test('broad fill defeats a tiny darker artifact without hiding it', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) =>
+            switch (scenario.page.bubbleRegions.indexOf(bubble)) {
+              0 => const _Evidence(
+                fill: 0.05,
+                normalized: 0.60,
+                contrast: 100,
+                distribution: 0.11,
+              ),
+              1 => const _Evidence(
+                fill: 0.40,
+                normalized: 0.12,
+                contrast: 25,
+                distribution: 0.78,
+              ),
+              _ => _Evidence.blank,
+            },
+      );
+
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds, [
+        scenario.page.bubbleRegions[1].optionId,
+      ]);
+      expect(
+        result.bubbleDecisions[0].category,
+        isNot(BubbleEvidenceCategory.strongMark),
+      );
+      expect(
+        result.diagnostics.reason,
+        ClassificationReason.strongCoverageDominance,
+      );
+    });
+
+    test('coverage dominance never hides a second genuine strong fill', () {
+      final scenario = _singleChoice();
+      final result = _classify(
+        engine,
+        scenario,
+        evidence: (bubble) =>
+            switch (scenario.page.bubbleRegions.indexOf(bubble)) {
+              0 => const _Evidence(
+                fill: 0.75,
+                normalized: 0.40,
+                contrast: 80,
+                distribution: 1,
+              ),
+              1 => const _Evidence(
+                fill: 0.35,
+                normalized: 0.35,
+                contrast: 70,
+                distribution: 0.78,
+              ),
+              _ => _Evidence.blank,
+            },
+      );
+
+      expect(result.state, MarkState.multiple);
+      expect(result.selectedOptionIds, hasLength(2));
+      expect(
+        result.diagnostics.reason,
+        ClassificationReason.multipleStrongMarks,
+      );
     });
 
     test(
@@ -361,7 +538,10 @@ void main() {
       );
 
       expect(result.state, MarkState.ambiguous);
-      expect(result.diagnostics.reason, ClassificationReason.uncertainEvidence);
+      expect(
+        result.diagnostics.reason,
+        ClassificationReason.ambiguousCandidates,
+      );
       expect(
         result.bubbleDecisions[1].category,
         BubbleEvidenceCategory.conflicting,
@@ -599,6 +779,21 @@ void main() {
   });
 
   group('structure and determinism', () {
+    test('coverage-weighted defaults are centralized and sum to one', () {
+      const config = MarkClassificationConfig();
+
+      expect(config.coverageWeight, 0.65);
+      expect(config.darknessWeight, 0.25);
+      expect(config.distributionWeight, 0.10);
+      expect(
+        config.coverageWeight +
+            config.darknessWeight +
+            config.distributionWeight,
+        1,
+      );
+      expect(config.validationMessage(), isNull);
+    });
+
     test('missing expected measurement is a structured failure', () {
       final scenario = _singleChoice();
       final list = _measurements(scenario.page)..removeLast();
@@ -727,7 +922,7 @@ void main() {
           pageId: scenario.page.pageId,
           measurements: _measurements(scenario.page),
         ),
-        const MarkClassificationConfig(fillWeight: 0.9),
+        const MarkClassificationConfig(coverageWeight: 0.9),
       );
       expect(result.error.code, 'MARK_CLASSIFICATION_INVALID_CONFIG');
     });
@@ -853,6 +1048,7 @@ BubbleMeasurement _measurement(
     normalizedDarkness: evidence.normalized,
     foregroundPixelCount: (evidence.fill * 100).round(),
     fillRatio: evidence.fill,
+    distributionScore: evidence.distribution,
     quality: evidence.quality,
   );
 }
@@ -876,6 +1072,7 @@ BubbleMeasurement _copyMeasurement(
   normalizedDarkness: source.normalizedDarkness,
   foregroundPixelCount: source.foregroundPixelCount,
   fillRatio: source.fillRatio,
+  distributionScore: source.distributionScore,
   quality: source.quality,
 );
 
@@ -884,12 +1081,14 @@ final class _Evidence {
     required this.fill,
     required this.normalized,
     required this.contrast,
+    this.distribution = 0,
     this.quality = goodQuality,
   });
 
   final double fill;
   final double normalized;
   final double contrast;
+  final double distribution;
   final BubbleMeasurementQuality quality;
 
   static const blank = _Evidence(fill: 0.02, normalized: 0.02, contrast: 3);
@@ -897,32 +1096,43 @@ final class _Evidence {
     fill: 0.16,
     normalized: 0.03,
     contrast: 6,
+    distribution: 0.11,
   );
-  static const strong = _Evidence(fill: 0.80, normalized: 0.45, contrast: 90);
+  static const strong = _Evidence(
+    fill: 0.80,
+    normalized: 0.45,
+    contrast: 90,
+    distribution: 1,
+  );
   static const possibleTop = _Evidence(
     fill: 0.30,
     normalized: 0.15,
     contrast: 30,
+    distribution: 0.67,
   );
   static const possibleClose = _Evidence(
     fill: 0.28,
     normalized: 0.15,
     contrast: 30,
+    distribution: 0.67,
   );
   static const faintPencil = _Evidence(
     fill: 0.08,
     normalized: 0.35,
     contrast: 70,
+    distribution: 0.78,
   );
   static const unsupportedFaint = _Evidence(
     fill: 0.07,
     normalized: 0.07,
     contrast: 10,
+    distribution: 0.11,
   );
   static const binaryConflict = _Evidence(
     fill: 0.80,
     normalized: 0.01,
     contrast: 3,
+    distribution: 0.89,
   );
   static const strongUnreliable = _Evidence(
     fill: 0.80,

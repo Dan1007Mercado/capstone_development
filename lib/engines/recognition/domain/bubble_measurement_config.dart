@@ -11,6 +11,8 @@ final class BubbleMeasurementConfig {
     this.excludeNeighborBubbles = true,
     this.baselinePercentile = 0.7,
     this.maximumBaselineForegroundRatio = 0.35,
+    this.distributionGridSize = 3,
+    this.distributionCellMinimumFillRatio = 0.12,
     this.epsilon = 1e-6,
   });
 
@@ -25,6 +27,12 @@ final class BubbleMeasurementConfig {
   final bool excludeNeighborBubbles;
   final double baselinePercentile;
   final double maximumBaselineForegroundRatio;
+
+  /// Fixed grid used to measure whether foreground spans the bubble interior.
+  final int distributionGridSize;
+
+  /// Minimum foreground share for a grid cell to count as occupied.
+  final double distributionCellMinimumFillRatio;
   final double epsilon;
 
   String? validationMessage() {
@@ -52,6 +60,13 @@ final class BubbleMeasurementConfig {
     }
     if (!_unitInterval(maximumBaselineForegroundRatio)) {
       return 'Maximum baseline foreground ratio must be between 0 and 1.';
+    }
+    if (distributionGridSize < 2 || distributionGridSize > 8) {
+      return 'Distribution grid size must be from 2 to 8.';
+    }
+    if (!_unitInterval(distributionCellMinimumFillRatio) ||
+        distributionCellMinimumFillRatio == 0) {
+      return 'Distribution cell fill ratio must be greater than 0 and at most 1.';
     }
     if (!epsilon.isFinite || epsilon <= 0) {
       return 'Normalization epsilon must be finite and positive.';
