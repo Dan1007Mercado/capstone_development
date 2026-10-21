@@ -134,10 +134,8 @@ final class ScannerDiagnosticSnapshot {
       },
       'measurementConfig': {
         'interiorRadiusRatio': measurementConfig.interiorRadiusRatio,
-        'baselineInnerRadiusRatio':
-            measurementConfig.baselineInnerRadiusRatio,
-        'baselineOuterRadiusRatio':
-            measurementConfig.baselineOuterRadiusRatio,
+        'baselineInnerRadiusRatio': measurementConfig.baselineInnerRadiusRatio,
+        'baselineOuterRadiusRatio': measurementConfig.baselineOuterRadiusRatio,
         'minimumInteriorPixels': measurementConfig.minimumInteriorPixels,
         'minimumBaselinePixels': measurementConfig.minimumBaselinePixels,
         'minimumValidSampleRatio': measurementConfig.minimumValidSampleRatio,
@@ -156,15 +154,12 @@ final class ScannerDiagnosticSnapshot {
             classificationConfig.minimumNormalizedDarkness,
         'strongNormalizedDarkness':
             classificationConfig.strongNormalizedDarkness,
-        'minimumDarknessContrast':
-            classificationConfig.minimumDarknessContrast,
-        'strongDarknessContrast':
-            classificationConfig.strongDarknessContrast,
+        'minimumDarknessContrast': classificationConfig.minimumDarknessContrast,
+        'strongDarknessContrast': classificationConfig.strongDarknessContrast,
         'fillWeight': classificationConfig.fillWeight,
         'normalizedDarknessWeight':
             classificationConfig.normalizedDarknessWeight,
-        'darknessContrastWeight':
-            classificationConfig.darknessContrastWeight,
+        'darknessContrastWeight': classificationConfig.darknessContrastWeight,
         'minimumCombinedScore': classificationConfig.minimumCombinedScore,
         'strongCombinedScore': classificationConfig.strongCombinedScore,
         'minimumTopSecondGap': classificationConfig.minimumTopSecondGap,
@@ -172,10 +167,8 @@ final class ScannerDiagnosticSnapshot {
             classificationConfig.maximumBaselineForegroundRatio,
         'severeBaselineForegroundRatio':
             classificationConfig.severeBaselineForegroundRatio,
-        'requireReliableBaseline':
-            classificationConfig.requireReliableBaseline,
-        'minimumValidSampleRatio':
-            classificationConfig.minimumValidSampleRatio,
+        'requireReliableBaseline': classificationConfig.requireReliableBaseline,
+        'minimumValidSampleRatio': classificationConfig.minimumValidSampleRatio,
         'severeMinimumValidSampleRatio':
             classificationConfig.severeMinimumValidSampleRatio,
       },
