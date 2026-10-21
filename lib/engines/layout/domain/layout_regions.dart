@@ -280,6 +280,9 @@ final class QuestionRegion {
     required this.columnIndex,
     required this.physicalBounds,
     required this.normalizedBounds,
+    required this.promptRegion,
+    required this.renderMode,
+    required this.promptLineCount,
     required Iterable<BubbleRegion> bubbleRegions,
   }) : bubbleRegions = UnmodifiableListView(List.of(bubbleRegions));
 
@@ -290,6 +293,9 @@ final class QuestionRegion {
   final int? columnIndex;
   final PhysicalRect physicalBounds;
   final NormalizedRect normalizedBounds;
+  final ContentRegion promptRegion;
+  final QuestionRenderMode renderMode;
+  final int promptLineCount;
   final List<BubbleRegion> bubbleRegions;
 
   @override
@@ -301,6 +307,9 @@ final class QuestionRegion {
           other.columnIndex == columnIndex &&
           other.physicalBounds == physicalBounds &&
           other.normalizedBounds == normalizedBounds &&
+          other.promptRegion == promptRegion &&
+          other.renderMode == renderMode &&
+          other.promptLineCount == promptLineCount &&
           layoutListEquals(other.bubbleRegions, bubbleRegions);
 
   @override
@@ -310,8 +319,19 @@ final class QuestionRegion {
     columnIndex,
     physicalBounds,
     normalizedBounds,
+    promptRegion,
+    renderMode,
+    promptLineCount,
     Object.hashAll(bubbleRegions),
   );
+}
+
+/// Authoritative print mode selected while the question is measured.
+enum QuestionRenderMode {
+  inlineHorizontal,
+  stackedHorizontal,
+  stackedVertical,
+  numericGrid,
 }
 
 final class SectionRegion {

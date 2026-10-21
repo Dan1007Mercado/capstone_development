@@ -13,6 +13,7 @@ import '../../template/domain/template_question.dart';
 import '../../template/domain/template_section.dart';
 import '../domain/layout_config.dart';
 import '../domain/layout_regions.dart';
+import '../domain/layout_selection.dart';
 import '../domain/page_layout.dart';
 import '../domain/page_marker_id_allocator.dart';
 
@@ -27,6 +28,122 @@ final class LayoutEngine {
   final PageMarkerIdAllocator pageMarkerIdAllocator;
 
   EngineResult<LayoutDocument> build(
+    TemplateDefinition template,
+    LayoutConfig config,
+  ) {
+    final configError = _validateConfig(config);
+    if (configError != null) return EngineResult.failure(configError);
+    if (!config.adaptiveColumns) {
+      final result = _buildFixed(template, config);
+      if (result.isFailure) return result;
+      final diagnostics = _diagnoseCandidate(
+        template,
+        config,
+        result.value,
+        const [],
+      );
+      return EngineResult.success(
+        _withSelectionDiagnostics(
+          result.value,
+          LayoutSelectionDiagnostics(
+            selectedColumnCount: config.columnCount,
+            candidates: [diagnostics],
+          ),
+        ),
+      );
+    }
+
+    final counts = config.allowedColumnCounts.toSet().toList()..sort();
+    final diagnostics = <LayoutCandidateDiagnostics>[];
+    final successful =
+        <({LayoutDocument document, LayoutCandidateDiagnostics diagnostics})>[];
+    EngineError? firstBuildFailure;
+
+    for (final count in counts) {
+      final candidateConfig = config.withFixedColumnCount(count);
+      final rejectionReasons = _candidatePreflightReasons(
+        template,
+        candidateConfig,
+      );
+      final result = _buildFixed(template, candidateConfig);
+      if (result.isFailure) {
+        firstBuildFailure ??= result.error;
+        diagnostics.add(
+          LayoutCandidateDiagnostics(
+            columnCount: count,
+            pageCount: 0,
+            unusedAreaRatio: 1,
+            excessivePromptWrappingCount: 0,
+            questionModeFallbackCount: 0,
+            sectionFragmentCount: 0,
+            inlineQuestionCount: 0,
+            stackedQuestionCount: 0,
+            cost: 1e18,
+            rejectedReasons: [...rejectionReasons, result.error.code],
+          ),
+        );
+        continue;
+      }
+      final candidateDiagnostics = _diagnoseCandidate(
+        template,
+        candidateConfig,
+        result.value,
+        rejectionReasons,
+      );
+      diagnostics.add(candidateDiagnostics);
+      if (candidateDiagnostics.isValid) {
+        successful.add((
+          document: result.value,
+          diagnostics: candidateDiagnostics,
+        ));
+      }
+    }
+
+    if (successful.isEmpty) {
+      if (firstBuildFailure != null &&
+          diagnostics.every((candidate) => candidate.pageCount == 0)) {
+        return EngineResult.failure(firstBuildFailure);
+      }
+      return EngineResult.failure(
+        EngineError(
+          code: 'NO_VALID_LAYOUT_CANDIDATE',
+          message: 'No adaptive column candidate satisfied layout policy.',
+          details: {
+            'candidates': {
+              for (final candidate in diagnostics)
+                candidate.columnCount: candidate.rejectedReasons,
+            },
+          },
+        ),
+      );
+    }
+
+    successful.sort((left, right) {
+      final cost = left.diagnostics.cost.compareTo(right.diagnostics.cost);
+      if (cost != 0) return cost;
+      final preferredLeft =
+          (left.diagnostics.columnCount - config.preferredColumnCount).abs();
+      final preferredRight =
+          (right.diagnostics.columnCount - config.preferredColumnCount).abs();
+      final preferred = preferredLeft.compareTo(preferredRight);
+      if (preferred != 0) return preferred;
+      return left.diagnostics.columnCount.compareTo(
+        right.diagnostics.columnCount,
+      );
+    });
+    final winner = successful.first;
+    return EngineResult.success(
+      _withSelectionDiagnostics(
+        winner.document,
+        LayoutSelectionDiagnostics(
+          selectedColumnCount: winner.diagnostics.columnCount,
+          candidates: diagnostics,
+        ),
+      ),
+    );
+  }
+
+  EngineResult<LayoutDocument> _buildFixed(
     TemplateDefinition template,
     LayoutConfig config,
   ) {
@@ -85,7 +202,7 @@ final class LayoutEngine {
         );
       }
 
-      final geometryError = _validateGeneratedGeometry(pages);
+      final geometryError = _validateGeneratedGeometry(pages, template, config);
       if (geometryError != null) return EngineResult.failure(geometryError);
 
       return EngineResult.success(
@@ -105,6 +222,134 @@ final class LayoutEngine {
       );
     }
   }
+
+  LayoutDocument _withSelectionDiagnostics(
+    LayoutDocument document,
+    LayoutSelectionDiagnostics diagnostics,
+  ) => LayoutDocument(
+    templateId: document.templateId,
+    templateVersion: document.templateVersion,
+    pages: document.pages,
+    selectionDiagnostics: diagnostics,
+  );
+
+  List<String> _candidatePreflightReasons(
+    TemplateDefinition template,
+    LayoutConfig config,
+  ) {
+    final reasons = <String>[];
+    if (config.bubbleDiameterMm <
+        config.selectionPolicy.minimumBubbleDiameterMm) {
+      reasons.add('bubbleDiameterBelowScannerSafeMinimum');
+    }
+    final configError = _validateConfig(config);
+    if (configError != null) {
+      reasons.add(configError.code);
+      return reasons;
+    }
+    final geometry = _createStaticGeometry(config);
+    final width =
+        geometry.contentColumnRegions.first.physicalBounds.width.millimeters;
+    if (width < config.selectionPolicy.minimumColumnWidthMm) {
+      reasons.add('columnWidthBelowReadableMinimum');
+    }
+    for (final section in template.sections) {
+      for (final question in section.questions) {
+        final plan = _planQuestion(question, width, config);
+        if (plan.promptLineCount >
+            config.selectionPolicy.maximumAllowedPromptLines) {
+          reasons.add('question:${question.id.value}:promptWrappingExceeded');
+        }
+      }
+    }
+    return reasons;
+  }
+
+  LayoutCandidateDiagnostics _diagnoseCandidate(
+    TemplateDefinition template,
+    LayoutConfig config,
+    LayoutDocument document,
+    List<String> rejectedReasons,
+  ) {
+    final questions = document.pages
+        .expand((page) => page.questionRegions)
+        .toList(growable: false);
+    final totalArea = document.pages
+        .expand((page) => page.contentColumnRegions)
+        .fold<double>(
+          0,
+          (sum, column) => sum + _rectArea(column.physicalBounds),
+        );
+    final usedQuestionArea = questions.fold<double>(
+      0,
+      (sum, question) => sum + _rectArea(question.physicalBounds),
+    );
+    final usedLeadArea = document.pages
+        .expand((page) => page.sectionRegions)
+        .expand(
+          (section) => [
+            section.titleRegion,
+            section.instructionRegion,
+            section.humanReadableFieldRegion,
+          ].whereType<ContentRegion>(),
+        )
+        .fold<double>(
+          0,
+          (sum, region) => sum + _rectArea(region.physicalBounds),
+        );
+    final usedRatio = totalArea <= 0
+        ? 0.0
+        : ((usedQuestionArea + usedLeadArea) / totalArea).clamp(0.0, 1.0);
+    final unusedAreaRatio = 1 - usedRatio;
+    final excessiveWrapping = questions
+        .where(
+          (question) =>
+              question.promptLineCount >
+              config.selectionPolicy.maximumPreferredPromptLines,
+        )
+        .length;
+    final fallbacks = questions
+        .where((question) => question.columnIndex == null)
+        .length;
+    final sectionFragments = document.pages
+        .expand((page) => page.sectionRegions)
+        .length;
+    final continuationCount = math.max(
+      0,
+      sectionFragments - template.sections.length,
+    );
+    final inlineCount = questions
+        .where(
+          (question) =>
+              question.renderMode == QuestionRenderMode.inlineHorizontal,
+        )
+        .length;
+    final stackedCount = questions.length - inlineCount;
+    final policy = config.selectionPolicy;
+    final cost =
+        document.pages.length * policy.pagePenalty +
+        unusedAreaRatio * policy.unusedAreaPenalty +
+        excessiveWrapping * policy.wrapPenalty +
+        fallbacks * policy.questionModeFallbackPenalty +
+        continuationCount * policy.sectionFragmentPenalty +
+        (config.columnCount - config.preferredColumnCount).abs() *
+            policy.preferredColumnDeviationPenalty;
+    return LayoutCandidateDiagnostics(
+      columnCount: config.columnCount,
+      pageCount: document.pages.length,
+      unusedAreaRatio: unusedAreaRatio,
+      excessivePromptWrappingCount: excessiveWrapping,
+      questionModeFallbackCount: fallbacks,
+      sectionFragmentCount: sectionFragments,
+      inlineQuestionCount: inlineCount,
+      stackedQuestionCount: stackedCount,
+      cost: cost,
+      rejectedReasons: rejectedReasons,
+    );
+  }
+
+  double _rectArea(PhysicalRect bounds) =>
+      bounds.width.millimeters * bounds.height.millimeters;
 
   EngineError? _validateConfig(LayoutConfig config) {
     if (!config.markerIds.areUnique) {
@@ -160,6 +405,44 @@ final class LayoutEngine {
       return EngineError(
         code: 'LAYOUT_CONFIG_INVALID',
         message: 'Column count and prompt-line limit must be positive.',
+      );
+    }
+    if (config.allowedColumnCounts.isEmpty ||
+        config.allowedColumnCounts.any((count) => count <= 0) ||
+        config.allowedColumnCounts.toSet().length !=
+            config.allowedColumnCounts.length ||
+        (config.adaptiveColumns &&
+            !config.allowedColumnCounts.contains(
+              config.preferredColumnCount,
+            ))) {
+      return EngineError(
+        code: 'LAYOUT_CONFIG_INVALID',
+        message: 'Adaptive column candidates and preference are invalid.',
+      );
+    }
+    final policy = config.selectionPolicy;
+    final positivePolicyValues = [
+      policy.minimumColumnWidthMm,
+      policy.minimumColumnGapMm,
+      policy.minimumBubbleDiameterMm,
+      policy.minimumBubbleClearanceMm,
+      policy.pagePenalty,
+      policy.unusedAreaPenalty,
+      policy.wrapPenalty,
+      policy.questionModeFallbackPenalty,
+      policy.sectionFragmentPenalty,
+      policy.preferredColumnDeviationPenalty,
+    ];
+    if (positivePolicyValues.any((value) => !value.isFinite || value < 0) ||
+        policy.minimumColumnWidthMm == 0 ||
+        config.columnGapMm < policy.minimumColumnGapMm ||
+        policy.minimumBubbleDiameterMm == 0 ||
+        policy.maximumPreferredPromptLines <= 0 ||
+        policy.maximumAllowedPromptLines < policy.maximumPreferredPromptLines ||
+        policy.maximumHorizontalOptionLabelCharacters <= 0) {
+      return EngineError(
+        code: 'LAYOUT_CONFIG_INVALID',
+        message: 'Adaptive layout selection policy is invalid.',
       );
     }
 
@@ -411,12 +694,12 @@ final class LayoutEngine {
     );
   }
 
-  EngineResult<List<_PageDraft>> _placeTemplate(
+  EngineResult<List<_PageFlowState>> _placeTemplate(
     TemplateDefinition template,
     LayoutConfig config,
     _StaticPageGeometry geometry,
   ) {
-    final pages = <_PageDraft>[];
+    final pages = <_PageFlowState>[];
     var page = _newPage(template, pages.length, geometry);
     pages.add(page);
     final contentHeight = geometry.contentBottom - geometry.contentTop;
@@ -635,27 +918,29 @@ final class LayoutEngine {
     return EngineResult.success(pages);
   }
 
-  EngineResult<List<_PageDraft>> _questionTooLarge(TemplateQuestion question) =>
-      EngineResult.failure(
-        EngineError(
-          code: 'QUESTION_TOO_LARGE',
-          message: 'Question cannot fit within a fresh page content area.',
-          details: {'questionId': question.id.value},
-        ),
-      );
+  EngineResult<List<_PageFlowState>> _questionTooLarge(
+    TemplateQuestion question,
+  ) => EngineResult.failure(
+    EngineError(
+      code: 'QUESTION_TOO_LARGE',
+      message: 'Question cannot fit within a fresh page content area.',
+      details: {'questionId': question.id.value},
+    ),
+  );
 
-  EngineResult<List<_PageDraft>> _sectionTooLarge(TemplateSection section) =>
-      EngineResult.failure(
-        EngineError(
-          code: 'LAYOUT_OVERFLOW',
-          message: 'Section content is too large for a fresh page.',
-          details: {'sectionId': section.id.value},
-        ),
-      );
+  EngineResult<List<_PageFlowState>> _sectionTooLarge(
+    TemplateSection section,
+  ) => EngineResult.failure(
+    EngineError(
+      code: 'LAYOUT_OVERFLOW',
+      message: 'Section content is too large for a fresh page.',
+      details: {'sectionId': section.id.value},
+    ),
+  );
 
-  _PageDraft _appendPage(
+  _PageFlowState _appendPage(
     TemplateDefinition template,
-    List<_PageDraft> pages,
+    List<_PageFlowState> pages,
     _StaticPageGeometry geometry,
   ) {
     final page = _newPage(template, pages.length, geometry);
@@ -663,21 +948,21 @@ final class LayoutEngine {
     return page;
   }
 
-  _PageDraft _advanceFlow(
+  _PageFlowState _advanceFlow(
     TemplateDefinition template,
-    List<_PageDraft> pages,
+    List<_PageFlowState> pages,
     _StaticPageGeometry geometry,
-    _PageDraft page,
+    _PageFlowState page,
   ) {
     if (page.advanceColumn()) return page;
     return _appendPage(template, pages, geometry);
   }
 
-  _PageDraft _newPage(
+  _PageFlowState _newPage(
     TemplateDefinition template,
     int pageIndex,
     _StaticPageGeometry geometry,
-  ) => _PageDraft(
+  ) => _PageFlowState(
     pageIndex: pageIndex,
     pageId: PageId(
       '${template.id.value}-v${template.version.value}-p${pageIndex + 1}',
@@ -686,7 +971,7 @@ final class LayoutEngine {
     columns: geometry.contentColumnRegions,
   );
 
-  _SectionLeadPlan _planSectionLead(
+  _MeasuredSectionLead _planSectionLead(
     TemplateSection section,
     double availableWidth,
     LayoutConfig config,
@@ -730,7 +1015,7 @@ final class LayoutEngine {
       humanReadableFieldHeight += config.humanReadableFieldHeightMm;
       cursor += humanReadableFieldHeight;
     }
-    return _SectionLeadPlan(
+    return _MeasuredSectionLead(
       height: cursor + config.minimumContentGapMm,
       titleHeight: titleHeight,
       instructionTop: instructionTop,
@@ -741,7 +1026,7 @@ final class LayoutEngine {
   }
 
   _SectionLeadPlacement _placeSectionLead(
-    _SectionLeadPlan plan,
+    _MeasuredSectionLead plan,
     double left,
     double top,
     double width,
@@ -773,7 +1058,7 @@ final class LayoutEngine {
           ),
   );
 
-  _QuestionPlan _planQuestion(
+  _MeasuredQuestionBlock _planQuestion(
     TemplateQuestion question,
     double availableWidth,
     LayoutConfig config,
@@ -790,7 +1075,7 @@ final class LayoutEngine {
         config,
       );
     }
-    final promptHeight = promptLineCount * config.estimatedLineHeightMm;
+    var promptHeight = promptLineCount * config.estimatedLineHeightMm;
 
     if (question.type == QuestionType.numericGrid) {
       final spec = question.numericGridSpec!;
@@ -800,29 +1085,116 @@ final class LayoutEngine {
       final gridHeight =
           spec.allowedDigits.length * config.bubbleDiameterMm +
           (spec.allowedDigits.length - 1) * config.bubbleVerticalGapMm;
-      return _QuestionPlan(
+      return _MeasuredQuestionBlock(
         height: promptHeight + config.minimumContentGapMm + gridHeight,
         promptHeight: promptHeight,
+        promptWidth: availableWidth,
         promptLineCount: promptLineCount,
-        usesHorizontalOptions: false,
+        renderMode: QuestionRenderMode.numericGrid,
+        bubbleLeftOffset: 0,
+        bubbleTopOffsets: [
+          for (var index = 0; index < spec.allowedDigits.length; index++)
+            config.minimumContentGapMm +
+                promptHeight +
+                index * (config.bubbleDiameterMm + config.bubbleVerticalGapMm),
+        ],
+        optionCellWidth: config.bubbleDiameterMm + config.bubbleHorizontalGapMm,
         isTooWide: gridWidth > availableWidth,
       );
     }
 
     final optionCount = question.options.length;
+    final measuredCellWidth = config.optionCellWidthMm;
+    final labelsAreCompact = question.options.every(
+      (option) =>
+          option.label.length <=
+          config.selectionPolicy.maximumHorizontalOptionLabelCharacters,
+    );
     final requestedWidth =
-        optionCount * config.optionCellWidthMm +
+        optionCount * measuredCellWidth +
         math.max(0, optionCount - 1) * config.bubbleHorizontalGapMm;
-    final horizontal = requestedWidth <= availableWidth;
-    final optionHeight = horizontal
-        ? config.bubbleDiameterMm
-        : optionCount * config.bubbleDiameterMm +
-              math.max(0, optionCount - 1) * config.bubbleVerticalGapMm;
-    return _QuestionPlan(
-      height: promptHeight + config.minimumContentGapMm + optionHeight,
+    final horizontal = requestedWidth <= availableWidth && labelsAreCompact;
+    final supportsInline =
+        question.type == QuestionType.likert ||
+        question.type == QuestionType.yesNo;
+    final inlinePromptWidth =
+        availableWidth - requestedWidth - config.minimumContentGapMm;
+    final inlinePromptLines = inlinePromptWidth > 0
+        ? _estimateLineCount(question.prompt, inlinePromptWidth, config)
+        : config.selectionPolicy.maximumPreferredPromptLines + 1;
+    final inline =
+        horizontal &&
+        supportsInline &&
+        question.description == null &&
+        inlinePromptWidth >= config.selectionPolicy.minimumColumnWidthMm / 3 &&
+        inlinePromptLines <= config.selectionPolicy.maximumPreferredPromptLines;
+    if (inline) {
+      promptLineCount = inlinePromptLines;
+      promptHeight = promptLineCount * config.estimatedLineHeightMm;
+      return _MeasuredQuestionBlock(
+        height: math.max(promptHeight, config.bubbleDiameterMm),
+        promptHeight: promptHeight,
+        promptWidth: inlinePromptWidth,
+        promptLineCount: promptLineCount,
+        renderMode: QuestionRenderMode.inlineHorizontal,
+        bubbleLeftOffset: inlinePromptWidth + config.minimumContentGapMm,
+        bubbleTopOffsets: const [0],
+        optionCellWidth: measuredCellWidth,
+        isTooWide: false,
+      );
+    }
+
+    if (horizontal) {
+      return _MeasuredQuestionBlock(
+        height:
+            promptHeight + config.minimumContentGapMm + config.bubbleDiameterMm,
+        promptHeight: promptHeight,
+        promptWidth: availableWidth,
+        promptLineCount: promptLineCount,
+        renderMode: QuestionRenderMode.stackedHorizontal,
+        bubbleLeftOffset: 0,
+        bubbleTopOffsets: [promptHeight + config.minimumContentGapMm],
+        optionCellWidth: measuredCellWidth,
+        isTooWide: false,
+      );
+    }
+
+    final labelWidth =
+        availableWidth - config.bubbleDiameterMm - config.minimumContentGapMm;
+    if (labelWidth <= 0) {
+      return _MeasuredQuestionBlock(
+        height: double.infinity,
+        promptHeight: promptHeight,
+        promptWidth: availableWidth,
+        promptLineCount: promptLineCount,
+        renderMode: QuestionRenderMode.stackedVertical,
+        bubbleLeftOffset: 0,
+        bubbleTopOffsets: const [],
+        optionCellWidth: availableWidth,
+        isTooWide: true,
+      );
+    }
+    final offsets = <double>[];
+    var optionsHeight = 0.0;
+    for (final option in question.options) {
+      offsets.add(promptHeight + config.minimumContentGapMm + optionsHeight);
+      final labelHeight =
+          _estimateLineCount(option.label, labelWidth, config) *
+          config.estimatedLineHeightMm;
+      optionsHeight += math.max(config.bubbleDiameterMm, labelHeight);
+      if (offsets.length < optionCount) {
+        optionsHeight += config.bubbleVerticalGapMm;
+      }
+    }
+    return _MeasuredQuestionBlock(
+      height: promptHeight + config.minimumContentGapMm + optionsHeight,
       promptHeight: promptHeight,
+      promptWidth: availableWidth,
       promptLineCount: promptLineCount,
-      usesHorizontalOptions: horizontal,
+      renderMode: QuestionRenderMode.stackedVertical,
+      bubbleLeftOffset: 0,
+      bubbleTopOffsets: offsets,
+      optionCellWidth: availableWidth,
       isTooWide: false,
     );
   }
@@ -856,7 +1228,7 @@ final class LayoutEngine {
 
   QuestionRegion _placeQuestion(
     TemplateQuestion question,
-    _QuestionPlan plan,
+    _MeasuredQuestionBlock plan,
     PageId pageId,
     double left,
     double top,
@@ -865,7 +1237,6 @@ final class LayoutEngine {
     LayoutConfig config,
   ) {
     final pageSize = config.pageSpec.size;
-    final bubbleTop = top + plan.promptHeight + config.minimumContentGapMm;
     final bubbles = <BubbleRegion>[];
 
     if (question.type == QuestionType.numericGrid) {
@@ -881,12 +1252,10 @@ final class LayoutEngine {
           final bounds = PhysicalRect.millimeters(
             left:
                 left +
+                plan.bubbleLeftOffset +
                 column *
                     (config.bubbleDiameterMm + config.bubbleHorizontalGapMm),
-            top:
-                bubbleTop +
-                digitIndex *
-                    (config.bubbleDiameterMm + config.bubbleVerticalGapMm),
+            top: top + plan.bubbleTopOffsets[digitIndex],
             width: config.bubbleDiameterMm,
             height: config.bubbleDiameterMm,
           );
@@ -916,15 +1285,13 @@ final class LayoutEngine {
         final bounds = PhysicalRect.millimeters(
           left: plan.usesHorizontalOptions
               ? left +
+                    plan.bubbleLeftOffset +
                     index *
-                        (config.optionCellWidthMm +
-                            config.bubbleHorizontalGapMm)
-              : left,
+                        (plan.optionCellWidth + config.bubbleHorizontalGapMm)
+              : left + plan.bubbleLeftOffset,
           top: plan.usesHorizontalOptions
-              ? bubbleTop
-              : bubbleTop +
-                    index *
-                        (config.bubbleDiameterMm + config.bubbleVerticalGapMm),
+              ? top + plan.bubbleTopOffsets.single
+              : top + plan.bubbleTopOffsets[index],
           width: config.bubbleDiameterMm,
           height: config.bubbleDiameterMm,
         );
@@ -964,6 +1331,25 @@ final class LayoutEngine {
         bounds,
         pageSize,
       ),
+      promptRegion: ContentRegion(
+        physicalBounds: PhysicalRect.millimeters(
+          left: left,
+          top: top,
+          width: plan.promptWidth,
+          height: plan.promptHeight,
+        ),
+        normalizedBounds: GeometryConverter.physicalRectToNormalized(
+          PhysicalRect.millimeters(
+            left: left,
+            top: top,
+            width: plan.promptWidth,
+            height: plan.promptHeight,
+          ),
+          pageSize,
+        ),
+      ),
+      renderMode: plan.renderMode,
+      promptLineCount: plan.promptLineCount,
       bubbleRegions: bubbles,
     );
   }
@@ -972,7 +1358,7 @@ final class LayoutEngine {
     TemplateDefinition template,
     LayoutConfig config,
     _StaticPageGeometry geometry,
-    _PageDraft draft,
+    _PageFlowState draft,
     int totalPageCount,
     MarkerIds markerIds,
   ) {
@@ -1069,8 +1455,19 @@ final class LayoutEngine {
           ),
         );
 
-  EngineError? _validateGeneratedGeometry(List<PageLayout> pages) {
-    for (final page in pages) {
+  EngineError? _validateGeneratedGeometry(
+    List<PageLayout> pages,
+    TemplateDefinition template,
+    LayoutConfig config,
+  ) {
+    for (var pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      final page = pages[pageIndex];
+      if (page.pageIndex != pageIndex || page.totalPageCount != pages.length) {
+        return EngineError(
+          code: 'GEOMETRY_INVALID',
+          message: 'Page indices or total page counts are inconsistent.',
+        );
+      }
       for (final marker in page.markerRegions) {
         final expectedMarkerBounds =
             ArucoMarkerPrintContract.detectableMarkerBounds(
@@ -1195,10 +1592,12 @@ final class LayoutEngine {
 
       for (var index = 0; index < page.bubbleRegions.length; index++) {
         final bubble = page.bubbleRegions[index];
-        if (!page.safeBounds.containsRect(bubble.physicalBounds)) {
+        if (!page.safeBounds.containsRect(bubble.physicalBounds) ||
+            bubble.physicalDiameter.millimeters <
+                config.selectionPolicy.minimumBubbleDiameterMm) {
           return EngineError(
             code: 'GEOMETRY_INVALID',
-            message: 'Bubble lies outside the safe content area.',
+            message: 'Bubble lies outside safe bounds or is too small.',
           );
         }
         if (page.markerRegions.any(
@@ -1220,6 +1619,17 @@ final class LayoutEngine {
             return EngineError(
               code: 'GEOMETRY_INVALID',
               message: 'Generated bubble regions overlap.',
+            );
+          }
+          if (_rectClearance(
+                    bubble.physicalBounds,
+                    page.bubbleRegions[otherIndex].physicalBounds,
+                  ) +
+                  1e-9 <
+              config.selectionPolicy.minimumBubbleClearanceMm) {
+            return EngineError(
+              code: 'GEOMETRY_INVALID',
+              message: 'Generated bubble clearance is below policy.',
             );
           }
         }
@@ -1244,6 +1654,20 @@ final class LayoutEngine {
             question.bubbleRegions.any(
               (bubble) =>
                   !question.physicalBounds.containsRect(bubble.physicalBounds),
+            ) ||
+            question.bubbleRegions.any(
+              (bubble) => question.promptRegion.physicalBounds.intersects(
+                bubble.physicalBounds,
+              ),
+            ) ||
+            !question.physicalBounds.containsRect(
+              question.promptRegion.physicalBounds,
+            ) ||
+            question.physicalBounds.intersects(
+              page.templateIdentityRegion.physicalBounds,
+            ) ||
+            question.physicalBounds.intersects(
+              page.headerRegion.physicalBounds,
             )) {
           return EngineError(
             code: 'GEOMETRY_INVALID',
@@ -1266,7 +1690,81 @@ final class LayoutEngine {
         }
       }
     }
+
+    final expectedQuestions = template.sections
+        .expand((section) => section.questions)
+        .map((question) => question.id)
+        .toList(growable: false);
+    final actualQuestions = pages
+        .expand((page) => page.questionRegions)
+        .map((question) => question.questionId)
+        .toList(growable: false);
+    if (actualQuestions.length != expectedQuestions.length ||
+        !_sameQuestionOrder(actualQuestions, expectedQuestions) ||
+        actualQuestions.toSet().length != actualQuestions.length) {
+      return EngineError(
+        code: 'GEOMETRY_INVALID',
+        message: 'Questions are missing, duplicated, or out of template order.',
+      );
+    }
+
+    final sectionByQuestion = {
+      for (final section in template.sections)
+        for (final question in section.questions) question.id: section.id,
+    };
+    final templateSectionOrder = {
+      for (var index = 0; index < template.sections.length; index++)
+        template.sections[index].id: index,
+    };
+    var lastSectionIndex = -1;
+    for (final page in pages) {
+      for (final fragment in page.sectionRegions) {
+        final sectionIndex = templateSectionOrder[fragment.sectionId];
+        if (sectionIndex == null || sectionIndex < lastSectionIndex) {
+          return EngineError(
+            code: 'GEOMETRY_INVALID',
+            message: 'Section fragments do not preserve template order.',
+          );
+        }
+        lastSectionIndex = sectionIndex;
+        if (fragment.questionRegions.any(
+          (question) =>
+              sectionByQuestion[question.questionId] != fragment.sectionId,
+        )) {
+          return EngineError(
+            code: 'GEOMETRY_INVALID',
+            message: 'Continuation fragment changed section identity.',
+          );
+        }
+      }
+    }
     return null;
+  }
+
+  double _rectClearance(PhysicalRect left, PhysicalRect right) {
+    final horizontal = math.max(
+      0,
+      math.max(
+        right.left.millimeters - left.right.millimeters,
+        left.left.millimeters - right.right.millimeters,
+      ),
+    );
+    final vertical = math.max(
+      0,
+      math.max(
+        right.top.millimeters - left.bottom.millimeters,
+        left.top.millimeters - right.bottom.millimeters,
+      ),
+    );
+    return math.sqrt(horizontal * horizontal + vertical * vertical);
+  }
+
+  bool _sameQuestionOrder(List<QuestionId> left, List<QuestionId> right) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index++) {
+      if (left[index] != right[index]) return false;
+    }
+    return true;
   }
 
   bool _matchesColumnAssignment(
@@ -1287,24 +1785,36 @@ final class LayoutEngine {
   }
 }
 
-final class _QuestionPlan {
-  const _QuestionPlan({
+final class _MeasuredQuestionBlock {
+  const _MeasuredQuestionBlock({
     required this.height,
     required this.promptHeight,
+    required this.promptWidth,
     required this.promptLineCount,
-    required this.usesHorizontalOptions,
+    required this.renderMode,
+    required this.bubbleLeftOffset,
+    required this.bubbleTopOffsets,
+    required this.optionCellWidth,
     required this.isTooWide,
   });
 
   final double height;
   final double promptHeight;
+  final double promptWidth;
   final int promptLineCount;
-  final bool usesHorizontalOptions;
+  final QuestionRenderMode renderMode;
+  final double bubbleLeftOffset;
+  final List<double> bubbleTopOffsets;
+  final double optionCellWidth;
   final bool isTooWide;
+
+  bool get usesHorizontalOptions =>
+      renderMode == QuestionRenderMode.inlineHorizontal ||
+      renderMode == QuestionRenderMode.stackedHorizontal;
 }
 
-final class _SectionLeadPlan {
-  const _SectionLeadPlan({
+final class _MeasuredSectionLead {
+  const _MeasuredSectionLead({
     required this.height,
     required this.titleHeight,
     required this.instructionTop,
@@ -1363,8 +1873,8 @@ final class _StaticPageGeometry {
   final double contentBottom;
 }
 
-final class _PageDraft {
-  _PageDraft({
+final class _PageFlowState {
+  _PageFlowState({
     required this.pageIndex,
     required this.pageId,
     required double contentTop,

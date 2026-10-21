@@ -28,6 +28,9 @@ void main() {
     expect(comfortable.identityRegionHeightMm, 12);
     expect(dense.profile, LayoutProfile.dense);
     expect(dense.columnCount, 2);
+    expect(dense.allowedColumnCounts, [2, 3, 4]);
+    expect(dense.adaptiveColumns, isTrue);
+    expect(dense.preferredColumnCount, 3);
     expect(dense.bubbleDiameterMm, 5);
   });
 
@@ -68,18 +71,17 @@ void main() {
   );
 
   test('overflow transitions to the next page with compact continuation', () {
-    final inputs = buildP13_6DenseValidationInputs(questionCount: 41);
+    final inputs = buildP13_6DenseValidationInputs(questionCount: 81);
 
-    expect(inputs.layout.pages, hasLength(2));
-    expect(
-      inputs.layout.pages.last.questionRegions.single.questionId,
-      QuestionId('dense-q41'),
-    );
+    expect(inputs.layout.pages.length, greaterThan(1));
     expect(
       inputs.layout.pages.last.markerRegions.map((marker) => marker.markerId),
       [14, 15, 16, 17],
     );
-    final continuation = inputs.layout.pages.last.sectionRegions.single;
+    final continuation = inputs.layout.pages
+        .skip(1)
+        .expand((page) => page.sectionRegions)
+        .firstWhere((section) => section.titleRegion == null);
     expect(continuation.titleRegion, isNull);
     expect(continuation.instructionRegion, isNull);
     expect(continuation.humanReadableFieldRegion, isNull);

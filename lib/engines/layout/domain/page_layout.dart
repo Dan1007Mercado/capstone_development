@@ -5,6 +5,7 @@ import '../../../core/geometry/page_spec.dart';
 import '../../../core/geometry/physical_geometry.dart';
 import '../../../core/ids/identifiers.dart';
 import 'layout_regions.dart';
+import 'layout_selection.dart';
 import 'layout_value_equality.dart';
 
 /// Authoritative geometry for one printable/scannable page.
@@ -116,11 +117,13 @@ final class LayoutDocument {
     required this.templateId,
     required this.templateVersion,
     required Iterable<PageLayout> pages,
+    this.selectionDiagnostics,
   }) : pages = UnmodifiableListView(List.of(pages));
 
   final TemplateId templateId;
   final TemplateVersion templateVersion;
   final List<PageLayout> pages;
+  final LayoutSelectionDiagnostics? selectionDiagnostics;
 
   @override
   bool operator ==(Object other) =>
@@ -128,9 +131,14 @@ final class LayoutDocument {
       other is LayoutDocument &&
           other.templateId == templateId &&
           other.templateVersion == templateVersion &&
+          other.selectionDiagnostics == selectionDiagnostics &&
           layoutListEquals(other.pages, pages);
 
   @override
-  int get hashCode =>
-      Object.hash(templateId, templateVersion, Object.hashAll(pages));
+  int get hashCode => Object.hash(
+    templateId,
+    templateVersion,
+    Object.hashAll(pages),
+    selectionDiagnostics,
+  );
 }

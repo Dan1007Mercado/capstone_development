@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -283,6 +282,9 @@ final class PdfEngine {
         ].whereType<PhysicalRect>(),
       ),
       ...page.questionRegions.map((region) => region.physicalBounds),
+      ...page.questionRegions.map(
+        (region) => region.promptRegion.physicalBounds,
+      ),
       ...page.bubbleRegions.map((region) => region.physicalBounds),
     ];
     if (regions.any((region) => !pageBounds.containsRect(region))) {
@@ -370,14 +372,12 @@ final class PdfEngine {
         details: {'questionId': question.id.value},
       );
     }
-    final firstBubbleTop = region.bubbleRegions
-        .map((bubble) => bubble.physicalBounds.top.millimeters)
-        .reduce(math.min);
-    final promptHeight = firstBubbleTop - region.physicalBounds.top.millimeters;
-    if (promptHeight <= 0) {
+    if (!region.physicalBounds.containsRect(
+      region.promptRegion.physicalBounds,
+    )) {
       return EngineError(
         code: 'PDF_INVALID_LAYOUT',
-        message: 'Question prompt has no space before its bubbles.',
+        message: 'Question prompt lies outside its authoritative block.',
         details: {'questionId': question.id.value},
       );
     }
@@ -388,12 +388,7 @@ final class PdfEngine {
           question.prompt,
           if (question.description != null) question.description!,
         ].join('\n'),
-        bounds: PhysicalRect.millimeters(
-          left: region.physicalBounds.left.millimeters,
-          top: region.physicalBounds.top.millimeters,
-          width: region.physicalBounds.width.millimeters,
-          height: promptHeight,
-        ),
+        bounds: region.promptRegion.physicalBounds,
         questionId: question.id,
       ),
     );
@@ -449,11 +444,21 @@ final class PdfEngine {
     if (width <= 0) {
       throw ArgumentError('No safe label area adjacent to bubble.');
     }
+    var bottom = bounds.bottom.millimeters;
+    if (question.renderMode == QuestionRenderMode.stackedVertical) {
+      bottom = question.physicalBounds.bottom.millimeters;
+      for (final other in question.bubbleRegions) {
+        if (other.physicalBounds.top.millimeters > bounds.top.millimeters &&
+            other.physicalBounds.top.millimeters < bottom) {
+          bottom = other.physicalBounds.top.millimeters;
+        }
+      }
+    }
     return PhysicalRect.millimeters(
       left: left,
       top: bounds.top.millimeters,
       width: width,
-      height: bounds.height.millimeters,
+      height: bottom - bounds.top.millimeters,
     );
   }
 

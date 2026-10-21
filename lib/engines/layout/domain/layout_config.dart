@@ -1,5 +1,6 @@
 import '../../../core/geometry/page_spec.dart';
 import '../../../core/geometry/physical_geometry.dart';
+import 'layout_selection.dart';
 
 enum LayoutProfile { comfortable, dense }
 
@@ -70,6 +71,10 @@ final class LayoutConfig {
     required this.columnCount,
     required this.columnGapMm,
     required this.maximumColumnPromptLines,
+    this.allowedColumnCounts = const [1],
+    this.adaptiveColumns = false,
+    this.preferredColumnCount = 1,
+    this.selectionPolicy = const LayoutSelectionPolicy(),
   });
 
   factory LayoutConfig.a4Default() =>
@@ -103,6 +108,9 @@ final class LayoutConfig {
       columnCount: 1,
       columnGapMm: 6,
       maximumColumnPromptLines: 1000,
+      allowedColumnCounts: const [1],
+      adaptiveColumns: false,
+      preferredColumnCount: 1,
     ),
     LayoutProfile.dense => LayoutConfig(
       profile: LayoutProfile.dense,
@@ -128,6 +136,9 @@ final class LayoutConfig {
       columnCount: 2,
       columnGapMm: 6,
       maximumColumnPromptLines: 2,
+      allowedColumnCounts: const [2, 3, 4],
+      adaptiveColumns: true,
+      preferredColumnCount: 3,
     ),
   };
 
@@ -154,6 +165,41 @@ final class LayoutConfig {
   final int columnCount;
   final double columnGapMm;
   final int maximumColumnPromptLines;
+  final List<int> allowedColumnCounts;
+  final bool adaptiveColumns;
+  final int preferredColumnCount;
+  final LayoutSelectionPolicy selectionPolicy;
+
+  /// Creates one fixed candidate without changing any physical tuning.
+  LayoutConfig withFixedColumnCount(int value) => LayoutConfig(
+    profile: profile,
+    pageSpec: pageSpec,
+    margins: margins,
+    canonicalPageSpec: canonicalPageSpec,
+    markerSizeMm: markerSizeMm,
+    markerInsetMm: markerInsetMm,
+    markerIds: markerIds,
+    bubbleDiameterMm: bubbleDiameterMm,
+    bubbleHorizontalGapMm: bubbleHorizontalGapMm,
+    bubbleVerticalGapMm: bubbleVerticalGapMm,
+    optionCellWidthMm: optionCellWidthMm,
+    questionVerticalGapMm: questionVerticalGapMm,
+    sectionGapMm: sectionGapMm,
+    headerHeightMm: headerHeightMm,
+    identityRegionHeightMm: identityRegionHeightMm,
+    minimumContentGapMm: minimumContentGapMm,
+    estimatedLineHeightMm: estimatedLineHeightMm,
+    estimatedCharactersPerLine: estimatedCharactersPerLine,
+    estimatedTextWidthMm: estimatedTextWidthMm,
+    humanReadableFieldHeightMm: humanReadableFieldHeightMm,
+    columnCount: value,
+    columnGapMm: columnGapMm,
+    maximumColumnPromptLines: maximumColumnPromptLines,
+    allowedColumnCounts: List.unmodifiable([value]),
+    adaptiveColumns: false,
+    preferredColumnCount: preferredColumnCount,
+    selectionPolicy: selectionPolicy,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -181,7 +227,12 @@ final class LayoutConfig {
           other.humanReadableFieldHeightMm == humanReadableFieldHeightMm &&
           other.columnCount == columnCount &&
           other.columnGapMm == columnGapMm &&
-          other.maximumColumnPromptLines == maximumColumnPromptLines;
+          other.maximumColumnPromptLines == maximumColumnPromptLines &&
+          other.allowedColumnCounts.length == allowedColumnCounts.length &&
+          _sameInts(other.allowedColumnCounts, allowedColumnCounts) &&
+          other.adaptiveColumns == adaptiveColumns &&
+          other.preferredColumnCount == preferredColumnCount &&
+          other.selectionPolicy == selectionPolicy;
 
   @override
   int get hashCode => Object.hashAll([
@@ -208,5 +259,17 @@ final class LayoutConfig {
     columnCount,
     columnGapMm,
     maximumColumnPromptLines,
+    Object.hashAll(allowedColumnCounts),
+    adaptiveColumns,
+    preferredColumnCount,
+    selectionPolicy,
   ]);
+}
+
+bool _sameInts(List<int> left, List<int> right) {
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
 }

@@ -3,6 +3,7 @@ import '../../core/geometry/page_spec.dart';
 import '../../core/geometry/physical_geometry.dart';
 import '../../core/ids/identifiers.dart';
 import '../../engines/layout/domain/layout_regions.dart';
+import '../../engines/layout/domain/layout_selection.dart';
 import '../../engines/layout/domain/page_layout.dart';
 import '../../engines/template/domain/numeric_grid_spec.dart';
 import '../../engines/template/domain/question_type.dart';
@@ -155,17 +156,83 @@ final class PublishedTemplateArtifactCodec {
     'templateId': layout.templateId.value,
     'templateVersion': layout.templateVersion.value,
     'pages': [for (final page in layout.pages) _encodePage(page)],
+    'selectionDiagnostics': layout.selectionDiagnostics == null
+        ? null
+        : {
+            'selectedColumnCount':
+                layout.selectionDiagnostics!.selectedColumnCount,
+            'candidates': [
+              for (final candidate in layout.selectionDiagnostics!.candidates)
+                {
+                  'columnCount': candidate.columnCount,
+                  'pageCount': candidate.pageCount,
+                  'unusedAreaRatio': candidate.unusedAreaRatio,
+                  'excessivePromptWrappingCount':
+                      candidate.excessivePromptWrappingCount,
+                  'questionModeFallbackCount':
+                      candidate.questionModeFallbackCount,
+                  'sectionFragmentCount': candidate.sectionFragmentCount,
+                  'inlineQuestionCount': candidate.inlineQuestionCount,
+                  'stackedQuestionCount': candidate.stackedQuestionCount,
+                  'cost': candidate.cost,
+                  'rejectedReasons': candidate.rejectedReasons,
+                },
+            ],
+          },
   };
 
-  static LayoutDocument _decodeLayout(Map<String, Object?> value) =>
-      LayoutDocument(
-        templateId: TemplateId(_string(value, 'templateId')),
-        templateVersion: TemplateVersion(_integer(value, 'templateVersion')),
-        pages: [
-          for (final rawPage in _list(value, 'pages'))
-            _decodePage(_map(rawPage)),
-        ],
-      );
+  static LayoutDocument _decodeLayout(Map<String, Object?> value) {
+    final rawDiagnostics = value['selectionDiagnostics'];
+    return LayoutDocument(
+      templateId: TemplateId(_string(value, 'templateId')),
+      templateVersion: TemplateVersion(_integer(value, 'templateVersion')),
+      pages: [
+        for (final rawPage in _list(value, 'pages')) _decodePage(_map(rawPage)),
+      ],
+      selectionDiagnostics: rawDiagnostics == null
+          ? null
+          : _decodeSelectionDiagnostics(_map(rawDiagnostics)),
+    );
+  }
+
+  static LayoutSelectionDiagnostics _decodeSelectionDiagnostics(
+    Map<String, Object?> value,
+  ) => LayoutSelectionDiagnostics(
+    selectedColumnCount: _integer(value, 'selectedColumnCount'),
+    candidates: [
+      for (final rawCandidate in _list(value, 'candidates'))
+        LayoutCandidateDiagnostics(
+          columnCount: _integer(_map(rawCandidate), 'columnCount'),
+          pageCount: _integer(_map(rawCandidate), 'pageCount'),
+          unusedAreaRatio: _number(_map(rawCandidate), 'unusedAreaRatio'),
+          excessivePromptWrappingCount: _integer(
+            _map(rawCandidate),
+            'excessivePromptWrappingCount',
+          ),
+          questionModeFallbackCount: _integer(
+            _map(rawCandidate),
+            'questionModeFallbackCount',
+          ),
+          sectionFragmentCount: _integer(
+            _map(rawCandidate),
+            'sectionFragmentCount',
+          ),
+          inlineQuestionCount: _integer(
+            _map(rawCandidate),
+            'inlineQuestionCount',
+          ),
+          stackedQuestionCount: _integer(
+            _map(rawCandidate),
+            'stackedQuestionCount',
+          ),
+          cost: _number(_map(rawCandidate), 'cost'),
+          rejectedReasons: [
+            for (final reason in _list(_map(rawCandidate), 'rejectedReasons'))
+              reason as String,
+          ],
+        ),
+    ],
+  );
 
   static Map<String, Object?> _encodePage(PageLayout page) => {
     'templateId': page.templateId.value,
@@ -348,24 +415,69 @@ final class PublishedTemplateArtifactCodec {
         'columnIndex': question.columnIndex,
         'physicalBounds': _physicalRect(question.physicalBounds),
         'normalizedBounds': _normalizedRect(question.normalizedBounds),
+        'promptRegion': _encodeContent(question.promptRegion),
+        'renderMode': question.renderMode.name,
+        'promptLineCount': question.promptLineCount,
         'bubbleRegions': [
           for (final bubble in question.bubbleRegions) _encodeBubble(bubble),
         ],
       };
 
-  static QuestionRegion _decodeQuestionRegion(
-    Map<String, Object?> value,
-  ) => QuestionRegion(
-    questionId: QuestionId(_string(value, 'questionId')),
-    questionType: QuestionType.values.byName(_string(value, 'questionType')),
-    columnIndex: (value['columnIndex'] as num?)?.toInt(),
-    physicalBounds: _decodePhysicalRect(_map(value['physicalBounds'])),
-    normalizedBounds: _decodeNormalizedRect(_map(value['normalizedBounds'])),
-    bubbleRegions: [
+  static QuestionRegion _decodeQuestionRegion(Map<String, Object?> value) {
+    final physicalBounds = _decodePhysicalRect(_map(value['physicalBounds']));
+    final normalizedBounds = _decodeNormalizedRect(
+      _map(value['normalizedBounds']),
+    );
+    final bubbles = [
       for (final rawBubble in _list(value, 'bubbleRegions'))
         _decodeBubble(_map(rawBubble)),
-    ],
-  );
+    ];
+    final rawPrompt = value['promptRegion'];
+    final promptRegion = rawPrompt == null
+        ? _legacyPromptRegion(physicalBounds, normalizedBounds, bubbles)
+        : _decodeContent(_map(rawPrompt));
+    return QuestionRegion(
+      questionId: QuestionId(_string(value, 'questionId')),
+      questionType: QuestionType.values.byName(_string(value, 'questionType')),
+      columnIndex: (value['columnIndex'] as num?)?.toInt(),
+      physicalBounds: physicalBounds,
+      normalizedBounds: normalizedBounds,
+      promptRegion: promptRegion,
+      renderMode: value['renderMode'] == null
+          ? QuestionRenderMode.stackedHorizontal
+          : QuestionRenderMode.values.byName(_string(value, 'renderMode')),
+      promptLineCount: (value['promptLineCount'] as num?)?.toInt() ?? 1,
+      bubbleRegions: bubbles,
+    );
+  }
+
+  static ContentRegion _legacyPromptRegion(
+    PhysicalRect question,
+    NormalizedRect normalizedQuestion,
+    List<BubbleRegion> bubbles,
+  ) {
+    final firstBubbleTop = bubbles
+        .map((bubble) => bubble.physicalBounds.top.millimeters)
+        .reduce((left, right) => left < right ? left : right);
+    final height = firstBubbleTop - question.top.millimeters;
+    return ContentRegion(
+      physicalBounds: PhysicalRect.millimeters(
+        left: question.left.millimeters,
+        top: question.top.millimeters,
+        width: question.width.millimeters,
+        height: height,
+      ),
+      normalizedBounds: NormalizedRect.values(
+        left: normalizedQuestion.left.value,
+        top: normalizedQuestion.top.value,
+        width: normalizedQuestion.width.value,
+        height:
+            normalizedQuestion.height.value *
+            height /
+            question.height.millimeters,
+      ),
+    );
+  }
 
   static Map<String, Object?> _encodeBubble(BubbleRegion bubble) => {
     'pageId': bubble.pageId.value,
