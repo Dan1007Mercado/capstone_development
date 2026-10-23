@@ -382,8 +382,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   ) {
     final merged = <TemplateDefinition>[
       ..._publishedVersions.where(
-        (item) =>
-            item.id != published.id || item.version != published.version,
+        (item) => item.id != published.id || item.version != published.version,
       ),
       published,
     ]..sort((left, right) => left.version.value.compareTo(right.version.value));
@@ -671,9 +670,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     ? _publishP14_2AnswerSheetArtifact
                     : null,
                 child: Text(
-                  _publishing
-                      ? 'Publishing...'
-                      : 'Publish p14.2 Answer Sheet',
+                  _publishing ? 'Publishing...' : 'Publish p14.2 Answer Sheet',
                 ),
               ),
               OutlinedButton(
