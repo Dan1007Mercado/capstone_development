@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../../core/ids/identifiers.dart';
+import '../../engines/layout/domain/layout_config.dart';
 import '../../engines/layout/domain/page_layout.dart';
 import '../../engines/template/domain/template_definition.dart';
 import '../../engines/template/domain/template_status.dart';
@@ -12,6 +13,7 @@ import '../../engines/template/domain/template_status.dart';
 final class PublishedTemplateArtifact {
   PublishedTemplateArtifact({
     required this.template,
+    required this.layoutProfile,
     required this.layout,
     required Uint8List pdfBytes,
   }) : _pdfBytes = Uint8List.fromList(pdfBytes) {
@@ -37,6 +39,7 @@ final class PublishedTemplateArtifact {
   }
 
   final TemplateDefinition template;
+  final LayoutProfile layoutProfile;
   final LayoutDocument layout;
   final Uint8List _pdfBytes;
 

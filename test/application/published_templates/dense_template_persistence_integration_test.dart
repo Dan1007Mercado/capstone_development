@@ -43,6 +43,7 @@ void main() {
       expect(published.isSuccess, isTrue);
       final beforeRestart = published.value;
       expect(beforeRestart.template.status, TemplateStatus.published);
+      expect(beforeRestart.layoutProfile, LayoutProfile.dense);
       expect(beforeRestart.layout.pages, hasLength(1));
       expect(
         beforeRestart.layout.pages.single.contentColumnRegions,
@@ -71,6 +72,7 @@ void main() {
       expect(resolved.isSuccess, isTrue);
       expect(reloaded.value, isNotNull);
       expect(reloaded.value!.template, beforeRestart.template);
+      expect(reloaded.value!.layoutProfile, LayoutProfile.dense);
       expect(reloaded.value!.layout, beforeRestart.layout);
       expect(reloaded.value!.pdfBytes, beforeRestart.pdfBytes);
       expect(resolved.value.layout, beforeRestart.layout);

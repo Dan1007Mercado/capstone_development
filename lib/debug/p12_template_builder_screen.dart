@@ -4,6 +4,7 @@ import '../application/template_builder/template_builder_controller.dart';
 import '../application/template_builder/template_pdf_exporter.dart';
 import '../application/template_builder/user_accessible_template_pdf_exporter.dart';
 import '../application/published_templates/in_memory_published_template_artifact_repository.dart';
+import '../application/published_templates/published_template_artifact.dart';
 import '../application/published_templates/published_template_artifact_service.dart';
 import '../core/errors/engine_error.dart';
 import '../core/ids/identifiers.dart';
@@ -37,6 +38,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.multiPagePdfGenerator,
     this.publicationService,
     this.densePublicationService,
+    this.answerSheetPublicationService,
   });
 
   final TemplateBuilderController? controller;
@@ -46,6 +48,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
   final TemplatePdfGenerator? multiPagePdfGenerator;
   final TemplatePublicationService? publicationService;
   final PublishedTemplateArtifactService? densePublicationService;
+  final PublishedTemplateArtifactService? answerSheetPublicationService;
 
   @override
   State<P12TemplateBuilderScreen> createState() =>
@@ -60,6 +63,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplatePdfGenerator _multiPagePdfGenerator;
   late TemplatePublicationService _publicationService;
   late PublishedTemplateArtifactService _densePublicationService;
+  late PublishedTemplateArtifactService _answerSheetPublicationService;
   final TemplateValidator _validator = TemplateValidator();
   ValidationResult? _validation;
   TemplateLayoutPreview? _preview;
@@ -74,6 +78,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   String? _lifecycleMessage;
   String? _densePublicationMessage;
   String? _multiPagePublicationMessage;
+  String? _answerSheetPublicationMessage;
 
   @override
   void initState() {
@@ -92,6 +97,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         PublishedTemplateArtifactService(
           repository: InMemoryPublishedTemplateArtifactRepository(),
         );
+    _answerSheetPublicationService =
+        widget.answerSheetPublicationService ?? _densePublicationService;
   }
 
   TemplateDefinition get _activeDefinition =>
@@ -314,6 +321,75 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     });
   }
 
+  Future<void> _publishP14_2AnswerSheetArtifact() async {
+    if (!_isEditable) return;
+    final draft = _controller.buildDefinition();
+    setState(() {
+      _publishing = true;
+      _error = null;
+      _pdf = null;
+      _preview = null;
+      _exportOutcome = null;
+      _answerSheetPublicationMessage = null;
+      _densePublicationMessage = null;
+      _multiPagePublicationMessage = null;
+    });
+    final result = await _answerSheetPublicationService.publish(
+      draft: draft,
+      layoutConfig: LayoutConfig.a4AnswerSheet(),
+    );
+    EngineResult<List<PublishedTemplateArtifact>>? history;
+    if (result.isSuccess) {
+      history = await _answerSheetPublicationService.list();
+    }
+    if (!mounted) return;
+    setState(() {
+      _publishing = false;
+      _error = result.errorOrNull ?? history?.errorOrNull;
+      _validation = _validator.validate(draft);
+      if (result.isSuccess) {
+        final artifact = result.value;
+        _publishedDefinition = artifact.template;
+        _publishedVersions = history == null || history.isFailure
+            ? _mergePublishedVersion(artifact.template)
+            : history.value
+                  .where(
+                    (stored) =>
+                        stored.templateId == artifact.templateId &&
+                        stored.layoutProfile == LayoutProfile.answerSheet,
+                  )
+                  .map((stored) => stored.template)
+                  .toList(growable: false);
+        _pdf = TemplatePdfArtifact(
+          definition: artifact.template,
+          layout: artifact.layout,
+          bytes: artifact.pdfBytes,
+        );
+        _preview = TemplateLayoutPreview(
+          definition: artifact.template,
+          layout: artifact.layout,
+        );
+        _exportOutcome = null;
+        _answerSheetPublicationMessage =
+            'Answer Sheet v${artifact.templateVersion.value} published '
+            'locally with exact PDF and PageLayout.';
+      }
+    });
+  }
+
+  List<TemplateDefinition> _mergePublishedVersion(
+    TemplateDefinition published,
+  ) {
+    final merged = <TemplateDefinition>[
+      ..._publishedVersions.where(
+        (item) =>
+            item.id != published.id || item.version != published.version,
+      ),
+      published,
+    ]..sort((left, right) => left.version.value.compareTo(right.version.value));
+    return List.unmodifiable(merged);
+  }
+
   Future<void> _publishMultiPageArtifact() async {
     setState(() {
       _publishing = true;
@@ -395,6 +471,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         _error = null;
         _lifecycleMessage =
             'Created editable revision: v${result.value.version.value}';
+        _answerSheetPublicationMessage = null;
       } else {
         _error = result.error;
       }
@@ -443,6 +520,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _publishedDefinition = null;
       _publishedVersions = const [];
       _lifecycleMessage = null;
+      _answerSheetPublicationMessage = null;
       _validation = null;
       _preview = null;
       _pdf = null;
@@ -565,35 +643,49 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
               ),
               FilledButton(
                 key: const Key('generate-pdf'),
-                onPressed: _generatingPdf || _savingPdf ? null : _generatePdf,
+                onPressed: _generatingPdf || _savingPdf || _publishing
+                    ? null
+                    : _generatePdf,
                 child: Text(
                   _generatingPdf ? 'Generating...' : 'Generate Preview PDF',
                 ),
               ),
               FilledButton.tonal(
                 key: const Key('generate-p14-1-dense-preview-pdf'),
-                onPressed: _generatingPdf || _savingPdf
+                onPressed: _generatingPdf || _savingPdf || _publishing
                     ? null
                     : _generateP14_1DensePreviewPdf,
                 child: const Text('Generate p14.1 Dense Preview PDF'),
               ),
               FilledButton.tonal(
                 key: const Key('generate-p14-2-answer-sheet-pdf'),
-                onPressed: _generatingPdf || _savingPdf
+                onPressed: _generatingPdf || _savingPdf || _publishing
                     ? null
                     : _generateP14_2AnswerSheetPdf,
                 child: const Text('Generate p14.2 Answer Sheet PDF'),
               ),
+              FilledButton.tonal(
+                key: const Key('publish-p14-2-answer-sheet'),
+                onPressed:
+                    editable && !_generatingPdf && !_savingPdf && !_publishing
+                    ? _publishP14_2AnswerSheetArtifact
+                    : null,
+                child: Text(
+                  _publishing
+                      ? 'Publishing...'
+                      : 'Publish p14.2 Answer Sheet',
+                ),
+              ),
               OutlinedButton(
                 key: const Key('generate-dense-validation-pdf'),
-                onPressed: _generatingPdf || _savingPdf
+                onPressed: _generatingPdf || _savingPdf || _publishing
                     ? null
                     : _generateDensePdf,
                 child: const Text('Generate Dense Validation PDF'),
               ),
               OutlinedButton(
                 key: const Key('generate-multi-page-validation-pdf'),
-                onPressed: _generatingPdf || _savingPdf
+                onPressed: _generatingPdf || _savingPdf || _publishing
                     ? null
                     : _generateMultiPagePdf,
                 child: const Text('Generate Multi-Page Validation PDF'),
@@ -651,6 +743,14 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 key: const Key('multi-page-publication-result'),
               ),
             ),
+          if (_answerSheetPublicationMessage case final message?)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: SelectableText(
+                message,
+                key: const Key('answer-sheet-publication-result'),
+              ),
+            ),
           if (_error case final error?) _ErrorPanel(error: error),
           if (_preview case final preview?)
             _LayoutPreviewPanel(preview: preview),
@@ -672,7 +772,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     const SizedBox(height: 8),
                     FilledButton.icon(
                       key: const Key('save-pdf'),
-                      onPressed: _savingPdf ? null : _savePdf,
+                      onPressed: _savingPdf || _publishing || _generatingPdf
+                          ? null
+                          : _savePdf,
                       icon: const Icon(Icons.save_alt),
                       label: Text(_savingPdf ? 'Saving...' : 'Save PDF'),
                     ),

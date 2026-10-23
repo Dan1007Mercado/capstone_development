@@ -113,6 +113,7 @@ final class PublishedTemplateArtifactService {
     return _repository.save(
       PublishedTemplateArtifact(
         template: published,
+        layoutProfile: layoutConfig.profile,
         layout: layout.value,
         pdfBytes: pdf.value,
       ),

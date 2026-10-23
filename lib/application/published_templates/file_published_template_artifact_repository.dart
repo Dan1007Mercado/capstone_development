@@ -46,6 +46,7 @@ final class FilePublishedTemplateArtifactRepository
       await staging.create(recursive: true);
       final encoded = _codec.encode(
         template: artifact.template,
+        layoutProfile: artifact.layoutProfile,
         layout: artifact.layout,
       );
       final pdfBytes = artifact.pdfBytes;
@@ -186,6 +187,7 @@ final class FilePublishedTemplateArtifactRepository
       return EngineResult.success(
         PublishedTemplateArtifact(
           template: decoded.template,
+          layoutProfile: decoded.layoutProfile,
           layout: decoded.layout,
           pdfBytes: pdfBytes,
         ),

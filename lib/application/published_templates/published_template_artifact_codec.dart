@@ -3,6 +3,7 @@ import '../../core/geometry/page_spec.dart';
 import '../../core/geometry/physical_geometry.dart';
 import '../../core/ids/identifiers.dart';
 import '../../engines/layout/domain/layout_regions.dart';
+import '../../engines/layout/domain/layout_config.dart';
 import '../../engines/layout/domain/layout_selection.dart';
 import '../../engines/layout/domain/page_layout.dart';
 import '../../engines/template/domain/numeric_grid_spec.dart';
@@ -21,29 +22,43 @@ import '../../engines/template/domain/template_status.dart';
 final class PublishedTemplateArtifactCodec {
   const PublishedTemplateArtifactCodec();
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
   Map<String, Object?> encode({
     required TemplateDefinition template,
+    required LayoutProfile layoutProfile,
     required LayoutDocument layout,
   }) => {
     'schemaVersion': schemaVersion,
+    'layoutProfile': layoutProfile.name,
     'template': _encodeTemplate(template),
     'layout': _encodeLayout(layout),
   };
 
-  ({TemplateDefinition template, LayoutDocument layout}) decode(
-    Map<String, Object?> value,
-  ) {
+  ({
+    TemplateDefinition template,
+    LayoutProfile layoutProfile,
+    LayoutDocument layout,
+  })
+  decode(Map<String, Object?> value) {
     final version = value['schemaVersion'];
-    if (version != schemaVersion) {
+    if (version != 1 && version != schemaVersion) {
       throw FormatException('Unsupported artifact schema version: $version');
     }
+    final layout = _decodeLayout(_map(value['layout']));
     return (
       template: _decodeTemplate(_map(value['template'])),
-      layout: _decodeLayout(_map(value['layout'])),
+      layoutProfile: version == 1
+          ? _legacyLayoutProfile(layout)
+          : LayoutProfile.values.byName(_string(value, 'layoutProfile')),
+      layout: layout,
     );
   }
+
+  static LayoutProfile _legacyLayoutProfile(LayoutDocument layout) =>
+      (layout.selectionDiagnostics?.selectedColumnCount ?? 1) > 1
+      ? LayoutProfile.dense
+      : LayoutProfile.comfortable;
 
   static Map<String, Object?> _encodeTemplate(TemplateDefinition template) => {
     'id': template.id.value,
@@ -446,6 +461,10 @@ final class PublishedTemplateArtifactCodec {
         'promptRegion': _encodeContent(question.promptRegion),
         'renderMode': question.renderMode.name,
         'promptLineCount': question.promptLineCount,
+        'answerGroupLabel': question.answerGroupLabel,
+        'answerGroupLabelRegion': question.answerGroupLabelRegion == null
+            ? null
+            : _encodeContent(question.answerGroupLabelRegion!),
         'bubbleRegions': [
           for (final bubble in question.bubbleRegions) _encodeBubble(bubble),
         ],
@@ -476,6 +495,8 @@ final class PublishedTemplateArtifactCodec {
           ? QuestionRenderMode.stackedHorizontal
           : QuestionRenderMode.values.byName(_string(value, 'renderMode')),
       promptLineCount: (value['promptLineCount'] as num?)?.toInt() ?? 1,
+      answerGroupLabel: value['answerGroupLabel'] as String?,
+      answerGroupLabelRegion: _nullableContent(value['answerGroupLabelRegion']),
       bubbleRegions: bubbles,
     );
   }
@@ -519,6 +540,8 @@ final class PublishedTemplateArtifactCodec {
     'physicalCenter': _physicalPoint(bubble.physicalCenter),
     'normalizedCenter': _normalizedPoint(bubble.normalizedCenter),
     'physicalDiameter': bubble.physicalDiameter.millimeters,
+    'printedLabel': bubble.printedLabel,
+    'measurementCenterExclusionRatio': bubble.measurementCenterExclusionRatio,
   };
 
   static BubbleRegion _decodeBubble(Map<String, Object?> value) {
@@ -542,6 +565,9 @@ final class PublishedTemplateArtifactCodec {
         physicalCenter: common.physicalCenter,
         normalizedCenter: common.normalizedCenter,
         physicalDiameter: common.physicalDiameter,
+        printedLabel: value['printedLabel'] as String?,
+        measurementCenterExclusionRatio:
+            (value['measurementCenterExclusionRatio'] as num?)?.toDouble() ?? 0,
       );
     }
     return BubbleRegion.numericCell(
@@ -554,6 +580,9 @@ final class PublishedTemplateArtifactCodec {
       physicalCenter: common.physicalCenter,
       normalizedCenter: common.normalizedCenter,
       physicalDiameter: common.physicalDiameter,
+      printedLabel: value['printedLabel'] as String?,
+      measurementCenterExclusionRatio:
+          (value['measurementCenterExclusionRatio'] as num?)?.toDouble() ?? 0,
     );
   }
 
