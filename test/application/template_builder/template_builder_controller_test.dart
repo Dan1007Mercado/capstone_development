@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:capstone_development/application/template_builder/template_builder_controller.dart';
 import 'package:capstone_development/debug/p12_template_builder_fixture.dart';
+import 'package:capstone_development/engines/layout/domain/layout_config.dart';
+import 'package:capstone_development/engines/layout/domain/layout_regions.dart';
 import 'package:capstone_development/engines/template/domain/question_type.dart';
 import 'package:capstone_development/engines/template/domain/template_question.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -256,6 +258,88 @@ void main() {
         expect(pdf.value.layout, preview.value.layout);
         expect(pdf.value.definition, preview.value.definition);
         expect(ascii.decode(pdf.value.bytes.take(5).toList()), '%PDF-');
+      },
+    );
+
+    test(
+      'per-call dense PDF uses the exact supplied active definition',
+      () async {
+        final controller = TemplateBuilderController(
+          name: 'Current Builder Template',
+        );
+        final section = controller.addSection(title: 'Current Section');
+        for (var index = 1; index <= 24; index++) {
+          controller.addQuestion(section, prompt: 'Current item $index');
+        }
+        final definition = controller.snapshot.definition;
+
+        final comfortable = controller.previewDefinition(definition).value;
+        final dense = await controller.generatePdfFor(
+          definition,
+          layoutConfig: LayoutConfig.a4Dense(),
+        );
+
+        expect(dense.isSuccess, isTrue, reason: dense.errorOrNull?.toString());
+        expect(dense.value.definition, same(definition));
+        expect(dense.value.layout.templateId, definition.id);
+        expect(dense.value.layout.templateVersion, definition.version);
+        expect(comfortable.layout.selectionDiagnostics!.selectedColumnCount, 1);
+        expect(dense.value.layout.selectionDiagnostics!.selectedColumnCount, 3);
+        expect(
+          dense.value.layout.pages.every(
+            (page) => page.contentColumnRegions.length == 3,
+          ),
+          isTrue,
+        );
+        expect(ascii.decode(dense.value.bytes.take(5).toList()), '%PDF-');
+      },
+    );
+
+    test(
+      'per-call answer-sheet PDF uses exact definition and answer profile',
+      () async {
+        final controller = TemplateBuilderController(
+          name: 'Current Answer Template',
+        );
+        final section = controller.addSection(title: 'Answers');
+        for (var index = 1; index <= 12; index++) {
+          controller.addQuestion(section, prompt: 'Current item $index');
+        }
+        final definition = controller.snapshot.definition;
+
+        final answerSheet = await controller.generatePdfFor(
+          definition,
+          layoutConfig: LayoutConfig.a4AnswerSheet(),
+        );
+
+        expect(
+          answerSheet.isSuccess,
+          isTrue,
+          reason: answerSheet.errorOrNull?.toString(),
+        );
+        expect(answerSheet.value.definition, same(definition));
+        expect(answerSheet.value.layout.templateId, definition.id);
+        expect(answerSheet.value.layout.templateVersion, definition.version);
+        expect(
+          answerSheet.value.layout.pages
+              .expand((page) => page.questionRegions)
+              .every(
+                (question) =>
+                    question.renderMode ==
+                    QuestionRenderMode.answerSheetHorizontal,
+              ),
+          isTrue,
+        );
+        expect(
+          answerSheet.value.layout.pages
+              .expand((page) => page.bubbleRegions)
+              .every(
+                (bubble) =>
+                    bubble.printedLabel != null &&
+                    bubble.measurementCenterExclusionRatio > 0,
+              ),
+          isTrue,
+        );
       },
     );
 

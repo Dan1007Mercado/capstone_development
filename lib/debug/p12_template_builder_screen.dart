@@ -153,6 +153,58 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     });
   }
 
+  Future<void> _generateP14_1DensePreviewPdf() async {
+    setState(() {
+      _generatingPdf = true;
+      _error = null;
+    });
+    final definition = _activeDefinition;
+    final result = await _controller.generatePdfFor(
+      definition,
+      layoutConfig: LayoutConfig.a4Dense(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _generatingPdf = false;
+      _pdf = result.valueOrNull;
+      _exportOutcome = null;
+      _preview = result.isSuccess
+          ? TemplateLayoutPreview(
+              definition: result.value.definition,
+              layout: result.value.layout,
+            )
+          : null;
+      _error = result.errorOrNull;
+      _validation = _validator.validate(definition);
+    });
+  }
+
+  Future<void> _generateP14_2AnswerSheetPdf() async {
+    setState(() {
+      _generatingPdf = true;
+      _error = null;
+    });
+    final definition = _activeDefinition;
+    final result = await _controller.generatePdfFor(
+      definition,
+      layoutConfig: LayoutConfig.a4AnswerSheet(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _generatingPdf = false;
+      _pdf = result.valueOrNull;
+      _exportOutcome = null;
+      _preview = result.isSuccess
+          ? TemplateLayoutPreview(
+              definition: result.value.definition,
+              layout: result.value.layout,
+            )
+          : null;
+      _error = result.errorOrNull;
+      _validation = _validator.validate(definition);
+    });
+  }
+
   Future<void> _generateDensePdf() async {
     setState(() {
       _generatingPdf = true;
@@ -517,6 +569,20 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 child: Text(
                   _generatingPdf ? 'Generating...' : 'Generate Preview PDF',
                 ),
+              ),
+              FilledButton.tonal(
+                key: const Key('generate-p14-1-dense-preview-pdf'),
+                onPressed: _generatingPdf || _savingPdf
+                    ? null
+                    : _generateP14_1DensePreviewPdf,
+                child: const Text('Generate p14.1 Dense Preview PDF'),
+              ),
+              FilledButton.tonal(
+                key: const Key('generate-p14-2-answer-sheet-pdf'),
+                onPressed: _generatingPdf || _savingPdf
+                    ? null
+                    : _generateP14_2AnswerSheetPdf,
+                child: const Text('Generate p14.2 Answer Sheet PDF'),
               ),
               OutlinedButton(
                 key: const Key('generate-dense-validation-pdf'),
@@ -1091,6 +1157,8 @@ class _LayoutPreviewPanel extends StatelessWidget {
               'Layout preview: ${preview.layout.pages.length} page(s)',
               style: Theme.of(context).textTheme.titleMedium,
             ),
+            if (preview.layout.selectionDiagnostics case final diagnostics?)
+              Text('Selected columns: ${diagnostics.selectedColumnCount}'),
             for (final page in preview.layout.pages)
               _PageSummary(page: page, questions: questions),
           ],

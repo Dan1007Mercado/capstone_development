@@ -5,15 +5,19 @@ import 'package:capstone_development/application/template_builder/template_pdf_e
 import 'package:capstone_development/application/published_templates/in_memory_published_template_artifact_repository.dart';
 import 'package:capstone_development/application/published_templates/published_template_artifact_service.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
+import 'package:capstone_development/core/ids/identifiers.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p12_template_builder_fixture.dart';
 import 'package:capstone_development/debug/p12_template_builder_screen.dart';
 import 'package:capstone_development/debug/p11_1_scanner_validation_sheet.dart';
 import 'package:capstone_development/engines/layout/domain/layout_config.dart';
+import 'package:capstone_development/engines/pdf/application/pdf_engine.dart';
+import 'package:capstone_development/engines/pdf/domain/pdf_render_fonts.dart';
 import 'package:capstone_development/engines/template/application/template_publication_service.dart';
 import 'package:capstone_development/engines/template/infrastructure/in_memory_template_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 void main() {
   testWidgets('screen keeps controller draft and exposes P12 actions', (
@@ -36,6 +40,24 @@ void main() {
     );
     expect(find.text('Question 1'), findsOneWidget);
     expect(find.text('Single Choice'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('generate-p14-1-dense-preview-pdf')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const Key('generate-p14-1-dense-preview-pdf')),
+      findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('generate-p14-2-answer-sheet-pdf')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const Key('generate-p14-2-answer-sheet-pdf')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('mixed demo validates and previews through LayoutEngine', (
@@ -61,6 +83,135 @@ void main() {
 
     expect(find.text('Template is valid.'), findsOneWidget);
     expect(find.textContaining('Layout preview:'), findsOneWidget);
+  });
+
+  testWidgets('p14.1 dense preview renders the current builder template', (
+    tester,
+  ) async {
+    final controller = TemplateBuilderController(
+      templateId: TemplateId('current-user-template'),
+      name: 'Current User Template',
+      pdfEngine: PdfEngine(fontLoader: const _StandardPdfFontLoader()),
+    );
+    final section = controller.addSection(title: 'Current Answers');
+    for (var index = 1; index <= 12; index++) {
+      controller.addQuestion(section, prompt: 'Current response $index');
+    }
+    await tester.pumpWidget(
+      MaterialApp(home: P12TemplateBuilderScreen(controller: controller)),
+    );
+
+    await _tapVisible(tester, const Key('generate-p14-1-dense-preview-pdf'));
+
+    expect(
+      find.byKey(const Key('layout-preview-panel'), skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Selected columns: 3', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('current-user-template-v1-p1', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('p13-6-dense-a4-validation', skipOffstage: false),
+      findsNothing,
+    );
+    await tester.dragUntilVisible(
+      find.byKey(const Key('pdf-export-result')),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    expect(
+      find.byKey(const Key('pdf-export-result'), skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('current-user-template-v1.pdf', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('save-pdf'), skipOffstage: false), findsOne);
+  });
+
+  testWidgets('p14.1 dense preview exposes validation errors', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: P12TemplateBuilderScreen()),
+    );
+
+    await _tapVisible(tester, const Key('generate-p14-1-dense-preview-pdf'));
+
+    expect(
+      find.textContaining('BUILDER_TEMPLATE_INVALID', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('pdf-export-result'), skipOffstage: false),
+      findsNothing,
+    );
+  });
+
+  testWidgets('p14.2 answer sheet renders the current builder template', (
+    tester,
+  ) async {
+    final controller = TemplateBuilderController(
+      templateId: TemplateId('current-answer-template'),
+      name: 'Current Answer Template',
+      pdfEngine: PdfEngine(fontLoader: const _StandardPdfFontLoader()),
+    );
+    final section = controller.addSection(title: 'Current Answers');
+    for (var index = 1; index <= 8; index++) {
+      controller.addQuestion(section, prompt: 'Current answer $index');
+    }
+    await tester.pumpWidget(
+      MaterialApp(home: P12TemplateBuilderScreen(controller: controller)),
+    );
+
+    await _tapVisible(tester, const Key('generate-p14-2-answer-sheet-pdf'));
+
+    expect(
+      find.byKey(const Key('layout-preview-panel'), skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Selected columns: 3', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('current-answer-template-v1-p1', skipOffstage: false),
+      findsOneWidget,
+    );
+    await tester.dragUntilVisible(
+      find.byKey(const Key('pdf-export-result')),
+      find.byType(ListView),
+      const Offset(0, -300),
+    );
+    expect(
+      find.textContaining(
+        'current-answer-template-v1.pdf',
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('save-pdf'), skipOffstage: false), findsOne);
+  });
+
+  testWidgets('p14.2 answer sheet exposes validation errors', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: P12TemplateBuilderScreen()),
+    );
+
+    await _tapVisible(tester, const Key('generate-p14-2-answer-sheet-pdf'));
+
+    expect(
+      find.textContaining('BUILDER_TEMPLATE_INVALID', skipOffstage: false),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('pdf-export-result'), skipOffstage: false),
+      findsNothing,
+    );
   });
 
   testWidgets('save action receives exact generated bytes and updates UI', (
@@ -412,6 +563,15 @@ void main() {
       findsOneWidget,
     );
   });
+}
+
+final class _StandardPdfFontLoader implements PdfRenderFontLoader {
+  const _StandardPdfFontLoader();
+
+  @override
+  Future<EngineResult<PdfRenderFonts>> load() async => EngineResult.success(
+    PdfRenderFonts(regular: pw.Font.helvetica(), bold: pw.Font.helveticaBold()),
+  );
 }
 
 final class _RecordingExporter implements TemplatePdfExporter {

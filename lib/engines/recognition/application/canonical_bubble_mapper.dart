@@ -32,6 +32,7 @@ final class CanonicalBubbleMapper {
       interiorRadius: radius * config.interiorRadiusRatio,
       baselineInnerRadius: radius * config.baselineInnerRadiusRatio,
       baselineOuterRadius: radius * config.baselineOuterRadiusRatio,
+      centerExclusionRadius: radius * bubble.measurementCenterExclusionRatio,
     );
   }
 }

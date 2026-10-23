@@ -181,6 +181,8 @@ final class BubbleRegion {
     required this.physicalCenter,
     required this.normalizedCenter,
     required this.physicalDiameter,
+    required this.printedLabel,
+    required this.measurementCenterExclusionRatio,
   });
 
   factory BubbleRegion.option({
@@ -192,6 +194,8 @@ final class BubbleRegion {
     required PhysicalPoint physicalCenter,
     required NormalizedPoint normalizedCenter,
     required PhysicalLength physicalDiameter,
+    String? printedLabel,
+    double measurementCenterExclusionRatio = 0,
   }) => BubbleRegion._(
     pageId: pageId,
     questionId: questionId,
@@ -203,6 +207,8 @@ final class BubbleRegion {
     physicalCenter: physicalCenter,
     normalizedCenter: normalizedCenter,
     physicalDiameter: physicalDiameter,
+    printedLabel: printedLabel,
+    measurementCenterExclusionRatio: measurementCenterExclusionRatio,
   );
 
   factory BubbleRegion.numericCell({
@@ -215,6 +221,8 @@ final class BubbleRegion {
     required PhysicalPoint physicalCenter,
     required NormalizedPoint normalizedCenter,
     required PhysicalLength physicalDiameter,
+    String? printedLabel,
+    double measurementCenterExclusionRatio = 0,
   }) => BubbleRegion._(
     pageId: pageId,
     questionId: questionId,
@@ -226,6 +234,8 @@ final class BubbleRegion {
     physicalCenter: physicalCenter,
     normalizedCenter: normalizedCenter,
     physicalDiameter: physicalDiameter,
+    printedLabel: printedLabel,
+    measurementCenterExclusionRatio: measurementCenterExclusionRatio,
   );
 
   final PageId pageId;
@@ -238,6 +248,12 @@ final class BubbleRegion {
   final PhysicalPoint physicalCenter;
   final NormalizedPoint normalizedCenter;
   final PhysicalLength physicalDiameter;
+
+  /// Optional glyph printed inside this scanner target.
+  final String? printedLabel;
+
+  /// Fraction of the printed radius excluded from recognition sampling.
+  final double measurementCenterExclusionRatio;
 
   bool get isOptionTarget => optionId != null;
   bool get isNumericCellTarget =>
@@ -256,7 +272,10 @@ final class BubbleRegion {
           other.normalizedBounds == normalizedBounds &&
           other.physicalCenter == physicalCenter &&
           other.normalizedCenter == normalizedCenter &&
-          other.physicalDiameter == physicalDiameter;
+          other.physicalDiameter == physicalDiameter &&
+          other.printedLabel == printedLabel &&
+          other.measurementCenterExclusionRatio ==
+              measurementCenterExclusionRatio;
 
   @override
   int get hashCode => Object.hashAll([
@@ -270,6 +289,8 @@ final class BubbleRegion {
     physicalCenter,
     normalizedCenter,
     physicalDiameter,
+    printedLabel,
+    measurementCenterExclusionRatio,
   ]);
 }
 
@@ -285,6 +306,8 @@ final class QuestionRegion {
     required this.renderMode,
     required this.promptLineCount,
     required Iterable<BubbleRegion> bubbleRegions,
+    this.answerGroupLabel,
+    this.answerGroupLabelRegion,
   }) : bubbleRegions = UnmodifiableListView(List.of(bubbleRegions));
 
   final QuestionId questionId;
@@ -301,6 +324,8 @@ final class QuestionRegion {
   final QuestionRenderMode renderMode;
   final int promptLineCount;
   final List<BubbleRegion> bubbleRegions;
+  final String? answerGroupLabel;
+  final ContentRegion? answerGroupLabelRegion;
 
   @override
   bool operator ==(Object other) =>
@@ -315,6 +340,8 @@ final class QuestionRegion {
           other.promptRegion == promptRegion &&
           other.renderMode == renderMode &&
           other.promptLineCount == promptLineCount &&
+          other.answerGroupLabel == answerGroupLabel &&
+          other.answerGroupLabelRegion == answerGroupLabelRegion &&
           layoutListEquals(other.bubbleRegions, bubbleRegions);
 
   @override
@@ -328,6 +355,8 @@ final class QuestionRegion {
     promptRegion,
     renderMode,
     promptLineCount,
+    answerGroupLabel,
+    answerGroupLabelRegion,
     Object.hashAll(bubbleRegions),
   );
 }
@@ -338,6 +367,8 @@ enum QuestionRenderMode {
   stackedHorizontal,
   stackedVertical,
   numericGrid,
+  answerSheetHorizontal,
+  answerSheetNumericGrid,
 }
 
 final class SectionRegion {

@@ -268,6 +268,9 @@ final class BubbleMeasurementEngine {
       roi.printedRadius > 0 &&
       roi.interiorRadius.isFinite &&
       roi.interiorRadius > 0 &&
+      roi.centerExclusionRadius.isFinite &&
+      roi.centerExclusionRadius >= 0 &&
+      roi.centerExclusionRadius < roi.interiorRadius &&
       roi.baselineOuterRadius.isFinite;
 
   List<List<CanonicalBubbleRoi>> _baselineNeighbors(

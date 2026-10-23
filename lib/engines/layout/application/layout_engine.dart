@@ -476,6 +476,20 @@ final class LayoutEngine {
         message: 'Adaptive column candidates and preference are invalid.',
       );
     }
+    if (!config.bubbleLabelCenterExclusionRatio.isFinite ||
+        config.bubbleLabelCenterExclusionRatio < 0 ||
+        config.bubbleLabelCenterExclusionRatio >= 1 ||
+        (config.profile == LayoutProfile.answerSheet &&
+            (!config.answerGroupHeadingHeightMm.isFinite ||
+                config.answerGroupHeadingHeightMm <= 0 ||
+                !config.questionNumberWidthMm.isFinite ||
+                config.questionNumberWidthMm <= 0 ||
+                config.bubbleLabelCenterExclusionRatio <= 0))) {
+      return EngineError(
+        code: 'LAYOUT_CONFIG_INVALID',
+        message: 'Answer-sheet label geometry is invalid.',
+      );
+    }
     final policy = config.selectionPolicy;
     final positivePolicyValues = [
       policy.minimumColumnWidthMm,
@@ -765,6 +779,7 @@ final class LayoutEngine {
     for (final section in template.sections) {
       var sectionStarted = false;
       _SectionDraft? sectionDraft;
+      String? previousAnswerSchemaKey;
 
       if (section.questions.isEmpty) {
         if (page.fullWidthLocked) {
@@ -808,6 +823,14 @@ final class LayoutEngine {
 
       for (final question in section.questions) {
         questionNumber++;
+        final answerSchema = config.profile == LayoutProfile.answerSheet
+            ? _answerSchema(question)
+            : null;
+        final answerGroupLabel =
+            answerSchema != null && answerSchema.key != previousAnswerSchemaKey
+            ? answerSchema.label
+            : null;
+        previousAnswerSchemaKey = answerSchema?.key;
         if (page.fullWidthLocked) {
           page = _appendPage(template, pages, geometry);
           sectionDraft = null;
@@ -819,6 +842,7 @@ final class LayoutEngine {
           questionNumber,
           column.physicalBounds.width.millimeters,
           config,
+          answerGroupLabel,
         );
         final columnSuitable =
             !columnPlan.isTooWide &&
@@ -832,6 +856,7 @@ final class LayoutEngine {
             questionNumber,
             geometry.safeBounds.width.millimeters,
             config,
+            answerGroupLabel,
           );
           final leadPlan = sectionStarted
               ? null
@@ -908,6 +933,7 @@ final class LayoutEngine {
               questionNumber,
               column.physicalBounds.width.millimeters,
               config,
+              answerGroupLabel,
             );
             leadPlan = _planSectionLead(
               section,
@@ -943,6 +969,7 @@ final class LayoutEngine {
             questionNumber,
             column.physicalBounds.width.millimeters,
             config,
+            answerGroupLabel,
           );
           sectionDraft = page.startSection(
             section.id,
@@ -1046,6 +1073,16 @@ final class LayoutEngine {
       availableWidth,
       config,
     );
+    if (config.profile == LayoutProfile.answerSheet) {
+      return _MeasuredSectionLead(
+        height: titleHeight + config.minimumContentGapMm,
+        titleHeight: titleHeight,
+        instructionTop: null,
+        instructionHeight: null,
+        humanReadableFieldTop: null,
+        humanReadableFieldHeight: null,
+      );
+    }
     var cursor = titleHeight;
     double? instructionTop;
     double? instructionHeight;
@@ -1127,8 +1164,63 @@ final class LayoutEngine {
     TemplateQuestion question,
     int questionNumber,
     double availableWidth,
-    LayoutConfig config,
-  ) {
+    LayoutConfig config, [
+    String? answerGroupLabel,
+  ]) {
+    if (config.profile == LayoutProfile.answerSheet) {
+      final groupHeight = answerGroupLabel == null
+          ? 0.0
+          : config.answerGroupHeadingHeightMm + config.minimumContentGapMm;
+      if (question.type == QuestionType.numericGrid) {
+        final spec = question.numericGridSpec!;
+        final gridWidth =
+            spec.columnCount * config.bubbleDiameterMm +
+            (spec.columnCount - 1) * config.bubbleHorizontalGapMm;
+        final gridHeight =
+            spec.allowedDigits.length * config.bubbleDiameterMm +
+            (spec.allowedDigits.length - 1) * config.bubbleVerticalGapMm;
+        final bubbleLeft =
+            config.questionNumberWidthMm + config.minimumContentGapMm;
+        return _MeasuredQuestionBlock(
+          height: groupHeight + gridHeight,
+          promptHeight: config.bubbleDiameterMm,
+          promptWidth: config.questionNumberWidthMm,
+          promptLineCount: 1,
+          renderMode: QuestionRenderMode.answerSheetNumericGrid,
+          bubbleLeftOffset: bubbleLeft,
+          bubbleTopOffsets: [
+            for (var index = 0; index < spec.allowedDigits.length; index++)
+              groupHeight +
+                  index *
+                      (config.bubbleDiameterMm + config.bubbleVerticalGapMm),
+          ],
+          optionCellWidth:
+              config.bubbleDiameterMm + config.bubbleHorizontalGapMm,
+          isTooWide: bubbleLeft + gridWidth > availableWidth,
+          contentTopOffset: groupHeight,
+          answerGroupLabel: answerGroupLabel,
+        );
+      }
+      final optionCount = question.options.length;
+      final bubbleRowWidth =
+          optionCount * config.bubbleDiameterMm +
+          math.max(0, optionCount - 1) * config.bubbleHorizontalGapMm;
+      final bubbleLeft =
+          config.questionNumberWidthMm + config.minimumContentGapMm;
+      return _MeasuredQuestionBlock(
+        height: groupHeight + config.bubbleDiameterMm,
+        promptHeight: config.bubbleDiameterMm,
+        promptWidth: config.questionNumberWidthMm,
+        promptLineCount: 1,
+        renderMode: QuestionRenderMode.answerSheetHorizontal,
+        bubbleLeftOffset: bubbleLeft,
+        bubbleTopOffsets: [groupHeight],
+        optionCellWidth: config.bubbleDiameterMm,
+        isTooWide: bubbleLeft + bubbleRowWidth > availableWidth,
+        contentTopOffset: groupHeight,
+        answerGroupLabel: answerGroupLabel,
+      );
+    }
     final displayPrompt = _numberedPrompt(questionNumber, question.prompt);
     var promptLineCount = _estimateLineCount(
       displayPrompt,
@@ -1345,6 +1437,11 @@ final class LayoutEngine {
                 pageSize,
               ),
               physicalDiameter: PhysicalLength(config.bubbleDiameterMm),
+              printedLabel: config.profile == LayoutProfile.answerSheet
+                  ? spec.allowedDigits[digitIndex].toString()
+                  : null,
+              measurementCenterExclusionRatio:
+                  config.bubbleLabelCenterExclusionRatio,
             ),
           );
         }
@@ -1380,6 +1477,11 @@ final class LayoutEngine {
               pageSize,
             ),
             physicalDiameter: PhysicalLength(config.bubbleDiameterMm),
+            printedLabel: config.profile == LayoutProfile.answerSheet
+                ? _answerBubbleLabel(question, index)
+                : null,
+            measurementCenterExclusionRatio:
+                config.bubbleLabelCenterExclusionRatio,
           ),
         );
       }
@@ -1404,14 +1506,14 @@ final class LayoutEngine {
       promptRegion: ContentRegion(
         physicalBounds: PhysicalRect.millimeters(
           left: left,
-          top: top,
+          top: top + plan.contentTopOffset,
           width: plan.promptWidth,
           height: plan.promptHeight,
         ),
         normalizedBounds: GeometryConverter.physicalRectToNormalized(
           PhysicalRect.millimeters(
             left: left,
-            top: top,
+            top: top + plan.contentTopOffset,
             width: plan.promptWidth,
             height: plan.promptHeight,
           ),
@@ -1421,11 +1523,76 @@ final class LayoutEngine {
       renderMode: plan.renderMode,
       promptLineCount: plan.promptLineCount,
       bubbleRegions: bubbles,
+      answerGroupLabel: plan.answerGroupLabel,
+      answerGroupLabelRegion: plan.answerGroupLabel == null
+          ? null
+          : ContentRegion(
+              physicalBounds: PhysicalRect.millimeters(
+                left: left,
+                top: top,
+                width: width,
+                height: config.answerGroupHeadingHeightMm,
+              ),
+              normalizedBounds: GeometryConverter.physicalRectToNormalized(
+                PhysicalRect.millimeters(
+                  left: left,
+                  top: top,
+                  width: width,
+                  height: config.answerGroupHeadingHeightMm,
+                ),
+                pageSize,
+              ),
+            ),
     );
   }
 
   String _numberedPrompt(int questionNumber, String prompt) =>
       '$questionNumber. $prompt';
+
+  _AnswerSchema _answerSchema(TemplateQuestion question) {
+    final labels = question.type == QuestionType.numericGrid
+        ? question.numericGridSpec!.allowedDigits
+              .map((digit) => digit.toString())
+              .toList(growable: false)
+        : [
+            for (var index = 0; index < question.options.length; index++)
+              _answerBubbleLabel(question, index),
+          ];
+    final range = labels.isEmpty
+        ? ''
+        : labels.length == 1
+        ? labels.single
+        : '${labels.first}–${labels.last}';
+    final label = switch (question.type) {
+      QuestionType.likert => 'LIKERT SCALE $range',
+      QuestionType.singleChoice => 'SINGLE CHOICE $range',
+      QuestionType.multipleChoice =>
+        'MULTIPLE CHOICE $range — MARK ALL THAT APPLY',
+      QuestionType.yesNo =>
+        labels.join(' / ') == 'T / F' ? 'TRUE / FALSE' : 'YES / NO',
+      QuestionType.numericGrid => 'NUMERIC GRID $range',
+    };
+    return _AnswerSchema(
+      key: '${question.type.name}|${labels.join('|')}',
+      label: label,
+    );
+  }
+
+  String _answerBubbleLabel(TemplateQuestion question, int optionIndex) {
+    final option = question.options[optionIndex];
+    if (question.type == QuestionType.likert) {
+      return option.value is num
+          ? option.value.toString()
+          : '${optionIndex + 1}';
+    }
+    if (question.type == QuestionType.yesNo) {
+      final normalized = option.label.trim().toLowerCase();
+      if (normalized == 'true' || normalized == 't') return 'T';
+      if (normalized == 'false' || normalized == 'f') return 'F';
+      return optionIndex == 0 ? 'Y' : 'N';
+    }
+    return String.fromCharCode('A'.codeUnitAt(0) + optionIndex);
+  }
 
   PageLayout _materializePage(
     TemplateDefinition template,
@@ -1667,7 +1834,12 @@ final class LayoutEngine {
         final bubble = page.bubbleRegions[index];
         if (!page.safeBounds.containsRect(bubble.physicalBounds) ||
             bubble.physicalDiameter.millimeters <
-                config.selectionPolicy.minimumBubbleDiameterMm) {
+                config.selectionPolicy.minimumBubbleDiameterMm ||
+            !bubble.measurementCenterExclusionRatio.isFinite ||
+            bubble.measurementCenterExclusionRatio < 0 ||
+            bubble.measurementCenterExclusionRatio >= 1 ||
+            (bubble.printedLabel == null &&
+                bubble.measurementCenterExclusionRatio != 0)) {
           return EngineError(
             code: 'GEOMETRY_INVALID',
             message: 'Bubble lies outside safe bounds or is too small.',
@@ -1714,6 +1886,22 @@ final class LayoutEngine {
         questionIndex++
       ) {
         final question = page.questionRegions[questionIndex];
+        final answerGroupRegion = question.answerGroupLabelRegion;
+        final answerGroupInvalid =
+            (question.answerGroupLabel == null) !=
+                (answerGroupRegion == null) ||
+            (answerGroupRegion != null &&
+                (!question.physicalBounds.containsRect(
+                      answerGroupRegion.physicalBounds,
+                    ) ||
+                    answerGroupRegion.physicalBounds.intersects(
+                      question.promptRegion.physicalBounds,
+                    ) ||
+                    question.bubbleRegions.any(
+                      (bubble) => answerGroupRegion.physicalBounds.intersects(
+                        bubble.physicalBounds,
+                      ),
+                    )));
         if (!page.safeBounds.containsRect(question.physicalBounds) ||
             !_matchesColumnAssignment(
               question.physicalBounds,
@@ -1736,6 +1924,7 @@ final class LayoutEngine {
             !question.physicalBounds.containsRect(
               question.promptRegion.physicalBounds,
             ) ||
+            answerGroupInvalid ||
             question.physicalBounds.intersects(
               page.templateIdentityRegion.physicalBounds,
             ) ||
@@ -1879,6 +2068,13 @@ final class LayoutEngine {
   }
 }
 
+final class _AnswerSchema {
+  const _AnswerSchema({required this.key, required this.label});
+
+  final String key;
+  final String label;
+}
+
 final class _MeasuredQuestionBlock {
   const _MeasuredQuestionBlock({
     required this.height,
@@ -1890,6 +2086,8 @@ final class _MeasuredQuestionBlock {
     required this.bubbleTopOffsets,
     required this.optionCellWidth,
     required this.isTooWide,
+    this.contentTopOffset = 0,
+    this.answerGroupLabel,
   });
 
   final double height;
@@ -1901,10 +2099,13 @@ final class _MeasuredQuestionBlock {
   final List<double> bubbleTopOffsets;
   final double optionCellWidth;
   final bool isTooWide;
+  final double contentTopOffset;
+  final String? answerGroupLabel;
 
   bool get usesHorizontalOptions =>
       renderMode == QuestionRenderMode.inlineHorizontal ||
-      renderMode == QuestionRenderMode.stackedHorizontal;
+      renderMode == QuestionRenderMode.stackedHorizontal ||
+      renderMode == QuestionRenderMode.answerSheetHorizontal;
 }
 
 final class _MeasuredSectionLead {

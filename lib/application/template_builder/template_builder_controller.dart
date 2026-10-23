@@ -421,13 +421,17 @@ final class TemplateBuilderController {
   /// Builds layout for an exact immutable definition, including published
   /// versions selected for historical diagnostics.
   EngineResult<TemplateLayoutPreview> previewDefinition(
-    TemplateDefinition definition,
-  ) {
+    TemplateDefinition definition, {
+    LayoutConfig? layoutConfig,
+  }) {
     final validation = _validator.validate(definition);
     if (!validation.isValid) {
       return EngineResult.failure(_validationError(validation));
     }
-    final layoutResult = _layoutEngine.build(definition, _layoutConfig);
+    final layoutResult = _layoutEngine.build(
+      definition,
+      layoutConfig ?? _layoutConfig,
+    );
     if (layoutResult.isFailure) {
       return EngineResult.failure(layoutResult.error);
     }
@@ -442,9 +446,10 @@ final class TemplateBuilderController {
   /// Renders the exact supplied semantic version without converting status or
   /// regenerating identity.
   Future<EngineResult<TemplatePdfArtifact>> generatePdfFor(
-    TemplateDefinition definition,
-  ) async {
-    final preview = previewDefinition(definition);
+    TemplateDefinition definition, {
+    LayoutConfig? layoutConfig,
+  }) async {
+    final preview = previewDefinition(definition, layoutConfig: layoutConfig);
     if (preview.isFailure) return EngineResult.failure(preview.error);
     final pdf = await _pdfEngine.render(
       preview.value.definition,

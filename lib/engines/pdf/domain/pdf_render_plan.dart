@@ -12,8 +12,11 @@ enum PdfTextRole {
   sectionInstruction,
   humanReadableField,
   questionPrompt,
+  answerGroupHeading,
+  questionNumber,
   optionLabel,
   numericDigit,
+  bubbleLabel,
 }
 
 final class PdfTextCommand {

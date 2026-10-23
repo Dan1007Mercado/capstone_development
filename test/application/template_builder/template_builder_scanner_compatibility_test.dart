@@ -7,6 +7,7 @@ import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/aruco/domain/marker_correspondence.dart';
 import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
 import 'package:capstone_development/engines/layout/domain/page_layout.dart';
+import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/preprocessing/application/preprocessing_engine.dart';
 import 'package:capstone_development/engines/preprocessing/infrastructure/dart_image_preprocessing_backend.dart';
 import 'package:capstone_development/engines/recognition/application/bubble_measurement_engine.dart';
@@ -58,11 +59,63 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 2)),
   );
+
+  test(
+    'answer-sheet PageLayout and labeled bubbles traverse offline scanner',
+    () {
+      final controller = TemplateBuilderController(
+        name: 'Answer Scanner Template',
+      );
+      final section = controller.addSection(title: 'Answers');
+      controller.addQuestion(section, prompt: 'Prompt is separate');
+      final definition = controller.snapshot.definition;
+      final preview = controller
+          .previewDefinition(
+            definition,
+            layoutConfig: LayoutConfig.a4AnswerSheet(),
+          )
+          .value;
+      final page = preview.layout.pages.single;
+      final canonical = _renderMarkedPage(
+        page,
+        filledBubbleIndex: 1,
+        drawPrintedGlyphs: true,
+      );
+
+      final result =
+          OfflineScannerEngine(
+            alignment: _CanonicalAlignment(canonical),
+            preprocessing: const PreprocessingStageAdapter(
+              PreprocessingEngine(backend: DartImagePreprocessingBackend()),
+            ),
+            measurement: const BubbleMeasurementStageAdapter(
+              BubbleMeasurementEngine(),
+            ),
+            classification: const MarkClassificationStageAdapter(
+              MarkClassificationEngine(),
+            ),
+          ).scan(
+            encodedImage: Uint8List.fromList(const [1, 2, 3]),
+            template: definition,
+            pageLayout: page,
+            config: ScannerConfig(),
+          );
+
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      expect(result.value.questions.single.state, MarkState.marked);
+      expect(
+        result.value.questions.single.selectedOptionIds.single,
+        page.bubbleRegions[1].optionId,
+      );
+    },
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 }
 
 CanonicalPageImage _renderMarkedPage(
   PageLayout page, {
   required int filledBubbleIndex,
+  bool drawPrintedGlyphs = false,
 }) {
   final width = page.canonicalPageSpec.widthPixels;
   final height = page.canonicalPageSpec.heightPixels;
@@ -77,6 +130,15 @@ CanonicalPageImage _renderMarkedPage(
     final radius = (bubble.normalizedBounds.width.value * width / 2).round();
     image.fillCircle(canvas, x: x, y: y, radius: radius, color: ink);
     image.fillCircle(canvas, x: x, y: y, radius: radius - 1, color: paper);
+    if (drawPrintedGlyphs && bubble.printedLabel != null) {
+      image.fillCircle(
+        canvas,
+        x: x,
+        y: y,
+        radius: (radius * bubble.measurementCenterExclusionRatio * 0.9).round(),
+        color: ink,
+      );
+    }
     if (index == filledBubbleIndex) {
       image.fillCircle(
         canvas,

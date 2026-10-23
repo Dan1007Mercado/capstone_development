@@ -381,27 +381,62 @@ final class PdfEngine {
         details: {'questionId': question.id.value},
       );
     }
-    output.add(
-      PdfTextCommand(
-        role: PdfTextRole.questionPrompt,
-        text: [
-          region.questionNumber > 0
-              ? '${region.questionNumber}. ${question.prompt}'
-              : question.prompt,
-          if (question.description != null) question.description!,
-        ].join('\n'),
-        bounds: region.promptRegion.physicalBounds,
-        questionId: question.id,
-      ),
-    );
+    final answerSheet =
+        region.renderMode == QuestionRenderMode.answerSheetHorizontal ||
+        region.renderMode == QuestionRenderMode.answerSheetNumericGrid;
+    if (answerSheet) {
+      final groupLabel = region.answerGroupLabel;
+      final groupRegion = region.answerGroupLabelRegion;
+      if ((groupLabel == null) != (groupRegion == null)) {
+        return EngineError(
+          code: 'PDF_INVALID_LAYOUT',
+          message: 'Answer group label geometry is incomplete.',
+          details: {'questionId': question.id.value},
+        );
+      }
+      if (groupLabel != null && groupRegion != null) {
+        output.add(
+          PdfTextCommand(
+            role: PdfTextRole.answerGroupHeading,
+            text: groupLabel,
+            bounds: groupRegion.physicalBounds,
+            questionId: question.id,
+          ),
+        );
+      }
+      output.add(
+        PdfTextCommand(
+          role: PdfTextRole.questionNumber,
+          text: '${region.questionNumber}.',
+          bounds: region.promptRegion.physicalBounds,
+          questionId: question.id,
+        ),
+      );
+    } else {
+      output.add(
+        PdfTextCommand(
+          role: PdfTextRole.questionPrompt,
+          text: [
+            region.questionNumber > 0
+                ? '${region.questionNumber}. ${question.prompt}'
+                : question.prompt,
+            if (question.description != null) question.description!,
+          ].join('\n'),
+          bounds: region.promptRegion.physicalBounds,
+          questionId: question.id,
+        ),
+      );
+    }
 
     for (final bubble in region.bubbleRegions) {
-      final label = bubble.optionId == null
-          ? bubble.numericDigitValue.toString()
-          : question.options
-                .where((option) => option.id == bubble.optionId)
-                .firstOrNull
-                ?.label;
+      final label =
+          bubble.printedLabel ??
+          (bubble.optionId == null
+              ? bubble.numericDigitValue.toString()
+              : question.options
+                    .where((option) => option.id == bubble.optionId)
+                    .firstOrNull
+                    ?.label);
       if (label == null) {
         return EngineError(
           code: 'PDF_INVALID_LAYOUT',
@@ -409,10 +444,14 @@ final class PdfEngine {
           details: {'questionId': question.id.value},
         );
       }
-      final labelBounds = _labelBounds(region, bubble);
+      final labelBounds = bubble.printedLabel == null
+          ? _labelBounds(region, bubble)
+          : bubble.physicalBounds;
       output.add(
         PdfTextCommand(
-          role: bubble.optionId == null
+          role: bubble.printedLabel != null
+              ? PdfTextRole.bubbleLabel
+              : bubble.optionId == null
               ? PdfTextRole.numericDigit
               : PdfTextRole.optionLabel,
           text: label,
@@ -575,16 +614,35 @@ final class PdfEngine {
       );
     }
 
+    if (command.role == PdfTextRole.bubbleLabel) {
+      return _positioned(
+        command.bounds,
+        pw.Center(
+          child: pw.Text(
+            command.text,
+            style: pw.TextStyle(
+              font: fonts.bold,
+              fontFallback: fonts.fallback,
+              fontSize: style.labelFontSizePoints,
+              color: PdfColors.black,
+            ),
+          ),
+        ),
+      );
+    }
+
     final fontSize = switch (command.role) {
       PdfTextRole.header => style.headerFontSizePoints,
       PdfTextRole.sectionTitle => style.sectionTitleFontSizePoints,
+      PdfTextRole.answerGroupHeading => style.labelFontSizePoints,
       PdfTextRole.optionLabel ||
       PdfTextRole.numericDigit => style.labelFontSizePoints,
       _ => style.bodyFontSizePoints,
     };
     final font =
         command.role == PdfTextRole.header ||
-            command.role == PdfTextRole.sectionTitle
+            command.role == PdfTextRole.sectionTitle ||
+            command.role == PdfTextRole.answerGroupHeading
         ? fonts.bold
         : fonts.regular;
     return _positioned(

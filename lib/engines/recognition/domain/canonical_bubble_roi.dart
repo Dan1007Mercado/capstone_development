@@ -7,6 +7,7 @@ final class CanonicalBubbleRoi {
     required this.interiorRadius,
     required this.baselineInnerRadius,
     required this.baselineOuterRadius,
+    this.centerExclusionRadius = 0,
   });
 
   final ImagePoint center;
@@ -14,9 +15,13 @@ final class CanonicalBubbleRoi {
   final double interiorRadius;
   final double baselineInnerRadius;
   final double baselineOuterRadius;
+  final double centerExclusionRadius;
 
-  bool containsInteriorPixel(int x, int y) =>
-      _squaredDistanceToPixelCenter(x, y) <= interiorRadius * interiorRadius;
+  bool containsInteriorPixel(int x, int y) {
+    final squaredDistance = _squaredDistanceToPixelCenter(x, y);
+    return squaredDistance <= interiorRadius * interiorRadius &&
+        squaredDistance >= centerExclusionRadius * centerExclusionRadius;
+  }
 
   bool containsPrintedPixel(int x, int y) =>
       _squaredDistanceToPixelCenter(x, y) <= printedRadius * printedRadius;

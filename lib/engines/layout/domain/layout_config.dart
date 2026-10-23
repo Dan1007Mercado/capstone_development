@@ -2,7 +2,7 @@ import '../../../core/geometry/page_spec.dart';
 import '../../../core/geometry/physical_geometry.dart';
 import 'layout_selection.dart';
 
-enum LayoutProfile { comfortable, dense }
+enum LayoutProfile { comfortable, dense, answerSheet }
 
 /// Configurable IDs assigned to the four marker roles.
 final class MarkerIds {
@@ -75,6 +75,9 @@ final class LayoutConfig {
     this.adaptiveColumns = false,
     this.preferredColumnCount = 1,
     this.selectionPolicy = const LayoutSelectionPolicy(),
+    this.answerGroupHeadingHeightMm = 0,
+    this.questionNumberWidthMm = 0,
+    this.bubbleLabelCenterExclusionRatio = 0,
   });
 
   factory LayoutConfig.a4Default() =>
@@ -82,6 +85,9 @@ final class LayoutConfig {
 
   factory LayoutConfig.a4Dense() =>
       LayoutConfig.forProfile(LayoutProfile.dense);
+
+  factory LayoutConfig.a4AnswerSheet() =>
+      LayoutConfig.forProfile(LayoutProfile.answerSheet);
 
   factory LayoutConfig.forProfile(LayoutProfile profile) => switch (profile) {
     LayoutProfile.comfortable => LayoutConfig(
@@ -140,6 +146,37 @@ final class LayoutConfig {
       adaptiveColumns: true,
       preferredColumnCount: 3,
     ),
+    LayoutProfile.answerSheet => LayoutConfig(
+      profile: LayoutProfile.answerSheet,
+      pageSpec: PageSpec.a4Portrait(),
+      margins: PageMargins.all(PhysicalLength(12)),
+      canonicalPageSpec: CanonicalPageSpec.a4FromWidth(2100),
+      markerSizeMm: 14,
+      markerInsetMm: 10,
+      markerIds: MarkerIds.defaults,
+      bubbleDiameterMm: 5,
+      bubbleHorizontalGapMm: 2,
+      bubbleVerticalGapMm: 2,
+      optionCellWidthMm: 5,
+      questionVerticalGapMm: 1.25,
+      sectionGapMm: 3,
+      headerHeightMm: 6,
+      identityRegionHeightMm: 5,
+      minimumContentGapMm: 1.5,
+      estimatedLineHeightMm: 3.5,
+      estimatedCharactersPerLine: 34,
+      estimatedTextWidthMm: 76.5,
+      humanReadableFieldHeightMm: 10,
+      columnCount: 3,
+      columnGapMm: 4.5,
+      maximumColumnPromptLines: 1,
+      allowedColumnCounts: const [2, 3, 4],
+      adaptiveColumns: true,
+      preferredColumnCount: 3,
+      answerGroupHeadingHeightMm: 4,
+      questionNumberWidthMm: 8,
+      bubbleLabelCenterExclusionRatio: 0.5,
+    ),
   };
 
   final LayoutProfile profile;
@@ -169,6 +206,9 @@ final class LayoutConfig {
   final bool adaptiveColumns;
   final int preferredColumnCount;
   final LayoutSelectionPolicy selectionPolicy;
+  final double answerGroupHeadingHeightMm;
+  final double questionNumberWidthMm;
+  final double bubbleLabelCenterExclusionRatio;
 
   /// Creates one fixed candidate without changing any physical tuning.
   LayoutConfig withFixedColumnCount(int value) => LayoutConfig(
@@ -199,6 +239,9 @@ final class LayoutConfig {
     adaptiveColumns: false,
     preferredColumnCount: preferredColumnCount,
     selectionPolicy: selectionPolicy,
+    answerGroupHeadingHeightMm: answerGroupHeadingHeightMm,
+    questionNumberWidthMm: questionNumberWidthMm,
+    bubbleLabelCenterExclusionRatio: bubbleLabelCenterExclusionRatio,
   );
 
   @override
@@ -232,7 +275,11 @@ final class LayoutConfig {
           _sameInts(other.allowedColumnCounts, allowedColumnCounts) &&
           other.adaptiveColumns == adaptiveColumns &&
           other.preferredColumnCount == preferredColumnCount &&
-          other.selectionPolicy == selectionPolicy;
+          other.selectionPolicy == selectionPolicy &&
+          other.answerGroupHeadingHeightMm == answerGroupHeadingHeightMm &&
+          other.questionNumberWidthMm == questionNumberWidthMm &&
+          other.bubbleLabelCenterExclusionRatio ==
+              bubbleLabelCenterExclusionRatio;
 
   @override
   int get hashCode => Object.hashAll([
@@ -263,6 +310,9 @@ final class LayoutConfig {
     adaptiveColumns,
     preferredColumnCount,
     selectionPolicy,
+    answerGroupHeadingHeightMm,
+    questionNumberWidthMm,
+    bubbleLabelCenterExclusionRatio,
   ]);
 }
 
