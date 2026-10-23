@@ -165,13 +165,21 @@ final class PublishedTemplateArtifactCodec {
               for (final candidate in layout.selectionDiagnostics!.candidates)
                 {
                   'columnCount': candidate.columnCount,
+                  'columnWidthMm': candidate.columnWidthMm,
+                  'columnGapMm': candidate.columnGapMm,
+                  'bubbleDiameterMm': candidate.bubbleDiameterMm,
                   'pageCount': candidate.pageCount,
                   'unusedAreaRatio': candidate.unusedAreaRatio,
+                  'promptWrappingCount': candidate.promptWrappingCount,
                   'excessivePromptWrappingCount':
                       candidate.excessivePromptWrappingCount,
+                  'stackedVerticalFallbackCount':
+                      candidate.stackedVerticalFallbackCount,
+                  'fullWidthFallbackCount': candidate.fullWidthFallbackCount,
                   'questionModeFallbackCount':
                       candidate.questionModeFallbackCount,
                   'sectionFragmentCount': candidate.sectionFragmentCount,
+                  'continuationCount': candidate.continuationCount,
                   'inlineQuestionCount': candidate.inlineQuestionCount,
                   'stackedQuestionCount': candidate.stackedQuestionCount,
                   'cost': candidate.cost,
@@ -203,12 +211,29 @@ final class PublishedTemplateArtifactCodec {
       for (final rawCandidate in _list(value, 'candidates'))
         LayoutCandidateDiagnostics(
           columnCount: _integer(_map(rawCandidate), 'columnCount'),
+          columnWidthMm:
+              (_map(rawCandidate)['columnWidthMm'] as num?)?.toDouble() ?? 0,
+          columnGapMm:
+              (_map(rawCandidate)['columnGapMm'] as num?)?.toDouble() ?? 0,
+          bubbleDiameterMm:
+              (_map(rawCandidate)['bubbleDiameterMm'] as num?)?.toDouble() ?? 0,
           pageCount: _integer(_map(rawCandidate), 'pageCount'),
           unusedAreaRatio: _number(_map(rawCandidate), 'unusedAreaRatio'),
+          promptWrappingCount:
+              (_map(rawCandidate)['promptWrappingCount'] as num?)?.toInt() ?? 0,
           excessivePromptWrappingCount: _integer(
             _map(rawCandidate),
             'excessivePromptWrappingCount',
           ),
+          stackedVerticalFallbackCount:
+              (_map(rawCandidate)['stackedVerticalFallbackCount'] as num?)
+                  ?.toInt() ??
+              0,
+          fullWidthFallbackCount:
+              (_map(rawCandidate)['fullWidthFallbackCount'] as num?)?.toInt() ??
+              (_map(rawCandidate)['questionModeFallbackCount'] as num?)
+                  ?.toInt() ??
+              0,
           questionModeFallbackCount: _integer(
             _map(rawCandidate),
             'questionModeFallbackCount',
@@ -217,6 +242,8 @@ final class PublishedTemplateArtifactCodec {
             _map(rawCandidate),
             'sectionFragmentCount',
           ),
+          continuationCount:
+              (_map(rawCandidate)['continuationCount'] as num?)?.toInt() ?? 0,
           inlineQuestionCount: _integer(
             _map(rawCandidate),
             'inlineQuestionCount',
@@ -411,6 +438,7 @@ final class PublishedTemplateArtifactCodec {
   static Map<String, Object?> _encodeQuestionRegion(QuestionRegion question) =>
       {
         'questionId': question.questionId.value,
+        'questionNumber': question.questionNumber,
         'questionType': question.questionType.name,
         'columnIndex': question.columnIndex,
         'physicalBounds': _physicalRect(question.physicalBounds),
@@ -438,6 +466,7 @@ final class PublishedTemplateArtifactCodec {
         : _decodeContent(_map(rawPrompt));
     return QuestionRegion(
       questionId: QuestionId(_string(value, 'questionId')),
+      questionNumber: (value['questionNumber'] as num?)?.toInt() ?? 0,
       questionType: QuestionType.values.byName(_string(value, 'questionType')),
       columnIndex: (value['columnIndex'] as num?)?.toInt(),
       physicalBounds: physicalBounds,

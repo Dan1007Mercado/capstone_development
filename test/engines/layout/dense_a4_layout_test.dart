@@ -46,7 +46,7 @@ void main() {
     expect(comfortable.pages, hasLength(4));
     expect(first.pages.length, lessThanOrEqualTo(comfortable.pages.length));
     expect(first.pages.single.questionRegions, hasLength(40));
-    expect(first.pages.single.contentColumnRegions, hasLength(2));
+    expect(first.pages.single.contentColumnRegions, hasLength(3));
   });
 
   test(

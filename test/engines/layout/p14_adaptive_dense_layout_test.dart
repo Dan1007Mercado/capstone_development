@@ -152,7 +152,9 @@ void main() {
         .build(buildP14LargeMixedFixture(), LayoutConfig.a4Dense())
         .value;
 
-    expect(document.pages, hasLength(2));
+    // p14.1 deliberately spends one additional page to keep every dense
+    // prompt above its bubbles instead of using the old inline mode.
+    expect(document.pages, hasLength(3));
     expect(document.selectionDiagnostics!.selectedColumnCount, 2);
     expect(
       document.pages.expand((page) => page.questionRegions),
@@ -309,7 +311,7 @@ void main() {
     }
   });
 
-  test('selection prefers fewer pages only among safe candidates', () {
+  test('selection prioritizes readable wrapping before page count', () {
     final diagnostics = engine
         .build(buildP14LargeMixedFixture(), LayoutConfig.a4Dense())
         .value
@@ -322,9 +324,9 @@ void main() {
     );
 
     expect(
-      selected.pageCount,
+      selected.excessivePromptWrappingCount,
       valid
-          .map((candidate) => candidate.pageCount)
+          .map((candidate) => candidate.excessivePromptWrappingCount)
           .reduce((left, right) => left < right ? left : right),
     );
   });

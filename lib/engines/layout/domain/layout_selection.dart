@@ -12,12 +12,13 @@ final class LayoutSelectionPolicy {
     this.maximumPreferredPromptLines = 2,
     this.maximumAllowedPromptLines = 6,
     this.maximumHorizontalOptionLabelCharacters = 12,
-    this.pagePenalty = 10000,
-    this.unusedAreaPenalty = 100,
-    this.wrapPenalty = 100,
-    this.questionModeFallbackPenalty = 500,
+    this.pagePenalty = 100,
+    this.unusedAreaPenalty = 10,
+    this.wrapPenalty = 10000,
+    this.questionModeFallbackPenalty = 20000,
+    this.stackedVerticalFallbackPenalty = 5000,
     this.sectionFragmentPenalty = 25,
-    this.preferredColumnDeviationPenalty = 25,
+    this.preferredColumnDeviationPenalty = 1000,
   });
 
   /// Smallest readable/scanner-safe flow lane for the current print style.
@@ -45,6 +46,7 @@ final class LayoutSelectionPolicy {
   final double unusedAreaPenalty;
   final double wrapPenalty;
   final double questionModeFallbackPenalty;
+  final double stackedVerticalFallbackPenalty;
   final double sectionFragmentPenalty;
   final double preferredColumnDeviationPenalty;
 
@@ -64,6 +66,8 @@ final class LayoutSelectionPolicy {
           other.unusedAreaPenalty == unusedAreaPenalty &&
           other.wrapPenalty == wrapPenalty &&
           other.questionModeFallbackPenalty == questionModeFallbackPenalty &&
+          other.stackedVerticalFallbackPenalty ==
+              stackedVerticalFallbackPenalty &&
           other.sectionFragmentPenalty == sectionFragmentPenalty &&
           other.preferredColumnDeviationPenalty ==
               preferredColumnDeviationPenalty;
@@ -81,6 +85,7 @@ final class LayoutSelectionPolicy {
     unusedAreaPenalty,
     wrapPenalty,
     questionModeFallbackPenalty,
+    stackedVerticalFallbackPenalty,
     sectionFragmentPenalty,
     preferredColumnDeviationPenalty,
   ]);
@@ -90,11 +95,18 @@ final class LayoutSelectionPolicy {
 final class LayoutCandidateDiagnostics {
   LayoutCandidateDiagnostics({
     required this.columnCount,
+    required this.columnWidthMm,
+    required this.columnGapMm,
+    required this.bubbleDiameterMm,
     required this.pageCount,
     required this.unusedAreaRatio,
+    required this.promptWrappingCount,
     required this.excessivePromptWrappingCount,
+    required this.stackedVerticalFallbackCount,
+    required this.fullWidthFallbackCount,
     required this.questionModeFallbackCount,
     required this.sectionFragmentCount,
+    required this.continuationCount,
     required this.inlineQuestionCount,
     required this.stackedQuestionCount,
     required this.cost,
@@ -102,11 +114,18 @@ final class LayoutCandidateDiagnostics {
   }) : rejectedReasons = UnmodifiableListView(List.of(rejectedReasons));
 
   final int columnCount;
+  final double columnWidthMm;
+  final double columnGapMm;
+  final double bubbleDiameterMm;
   final int pageCount;
   final double unusedAreaRatio;
+  final int promptWrappingCount;
   final int excessivePromptWrappingCount;
+  final int stackedVerticalFallbackCount;
+  final int fullWidthFallbackCount;
   final int questionModeFallbackCount;
   final int sectionFragmentCount;
+  final int continuationCount;
   final int inlineQuestionCount;
   final int stackedQuestionCount;
   final double cost;
@@ -119,11 +138,18 @@ final class LayoutCandidateDiagnostics {
       identical(this, other) ||
       other is LayoutCandidateDiagnostics &&
           other.columnCount == columnCount &&
+          other.columnWidthMm == columnWidthMm &&
+          other.columnGapMm == columnGapMm &&
+          other.bubbleDiameterMm == bubbleDiameterMm &&
           other.pageCount == pageCount &&
           other.unusedAreaRatio == unusedAreaRatio &&
+          other.promptWrappingCount == promptWrappingCount &&
           other.excessivePromptWrappingCount == excessivePromptWrappingCount &&
+          other.stackedVerticalFallbackCount == stackedVerticalFallbackCount &&
+          other.fullWidthFallbackCount == fullWidthFallbackCount &&
           other.questionModeFallbackCount == questionModeFallbackCount &&
           other.sectionFragmentCount == sectionFragmentCount &&
+          other.continuationCount == continuationCount &&
           other.inlineQuestionCount == inlineQuestionCount &&
           other.stackedQuestionCount == stackedQuestionCount &&
           other.cost == cost &&
@@ -132,11 +158,18 @@ final class LayoutCandidateDiagnostics {
   @override
   int get hashCode => Object.hashAll([
     columnCount,
+    columnWidthMm,
+    columnGapMm,
+    bubbleDiameterMm,
     pageCount,
     unusedAreaRatio,
+    promptWrappingCount,
     excessivePromptWrappingCount,
+    stackedVerticalFallbackCount,
+    fullWidthFallbackCount,
     questionModeFallbackCount,
     sectionFragmentCount,
+    continuationCount,
     inlineQuestionCount,
     stackedQuestionCount,
     cost,

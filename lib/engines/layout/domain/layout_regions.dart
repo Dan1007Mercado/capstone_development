@@ -276,6 +276,7 @@ final class BubbleRegion {
 final class QuestionRegion {
   QuestionRegion({
     required this.questionId,
+    required this.questionNumber,
     required this.questionType,
     required this.columnIndex,
     required this.physicalBounds,
@@ -287,6 +288,9 @@ final class QuestionRegion {
   }) : bubbleRegions = UnmodifiableListView(List.of(bubbleRegions));
 
   final QuestionId questionId;
+
+  /// One-based number in exact logical template order across the document.
+  final int questionNumber;
   final QuestionType questionType;
 
   /// Null only for a deliberately full-width question in a column profile.
@@ -303,6 +307,7 @@ final class QuestionRegion {
       identical(this, other) ||
       other is QuestionRegion &&
           other.questionId == questionId &&
+          other.questionNumber == questionNumber &&
           other.questionType == questionType &&
           other.columnIndex == columnIndex &&
           other.physicalBounds == physicalBounds &&
@@ -315,6 +320,7 @@ final class QuestionRegion {
   @override
   int get hashCode => Object.hash(
     questionId,
+    questionNumber,
     questionType,
     columnIndex,
     physicalBounds,

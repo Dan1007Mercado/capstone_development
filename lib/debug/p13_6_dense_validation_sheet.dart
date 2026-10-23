@@ -105,7 +105,12 @@ buildP13_6DenseValidationInputs({
       '${validation.errors.map((issue) => issue.code).toList()}',
     );
   }
-  final layout = LayoutEngine().build(template, LayoutConfig.a4Dense());
+  // Keep the original dense-debug sheet as a stable two-column golden
+  // reference even though production dense selection now prefers three.
+  final layout = LayoutEngine().build(
+    template,
+    LayoutConfig.a4Dense().withFixedColumnCount(2),
+  );
   if (layout.isFailure) {
     throw StateError('${layout.error.code}: ${layout.error.message}');
   }

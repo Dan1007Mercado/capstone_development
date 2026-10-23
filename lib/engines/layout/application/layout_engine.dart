@@ -61,6 +61,11 @@ final class LayoutEngine {
 
     for (final count in counts) {
       final candidateConfig = config.withFixedColumnCount(count);
+      final candidateColumnWidth = _validateConfig(candidateConfig) == null
+          ? _createStaticGeometry(
+              candidateConfig,
+            ).contentColumnRegions.first.physicalBounds.width.millimeters
+          : 0.0;
       final rejectionReasons = _candidatePreflightReasons(
         template,
         candidateConfig,
@@ -71,11 +76,18 @@ final class LayoutEngine {
         diagnostics.add(
           LayoutCandidateDiagnostics(
             columnCount: count,
+            columnWidthMm: candidateColumnWidth,
+            columnGapMm: candidateConfig.columnGapMm,
+            bubbleDiameterMm: candidateConfig.bubbleDiameterMm,
             pageCount: 0,
             unusedAreaRatio: 1,
+            promptWrappingCount: 0,
             excessivePromptWrappingCount: 0,
+            stackedVerticalFallbackCount: 0,
+            fullWidthFallbackCount: 0,
             questionModeFallbackCount: 0,
             sectionFragmentCount: 0,
+            continuationCount: 0,
             inlineQuestionCount: 0,
             stackedQuestionCount: 0,
             cost: 1e18,
@@ -118,19 +130,13 @@ final class LayoutEngine {
       );
     }
 
-    successful.sort((left, right) {
-      final cost = left.diagnostics.cost.compareTo(right.diagnostics.cost);
-      if (cost != 0) return cost;
-      final preferredLeft =
-          (left.diagnostics.columnCount - config.preferredColumnCount).abs();
-      final preferredRight =
-          (right.diagnostics.columnCount - config.preferredColumnCount).abs();
-      final preferred = preferredLeft.compareTo(preferredRight);
-      if (preferred != 0) return preferred;
-      return left.diagnostics.columnCount.compareTo(
-        right.diagnostics.columnCount,
-      );
-    });
+    successful.sort(
+      (left, right) => _compareCandidates(
+        left.diagnostics,
+        right.diagnostics,
+        config.preferredColumnCount,
+      ),
+    );
     final winner = successful.first;
     return EngineResult.success(
       _withSelectionDiagnostics(
@@ -233,6 +239,30 @@ final class LayoutEngine {
     selectionDiagnostics: diagnostics,
   );
 
+  int _compareCandidates(
+    LayoutCandidateDiagnostics left,
+    LayoutCandidateDiagnostics right,
+    int preferredColumnCount,
+  ) {
+    final comparisons = <int>[
+      left.excessivePromptWrappingCount.compareTo(
+        right.excessivePromptWrappingCount,
+      ),
+      left.fullWidthFallbackCount.compareTo(right.fullWidthFallbackCount),
+      left.stackedVerticalFallbackCount.compareTo(
+        right.stackedVerticalFallbackCount,
+      ),
+      (left.columnCount - preferredColumnCount).abs().compareTo(
+        (right.columnCount - preferredColumnCount).abs(),
+      ),
+      left.pageCount.compareTo(right.pageCount),
+      left.unusedAreaRatio.compareTo(right.unusedAreaRatio),
+      left.continuationCount.compareTo(right.continuationCount),
+      left.columnCount.compareTo(right.columnCount),
+    ];
+    return comparisons.firstWhere((value) => value != 0, orElse: () => 0);
+  }
+
   List<String> _candidatePreflightReasons(
     TemplateDefinition template,
     LayoutConfig config,
@@ -253,9 +283,11 @@ final class LayoutEngine {
     if (width < config.selectionPolicy.minimumColumnWidthMm) {
       reasons.add('columnWidthBelowReadableMinimum');
     }
+    var questionNumber = 0;
     for (final section in template.sections) {
       for (final question in section.questions) {
-        final plan = _planQuestion(question, width, config);
+        questionNumber++;
+        final plan = _planQuestion(question, questionNumber, width, config);
         if (plan.promptLineCount >
             config.selectionPolicy.maximumAllowedPromptLines) {
           reasons.add('question:${question.id.value}:promptWrappingExceeded');
@@ -308,8 +340,17 @@ final class LayoutEngine {
               config.selectionPolicy.maximumPreferredPromptLines,
         )
         .length;
+    final promptWrapping = questions
+        .where((question) => question.promptLineCount > 1)
+        .length;
     final fallbacks = questions
         .where((question) => question.columnIndex == null)
+        .length;
+    final stackedVerticalFallbacks = questions
+        .where(
+          (question) =>
+              question.renderMode == QuestionRenderMode.stackedVertical,
+        )
         .length;
     final sectionFragments = document.pages
         .expand((page) => page.sectionRegions)
@@ -331,16 +372,31 @@ final class LayoutEngine {
         unusedAreaRatio * policy.unusedAreaPenalty +
         excessiveWrapping * policy.wrapPenalty +
         fallbacks * policy.questionModeFallbackPenalty +
+        stackedVerticalFallbacks * policy.stackedVerticalFallbackPenalty +
         continuationCount * policy.sectionFragmentPenalty +
         (config.columnCount - config.preferredColumnCount).abs() *
             policy.preferredColumnDeviationPenalty;
     return LayoutCandidateDiagnostics(
       columnCount: config.columnCount,
+      columnWidthMm: document
+          .pages
+          .first
+          .contentColumnRegions
+          .first
+          .physicalBounds
+          .width
+          .millimeters,
+      columnGapMm: config.columnGapMm,
+      bubbleDiameterMm: config.bubbleDiameterMm,
       pageCount: document.pages.length,
       unusedAreaRatio: unusedAreaRatio,
+      promptWrappingCount: promptWrapping,
       excessivePromptWrappingCount: excessiveWrapping,
+      stackedVerticalFallbackCount: stackedVerticalFallbacks,
+      fullWidthFallbackCount: fallbacks,
       questionModeFallbackCount: fallbacks,
       sectionFragmentCount: sectionFragments,
+      continuationCount: continuationCount,
       inlineQuestionCount: inlineCount,
       stackedQuestionCount: stackedCount,
       cost: cost,
@@ -430,6 +486,7 @@ final class LayoutEngine {
       policy.unusedAreaPenalty,
       policy.wrapPenalty,
       policy.questionModeFallbackPenalty,
+      policy.stackedVerticalFallbackPenalty,
       policy.sectionFragmentPenalty,
       policy.preferredColumnDeviationPenalty,
     ];
@@ -703,6 +760,7 @@ final class LayoutEngine {
     var page = _newPage(template, pages.length, geometry);
     pages.add(page);
     final contentHeight = geometry.contentBottom - geometry.contentTop;
+    var questionNumber = 0;
 
     for (final section in template.sections) {
       var sectionStarted = false;
@@ -749,6 +807,7 @@ final class LayoutEngine {
       }
 
       for (final question in section.questions) {
+        questionNumber++;
         if (page.fullWidthLocked) {
           page = _appendPage(template, pages, geometry);
           sectionDraft = null;
@@ -757,6 +816,7 @@ final class LayoutEngine {
         var column = page.activeColumn;
         var columnPlan = _planQuestion(
           question,
+          questionNumber,
           column.physicalBounds.width.millimeters,
           config,
         );
@@ -769,6 +829,7 @@ final class LayoutEngine {
         if (!columnSuitable && config.columnCount > 1) {
           final fullPlan = _planQuestion(
             question,
+            questionNumber,
             geometry.safeBounds.width.millimeters,
             config,
           );
@@ -804,6 +865,7 @@ final class LayoutEngine {
           if (leadPlan != null) page.cursorY += leadPlan.height;
           final questionRegion = _placeQuestion(
             question,
+            questionNumber,
             fullPlan,
             page.pageId,
             geometry.safeBounds.left.millimeters,
@@ -843,6 +905,7 @@ final class LayoutEngine {
             column = page.activeColumn;
             columnPlan = _planQuestion(
               question,
+              questionNumber,
               column.physicalBounds.width.millimeters,
               config,
             );
@@ -877,6 +940,7 @@ final class LayoutEngine {
           column = page.activeColumn;
           columnPlan = _planQuestion(
             question,
+            questionNumber,
             column.physicalBounds.width.millimeters,
             config,
           );
@@ -899,6 +963,7 @@ final class LayoutEngine {
 
         final questionRegion = _placeQuestion(
           question,
+          questionNumber,
           columnPlan,
           page.pageId,
           column.physicalBounds.left.millimeters,
@@ -1060,11 +1125,13 @@ final class LayoutEngine {
 
   _MeasuredQuestionBlock _planQuestion(
     TemplateQuestion question,
+    int questionNumber,
     double availableWidth,
     LayoutConfig config,
   ) {
+    final displayPrompt = _numberedPrompt(questionNumber, question.prompt);
     var promptLineCount = _estimateLineCount(
-      question.prompt,
+      displayPrompt,
       availableWidth,
       config,
     );
@@ -1120,9 +1187,10 @@ final class LayoutEngine {
     final inlinePromptWidth =
         availableWidth - requestedWidth - config.minimumContentGapMm;
     final inlinePromptLines = inlinePromptWidth > 0
-        ? _estimateLineCount(question.prompt, inlinePromptWidth, config)
+        ? _estimateLineCount(displayPrompt, inlinePromptWidth, config)
         : config.selectionPolicy.maximumPreferredPromptLines + 1;
     final inline =
+        config.profile != LayoutProfile.dense &&
         horizontal &&
         supportsInline &&
         question.description == null &&
@@ -1228,6 +1296,7 @@ final class LayoutEngine {
 
   QuestionRegion _placeQuestion(
     TemplateQuestion question,
+    int questionNumber,
     _MeasuredQuestionBlock plan,
     PageId pageId,
     double left,
@@ -1324,6 +1393,7 @@ final class LayoutEngine {
     );
     return QuestionRegion(
       questionId: question.id,
+      questionNumber: questionNumber,
       questionType: question.type,
       columnIndex: columnIndex,
       physicalBounds: bounds,
@@ -1353,6 +1423,9 @@ final class LayoutEngine {
       bubbleRegions: bubbles,
     );
   }
+
+  String _numberedPrompt(int questionNumber, String prompt) =>
+      '$questionNumber. $prompt';
 
   PageLayout _materializePage(
     TemplateDefinition template,
@@ -1707,6 +1780,19 @@ final class LayoutEngine {
         message: 'Questions are missing, duplicated, or out of template order.',
       );
     }
+    final actualNumbers = pages
+        .expand((page) => page.questionRegions)
+        .map((question) => question.questionNumber)
+        .toList(growable: false);
+    final expectedNumbers = [
+      for (var index = 1; index <= expectedQuestions.length; index++) index,
+    ];
+    if (!_sameInts(actualNumbers, expectedNumbers)) {
+      return EngineError(
+        code: 'GEOMETRY_INVALID',
+        message: 'Question numbering does not match logical template order.',
+      );
+    }
 
     final sectionByQuestion = {
       for (final section in template.sections)
@@ -1760,6 +1846,14 @@ final class LayoutEngine {
   }
 
   bool _sameQuestionOrder(List<QuestionId> left, List<QuestionId> right) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index++) {
+      if (left[index] != right[index]) return false;
+    }
+    return true;
+  }
+
+  bool _sameInts(List<int> left, List<int> right) {
     if (left.length != right.length) return false;
     for (var index = 0; index < left.length; index++) {
       if (left[index] != right[index]) return false;

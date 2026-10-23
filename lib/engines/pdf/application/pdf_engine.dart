@@ -385,7 +385,9 @@ final class PdfEngine {
       PdfTextCommand(
         role: PdfTextRole.questionPrompt,
         text: [
-          question.prompt,
+          region.questionNumber > 0
+              ? '${region.questionNumber}. ${question.prompt}'
+              : question.prompt,
           if (question.description != null) question.description!,
         ].join('\n'),
         bounds: region.promptRegion.physicalBounds,

@@ -69,7 +69,11 @@ TemplateDefinition buildP14LargeMixedFixture({int questionCount = 60}) {
     name: 'P14 Large Mixed Survey',
     status: TemplateStatus.draft,
     sections: [
-      for (var sectionIndex = 0; sectionIndex < 6; sectionIndex++)
+      for (
+        var sectionIndex = 0;
+        sectionIndex < (questionCount / 10).ceil();
+        sectionIndex++
+      )
         TemplateSection(
           id: SectionId('p14-large-section-${sectionIndex + 1}'),
           title: 'SECTION ${sectionIndex + 1}',

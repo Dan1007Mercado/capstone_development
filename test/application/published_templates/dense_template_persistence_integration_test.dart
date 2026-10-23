@@ -46,7 +46,7 @@ void main() {
       expect(beforeRestart.layout.pages, hasLength(1));
       expect(
         beforeRestart.layout.pages.single.contentColumnRegions,
-        hasLength(2),
+        hasLength(3),
       );
       expect(beforeRestart.layout.pages.single.bubbleRegions, hasLength(160));
 
