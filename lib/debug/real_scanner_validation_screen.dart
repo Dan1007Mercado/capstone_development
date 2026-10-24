@@ -570,6 +570,10 @@ class ScannerPageResultScreen extends StatelessWidget {
       for (final record in validation?.questions ?? const [])
         record.expected.questionId: record,
     };
+    final orderedClassifications =
+        List<QuestionClassification>.of(result.questions)..sort(
+          (left, right) => left.questionNumber.compareTo(right.questionNumber),
+        );
     return Scaffold(
       appBar: AppBar(title: const Text('Page scan result')),
       body: ListView(
@@ -585,7 +589,7 @@ class ScannerPageResultScreen extends StatelessWidget {
           ),
           Text('PageId: ${result.pageId.value}'),
           const Divider(),
-          for (final classification in result.questions)
+          for (final classification in orderedClassifications)
             _QuestionResultTile(
               classification: classification,
               question: questions[classification.questionId],
@@ -659,8 +663,12 @@ class _QuestionResultTile extends StatelessWidget {
         expected?.numericAnswer ??
         expected?.optionIds.map((id) => labels[id] ?? id.value).join(' + ');
     return ExpansionTile(
+      key: Key('scanner-result-question-${classification.questionNumber}'),
       tilePadding: EdgeInsets.zero,
-      title: Text(question?.prompt ?? classification.questionId.value),
+      title: Text(
+        'Q${classification.questionNumber}  '
+        '${question?.prompt ?? classification.questionId.value}',
+      ),
       subtitle: Text(
         expected == null
             ? answer
@@ -674,6 +682,14 @@ class _QuestionResultTile extends StatelessWidget {
       ),
       trailing: Text(classification.state.name.toUpperCase()),
       children: [
+        ListTile(
+          dense: true,
+          title: const Text('Question mapping'),
+          subtitle: Text(
+            'questionNumber=${classification.questionNumber} '
+            'questionId=${classification.questionId.value}',
+          ),
+        ),
         for (final decision in classification.bubbleDecisions)
           ListTile(
             dense: true,

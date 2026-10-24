@@ -303,11 +303,19 @@ final class OfflineScannerEngine {
     final actualIds = result.questions
         .map((question) => question.questionId)
         .toList(growable: false);
+    final expectedNumbers = page.questionRegions
+        .map((region) => region.questionNumber)
+        .toList(growable: false);
+    final actualNumbers = result.questions
+        .map((question) => question.questionNumber)
+        .toList(growable: false);
     if (result.pageId != page.pageId ||
         actualIds.length != expectedIds.length ||
+        actualNumbers.length != expectedNumbers.length ||
         [
           for (var index = 0; index < expectedIds.length; index++)
-            actualIds[index] == expectedIds[index],
+            actualIds[index] == expectedIds[index] &&
+                actualNumbers[index] == expectedNumbers[index],
         ].contains(false)) {
       return EngineError(
         code: 'SCAN_RESULT_INVALID',

@@ -140,6 +140,7 @@ ScanResult _result(
     classifications.add(
       QuestionClassification(
         questionId: region.questionId,
+        questionNumber: region.questionNumber,
         questionType: region.questionType,
         state: state,
         selectedOptionIds: state == MarkState.marked ? selected : const [],

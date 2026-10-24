@@ -80,6 +80,7 @@ final class PhysicalValidationBubbleRecord {
     required this.templateVersion,
     required this.pageId,
     required this.questionId,
+    required this.questionNumber,
     required this.optionId,
     required this.expectedSelected,
     required this.expectedState,
@@ -96,6 +97,7 @@ final class PhysicalValidationBubbleRecord {
   final TemplateVersion templateVersion;
   final PageId pageId;
   final QuestionId questionId;
+  final int questionNumber;
   final OptionId? optionId;
   final bool expectedSelected;
   final MarkState expectedState;
@@ -112,6 +114,7 @@ final class PhysicalValidationBubbleRecord {
     'templateVersion': templateVersion.value,
     'pageId': pageId.value,
     'questionId': questionId.value,
+    'questionNumber': questionNumber,
     'optionId': optionId?.value,
     'numericColumnIndex': decision.numericColumnIndex,
     'numericDigitValue': decision.numericDigitValue,
@@ -185,6 +188,7 @@ final class PhysicalValidationQuestionRecord {
     'templateVersion': templateVersion.value,
     'pageId': pageId.value,
     'questionId': expected.questionId.value,
+    'questionNumber': detected.questionNumber,
     'expectedState': expected.state.name,
     'expectedAnswer': expected.answerLabel,
     'detectedState': detected.state.name,
@@ -283,6 +287,7 @@ final class PhysicalValidationReport {
               templateVersion: result.templateVersion,
               pageId: result.pageId,
               questionId: detected.questionId,
+              questionNumber: detected.questionNumber,
               optionId: decision.optionId,
               expectedSelected: _expectedSelected(expected, decision),
               expectedState: expected.state,

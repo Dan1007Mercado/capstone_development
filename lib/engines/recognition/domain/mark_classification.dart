@@ -168,6 +168,7 @@ final class NumericGridSelection {
 final class QuestionClassification {
   QuestionClassification({
     required this.questionId,
+    required this.questionNumber,
     required this.questionType,
     required this.state,
     required Iterable<OptionId> selectedOptionIds,
@@ -178,6 +179,9 @@ final class QuestionClassification {
        bubbleDecisions = UnmodifiableListView(List.of(bubbleDecisions));
 
   final QuestionId questionId;
+
+  /// One-based logical number copied from the authoritative [QuestionRegion].
+  final int questionNumber;
   final QuestionType questionType;
   final MarkState state;
   final List<OptionId> selectedOptionIds;

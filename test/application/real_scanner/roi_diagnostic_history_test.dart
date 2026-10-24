@@ -119,6 +119,7 @@ void main() {
     final bubbles = json['bubbles']! as List<Object?>;
     final bubble = bubbles.single! as Map<String, Object?>;
     expect(bubble['questionId'], 'q4');
+    expect(bubble['questionNumber'], 1);
     expect(bubble['optionId'], 'q4-2');
     expect(bubble['fillRatio'], 0.4);
     expect(bubble['coverageScore'], 0.4);
@@ -141,6 +142,7 @@ void main() {
     expect(preprocessingConfig['adaptiveThresholdBlockSize'], 15);
     final questions = json['questions']! as List<Object?>;
     final question = questions.single! as Map<String, Object?>;
+    expect(question['questionNumber'], 1);
     expect(question['topCandidate'], 'q4-2');
     expect(question['reason'], 'isolatedMark');
   });
@@ -228,6 +230,7 @@ ScannerDiagnosticSnapshot _snapshot({
     questions: [
       QuestionClassification(
         questionId: _identity.questionId,
+        questionNumber: 1,
         questionType: QuestionType.singleChoice,
         state: questionState,
         selectedOptionIds: questionState == MarkState.marked

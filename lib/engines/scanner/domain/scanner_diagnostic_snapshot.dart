@@ -211,6 +211,7 @@ final class ScannerDiagnosticSnapshot {
         )];
     return {
       'questionId': measurement.questionId.value,
+      'questionNumber': classified?.$1.questionNumber,
       'optionId': measurement.optionId?.value,
       'numericColumnIndex': measurement.numericColumnIndex,
       'numericDigitValue': measurement.numericDigitValue,
@@ -256,6 +257,7 @@ final class ScannerDiagnosticSnapshot {
       );
     return {
       'questionId': question.questionId.value,
+      'questionNumber': question.questionNumber,
       'state': question.state.name,
       'reason': question.diagnostics.reason.name,
       'topCandidate': ranked.isEmpty ? null : _decisionLabel(ranked.first),

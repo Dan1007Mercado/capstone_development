@@ -174,7 +174,7 @@ final class LayoutConfig {
       adaptiveColumns: true,
       preferredColumnCount: 3,
       answerGroupHeadingHeightMm: 4,
-      questionNumberWidthMm: 8,
+      questionNumberWidthMm: 5,
       bubbleLabelCenterExclusionRatio: 0.5,
     ),
   };

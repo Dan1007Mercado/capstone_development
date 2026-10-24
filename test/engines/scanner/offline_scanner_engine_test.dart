@@ -467,6 +467,7 @@ List<QuestionClassification> _classifications(
   for (var index = 0; index < ids.length; index++)
     QuestionClassification(
       questionId: ids[index],
+      questionNumber: index + 1,
       questionType: QuestionType.singleChoice,
       state: states[index],
       selectedOptionIds: const [],

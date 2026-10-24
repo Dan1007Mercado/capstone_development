@@ -147,7 +147,12 @@ final class MarkClassificationEngine {
           orderedMeasurements.add(actual[key]!);
         }
         classifications.add(
-          _classifyQuestion(question, orderedMeasurements, config),
+          _classifyQuestion(
+            question,
+            region.questionNumber,
+            orderedMeasurements,
+            config,
+          ),
         );
       }
       if (assignedKeys.length != expected.length) {
@@ -173,6 +178,7 @@ final class MarkClassificationEngine {
 
   QuestionClassification _classifyQuestion(
     TemplateQuestion question,
+    int questionNumber,
     List<BubbleMeasurement> measurements,
     MarkClassificationConfig config,
   ) {
@@ -180,14 +186,20 @@ final class MarkClassificationEngine {
         .map((measurement) => evaluator.evaluate(measurement, config))
         .toList(growable: false);
     if (question.type == QuestionType.numericGrid) {
-      return _classifyNumeric(question, decisions, config);
+      return _classifyNumeric(question, questionNumber, decisions, config);
     }
     if (question.type == QuestionType.multipleChoice) {
-      return _classifyMultipleChoice(question, decisions, config);
+      return _classifyMultipleChoice(
+        question,
+        questionNumber,
+        decisions,
+        config,
+      );
     }
     final outcome = _classifyExclusive(decisions, config);
     return QuestionClassification(
       questionId: question.id,
+      questionNumber: questionNumber,
       questionType: question.type,
       state: outcome.state,
       selectedOptionIds:
@@ -205,6 +217,7 @@ final class MarkClassificationEngine {
 
   QuestionClassification _classifyMultipleChoice(
     TemplateQuestion question,
+    int questionNumber,
     List<BubbleMarkDecision> decisions,
     MarkClassificationConfig config,
   ) {
@@ -220,6 +233,7 @@ final class MarkClassificationEngine {
     )) {
       return _question(
         question,
+        questionNumber,
         MarkState.invalid,
         checklistDecisions,
         const [],
@@ -236,6 +250,7 @@ final class MarkClassificationEngine {
     if (unreliable || conflicting) {
       return _question(
         question,
+        questionNumber,
         MarkState.ambiguous,
         checklistDecisions,
         const [],
@@ -250,6 +265,7 @@ final class MarkClassificationEngine {
         .toList(growable: false);
     return _question(
       question,
+      questionNumber,
       selected.isEmpty ? MarkState.blank : MarkState.marked,
       checklistDecisions,
       selected.map((decision) => decision.optionId).whereType<OptionId>(),
@@ -262,6 +278,7 @@ final class MarkClassificationEngine {
 
   QuestionClassification _classifyNumeric(
     TemplateQuestion question,
+    int questionNumber,
     List<BubbleMarkDecision> decisions,
     MarkClassificationConfig config,
   ) {
@@ -307,6 +324,7 @@ final class MarkClassificationEngine {
     }
     return QuestionClassification(
       questionId: question.id,
+      questionNumber: questionNumber,
       questionType: question.type,
       state: state,
       selectedOptionIds: const [],
@@ -484,6 +502,7 @@ final class MarkClassificationEngine {
 
   QuestionClassification _question(
     TemplateQuestion question,
+    int questionNumber,
     MarkState state,
     List<BubbleMarkDecision> decisions,
     Iterable<OptionId> selected,
@@ -491,6 +510,7 @@ final class MarkClassificationEngine {
     ClassificationReason reason,
   ) => QuestionClassification(
     questionId: question.id,
+    questionNumber: questionNumber,
     questionType: question.type,
     state: state,
     selectedOptionIds: selected,
