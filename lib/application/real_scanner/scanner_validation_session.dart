@@ -6,6 +6,7 @@ import '../../core/result/engine_result.dart';
 import '../../engines/layout/domain/page_layout.dart';
 import '../../engines/scanner/domain/scan_result.dart';
 import '../../engines/scanner/domain/scanner_config.dart';
+import '../../engines/scanner/domain/packet_scan_identity.dart';
 import '../camera_scanner/domain/camera_scan_context.dart';
 import 'multi_page_validation_recorder.dart';
 import 'physical_validation_recorder.dart';
@@ -29,6 +30,7 @@ final class ScannerValidationSession {
     this.validationPlan,
     this.multiPageValidationPlan,
     this.reviewingPageId,
+    this.packetScanContext,
   }) : resultsByPageId = UnmodifiableMapView(resultsByPageId),
        multiPageAttempts = UnmodifiableListView(List.of(multiPageAttempts));
 
@@ -37,6 +39,7 @@ final class ScannerValidationSession {
     ScannerConfig? scannerConfig,
     PhysicalValidationPlan? validationPlan,
     MultiPageValidationPlan? multiPageValidationPlan,
+    PacketScanContext? packetScanContext,
   }) => ScannerValidationSession._(
     artifact: artifact,
     scannerConfig: scannerConfig ?? ScannerConfig(),
@@ -45,6 +48,7 @@ final class ScannerValidationSession {
     state: ScannerValidationSessionState.scanning,
     validationPlan: validationPlan,
     multiPageValidationPlan: multiPageValidationPlan,
+    packetScanContext: packetScanContext,
   );
 
   final PublishedScannerArtifact artifact;
@@ -55,6 +59,7 @@ final class ScannerValidationSession {
   final PhysicalValidationPlan? validationPlan;
   final MultiPageValidationPlan? multiPageValidationPlan;
   final PageId? reviewingPageId;
+  final PacketScanContext? packetScanContext;
 
   PhysicalValidationReport? get validationReport {
     final plan = validationPlan;
@@ -105,6 +110,7 @@ final class ScannerValidationSession {
     pageId: currentPage.pageId,
     scannerConfig: scannerConfig,
     candidatePageLayouts: pages,
+    packetScanContext: packetScanContext,
   );
 
   EngineResult<CameraScanContext> contextForPage(PageId pageId) {
@@ -167,6 +173,7 @@ final class ScannerValidationSession {
         validationPlan: validationPlan,
         multiPageValidationPlan: multiPageValidationPlan,
         reviewingPageId: result.pageId,
+        packetScanContext: packetScanContext,
       ),
     );
   }
@@ -195,6 +202,7 @@ final class ScannerValidationSession {
         validationPlan: validationPlan,
         multiPageValidationPlan: multiPageValidationPlan,
         reviewingPageId: null,
+        packetScanContext: packetScanContext,
       ),
     );
   }
@@ -221,6 +229,7 @@ final class ScannerValidationSession {
         validationPlan: validationPlan,
         multiPageValidationPlan: multiPageValidationPlan,
         reviewingPageId: null,
+        packetScanContext: packetScanContext,
       ),
     );
   }
@@ -244,6 +253,7 @@ final class ScannerValidationSession {
         validationPlan: validationPlan,
         multiPageValidationPlan: multiPageValidationPlan,
         reviewingPageId: null,
+        packetScanContext: packetScanContext,
       ),
     );
   }
@@ -283,6 +293,7 @@ final class ScannerValidationSession {
       validationPlan: validationPlan,
       multiPageValidationPlan: multiPageValidationPlan,
       reviewingPageId: reviewingPageId,
+      packetScanContext: packetScanContext,
     );
   }
 }

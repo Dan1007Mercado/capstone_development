@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import '../../../core/errors/engine_error.dart';
 import '../../../core/ids/identifiers.dart';
+import '../../../core/protocol/packet_marker_codec.dart';
 import '../../../core/result/engine_result.dart';
 import '../../layout/domain/layout_config.dart';
 import '../../layout/domain/layout_regions.dart';
@@ -46,8 +47,10 @@ final class ResolvedPageMarkerSignature {
 }
 
 final class PageMarkerSignatureResolver {
-  PageMarkerSignatureResolver(Iterable<PageMarkerSignature> signatures)
-    : signatures = UnmodifiableListView(List.of(signatures)) {
+  PageMarkerSignatureResolver(
+    Iterable<PageMarkerSignature> signatures, {
+    this.packetMarkerCodec = const PacketMarkerCodec(),
+  }) : signatures = UnmodifiableListView(List.of(signatures)) {
     if (this.signatures.isEmpty) {
       throw ArgumentError('At least one page marker signature is required.');
     }
@@ -63,9 +66,20 @@ final class PageMarkerSignatureResolver {
       PageMarkerSignatureResolver(pages.map(PageMarkerSignature.fromPage));
 
   final List<PageMarkerSignature> signatures;
+  final PacketMarkerCodec packetMarkerCodec;
 
   EngineResult<ResolvedPageMarkerSignature> resolve(Iterable<int> detectedIds) {
-    final detected = List<int>.of(detectedIds);
+    final allDetected = List<int>.of(detectedIds);
+    final registrationIds = signatures
+        .expand((signature) => signature.ids)
+        .toSet();
+    final detected = allDetected
+        .where(
+          (id) =>
+              registrationIds.contains(id) ||
+              !packetMarkerCodec.isIdentityMarkerId(id),
+        )
+        .toList(growable: false);
     if (detected.toSet().length != detected.length) {
       return _failure(
         'SCAN_DUPLICATE_PAGE_MARKERS',

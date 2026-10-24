@@ -51,6 +51,35 @@ void main() {
     expect(backend.session!.disposed, isTrue);
   });
 
+  test(
+    'identity markers are retained but do not alter registration validation',
+    () {
+      final page = _page();
+      final registration = _detectionFor(page);
+      final identity = [
+        _identityMarker(1, 400),
+        _identityMarker(2, 440),
+        _identityMarker(3, 480),
+        _identityMarker(4, 520),
+      ];
+      final backend = _FakeBackend(
+        ArucoDetection(
+          sourceSize: registration.sourceSize,
+          markers: [...registration.markers, ...identity],
+        ),
+      );
+
+      final result = ArucoAlignmentEngine(
+        backend: backend,
+      ).align(Uint8List.fromList([1, 2, 3]), page);
+
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      expect(result.value.observations, hasLength(4));
+      expect(result.value.detectedMarkers, hasLength(8));
+      expect(result.value.diagnostics.detectedMarkerIds, hasLength(8));
+    },
+  );
+
   test('excessive reprojection error fails and disposes the session', () {
     final page = _page();
     final backend = _FakeBackend(
@@ -135,6 +164,14 @@ DetectedMarker _markerAtRegistration(MarkerRegion region, ImagePoint point) {
     bottomLeft: ImagePoint(left, top + size),
   );
 }
+
+DetectedMarker _identityMarker(int id, double left) => DetectedMarker(
+  id: id,
+  topLeft: ImagePoint(left, 30),
+  topRight: ImagePoint(left + 20, 30),
+  bottomRight: ImagePoint(left + 20, 50),
+  bottomLeft: ImagePoint(left, 50),
+);
 
 final class _FakeBackend implements ArucoVisionBackend {
   _FakeBackend(this.detection, {HomographyMatrix? homography})

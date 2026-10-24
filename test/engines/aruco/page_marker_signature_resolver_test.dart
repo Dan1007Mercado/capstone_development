@@ -18,6 +18,13 @@ void main() {
     expect(second.value.pageId, pages[1].pageId);
   });
 
+  test('ignores reserved packet identity markers during page resolution', () {
+    final result = resolver.resolve([13, 2, 10, 2, 12, 7, 11, 6]);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(result.value.pageId, pages.first.pageId);
+  });
+
   test('rejects incomplete, mixed, unknown, and duplicate marker sets', () {
     expect(
       resolver.resolve([10, 11, 12]).error.code,

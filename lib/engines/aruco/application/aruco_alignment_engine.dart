@@ -9,16 +9,19 @@ import '../domain/aruco_vision_backend.dart';
 import '../domain/image_geometry.dart';
 import '../domain/page_alignment_result.dart';
 import 'marker_correspondence_service.dart';
+import 'marker_role_splitter.dart';
 
 final class ArucoAlignmentEngine {
   const ArucoAlignmentEngine({
     required this.backend,
     this.correspondenceService = const MarkerCorrespondenceService(),
+    this.roleSplitter = const MarkerRoleSplitter(),
     this.config,
   });
 
   final ArucoVisionBackend backend;
   final MarkerCorrespondenceService correspondenceService;
+  final MarkerRoleSplitter roleSplitter;
   final ArucoAlignmentConfig? config;
 
   EngineResult<PageAlignmentResult> align(
@@ -44,15 +47,19 @@ final class ArucoAlignmentEngine {
       final expectedIds = page.markerRegions
           .map((marker) => marker.markerId)
           .toSet();
-      if (detectedIds.toSet().length != detectedIds.length) {
+      final split = roleSplitter.split(session.detection.markers, expectedIds);
+      final registrationIds = split.registrationMarkers
+          .map((marker) => marker.id)
+          .toList(growable: false);
+      if (registrationIds.toSet().length != registrationIds.length) {
         return _failure(
           'SCAN_DUPLICATE_PAGE_MARKERS',
           'A page marker ID was detected more than once.',
           {'detectedMarkerIds': detectedIds},
         );
       }
-      if (detectedIds.length != expectedIds.length ||
-          !detectedIds.toSet().containsAll(expectedIds)) {
+      if (registrationIds.length != expectedIds.length ||
+          !registrationIds.toSet().containsAll(expectedIds)) {
         return _failure(
           'SCAN_UNKNOWN_PAGE_MARKERS',
           'The captured still does not match the live-resolved page markers.',
@@ -161,6 +168,7 @@ final class ArucoAlignmentEngine {
             detectionScaleX: session.openTimings.detectionScaleX,
             detectionScaleY: session.openTimings.detectionScaleY,
           ),
+          detectedMarkers: session.detection.markers,
         ),
       );
     } finally {

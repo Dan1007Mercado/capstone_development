@@ -8,6 +8,8 @@ import 'aruco_marker_encoder.dart';
 
 enum PdfTextRole {
   header,
+  packetIdentity,
+  packetPageIdentity,
   sectionTitle,
   sectionInstruction,
   humanReadableField,
@@ -42,9 +44,17 @@ final class PdfTextCommand {
 }
 
 final class PdfMarkerCommand {
-  const PdfMarkerCommand({required this.region, required this.marker});
+  PdfMarkerCommand({required MarkerRegion region, required this.marker})
+    : _region = region,
+      bounds = region.physicalBounds;
 
-  final MarkerRegion region;
+  const PdfMarkerCommand.identity({required this.bounds, required this.marker})
+    : _region = null;
+
+  final MarkerRegion? _region;
+  MarkerRegion get region => _region!;
+  bool get isRegistration => _region != null;
+  final PhysicalRect bounds;
   final ArucoMarkerMatrix marker;
 }
 

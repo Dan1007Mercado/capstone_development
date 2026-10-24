@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'image_geometry.dart';
+import 'detected_marker.dart';
 import 'marker_correspondence.dart';
 
 final class HomographyMatrix {
@@ -127,12 +128,15 @@ final class PageAlignmentResult {
     required Iterable<MarkerObservation> observations,
     required Iterable<MarkerCorrespondence> correspondences,
     required this.diagnostics,
+    Iterable<DetectedMarker> detectedMarkers = const [],
   }) : observations = UnmodifiableListView(List.of(observations)),
-       correspondences = UnmodifiableListView(List.of(correspondences));
+       correspondences = UnmodifiableListView(List.of(correspondences)),
+       detectedMarkers = UnmodifiableListView(List.of(detectedMarkers));
 
   final CanonicalPageImage canonicalPage;
   final HomographyMatrix homography;
   final List<MarkerObservation> observations;
   final List<MarkerCorrespondence> correspondences;
+  final List<DetectedMarker> detectedMarkers;
   final PageAlignmentDiagnostics diagnostics;
 }

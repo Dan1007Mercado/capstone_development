@@ -13,6 +13,10 @@ import '../application/real_scanner/physical_validation_recorder.dart';
 import '../application/real_scanner/real_scanner_runtime.dart';
 import '../application/real_scanner/scanner_validation_flow.dart';
 import '../application/real_scanner/scanner_validation_session.dart';
+import '../application/answer_sheet_packets/packet_generation_service.dart';
+import '../application/answer_sheet_packets/packet_models.dart';
+import '../application/answer_sheet_packets/packet_response_repository.dart';
+import '../application/answer_sheet_packets/packet_response_service.dart';
 import '../core/errors/engine_error.dart';
 import '../engines/aruco/domain/image_geometry.dart';
 import '../engines/camera/domain/camera_engine_config.dart';
@@ -28,6 +32,7 @@ class RealScannerSelectionScreen extends StatefulWidget {
   const RealScannerSelectionScreen({
     this.publicationService,
     this.resolver,
+    this.packetRepository,
     super.key,
   }) : assert(
          publicationService != null || resolver != null,
@@ -36,6 +41,7 @@ class RealScannerSelectionScreen extends StatefulWidget {
 
   final TemplatePublicationService? publicationService;
   final PublishedScannerResolver? resolver;
+  final PacketResponseRepository? packetRepository;
 
   @override
   State<RealScannerSelectionScreen> createState() =>
@@ -72,7 +78,7 @@ class _RealScannerSelectionScreenState
     });
   }
 
-  void _start() {
+  Future<void> _start() async {
     final selected = _selected;
     if (selected == null) {
       setState(() {
@@ -84,6 +90,24 @@ class _RealScannerSelectionScreenState
       });
       return;
     }
+    final packetRepository = widget.packetRepository;
+    List<AnswerSheetPacket> packets = const [];
+    if (packetRepository != null) {
+      final loaded = await packetRepository.listPackets();
+      if (!mounted) return;
+      if (loaded.isFailure) {
+        setState(() => _error = loaded.error);
+        return;
+      }
+      packets = loaded.value
+          .where(
+            (packet) =>
+                packet.templateId == selected.templateId &&
+                packet.templateVersion == selected.templateVersion,
+          )
+          .toList(growable: false);
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => RealScannerCameraScreen(
@@ -93,7 +117,13 @@ class _RealScannerSelectionScreenState
             multiPageValidationPlan: buildP13_9MultiPageValidationPlan(
               selected,
             ),
+            packetScanContext: packets.isEmpty
+                ? null
+                : packetScanContext(packets),
           ),
+          packetResponseService: packetRepository == null
+              ? null
+              : PacketResponseService(repository: packetRepository),
         ),
       ),
     );
@@ -192,7 +222,7 @@ class _RealScannerSelectionScreenState
             const SizedBox(height: 8),
             FilledButton.icon(
               key: const Key('start-real-scanner'),
-              onPressed: selected == null ? null : _start,
+              onPressed: selected == null ? null : () => unawaited(_start()),
               icon: const Icon(Icons.document_scanner),
               label: const Text('Start Scanner'),
             ),
@@ -204,9 +234,14 @@ class _RealScannerSelectionScreenState
 }
 
 class RealScannerCameraScreen extends StatefulWidget {
-  const RealScannerCameraScreen({required this.session, super.key});
+  const RealScannerCameraScreen({
+    required this.session,
+    this.packetResponseService,
+    super.key,
+  });
 
   final ScannerValidationSession session;
+  final PacketResponseService? packetResponseService;
 
   @override
   State<RealScannerCameraScreen> createState() =>
@@ -222,6 +257,8 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
   late final StreamSubscription<CameraScanState> _subscription;
   bool _showDiagnostics = false;
   bool _disposing = false;
+  PacketPageClaimResult? _packetClaim;
+  EngineError? _packetClaimError;
 
   @override
   void initState() {
@@ -243,14 +280,29 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     switch (action) {
       case ScannerValidationFlowAction.resultRecorded:
         _runtime.coordinator.updateCompletedPages(_flow.completedPageIds);
+        _claimPacketResult(state.result);
         break;
       case ScannerValidationFlowAction.resultRejected:
+        _claimPacketResult(state.result);
         _runtime.coordinator.reset();
         break;
       case ScannerValidationFlowAction.stateUpdated:
       case ScannerValidationFlowAction.completionIgnored:
         break;
     }
+  }
+
+  void _claimPacketResult(ScanResult? result) {
+    final service = widget.packetResponseService;
+    if (service == null || result?.packetIdentity == null) return;
+    unawaited(() async {
+      final claimed = await service.claim(result!);
+      if (!mounted || _disposing) return;
+      setState(() {
+        _packetClaim = claimed.valueOrNull;
+        _packetClaimError = claimed.errorOrNull;
+      });
+    }());
   }
 
   @override
@@ -307,6 +359,8 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
         session: session,
         reviewResult: _flow.reviewResult,
         onContinue: _continue,
+        packetClaim: _packetClaim,
+        packetClaimError: _packetClaimError,
       );
     }
     if (session.state == ScannerValidationSessionState.complete) {
@@ -416,6 +470,8 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                 ],
               ),
             ),
+          if (_packetClaim != null || _packetClaimError != null)
+            _PacketClaimPanel(claim: _packetClaim, error: _packetClaimError),
           if (duplicateChecking)
             Container(
               width: double.infinity,
@@ -485,12 +541,16 @@ class ScannerReviewStateView extends StatelessWidget {
     required this.session,
     required this.reviewResult,
     required this.onContinue,
+    this.packetClaim,
+    this.packetClaimError,
     super.key,
   });
 
   final ScannerValidationSession session;
   final ScanResult? reviewResult;
   final VoidCallback onContinue;
+  final PacketPageClaimResult? packetClaim;
+  final EngineError? packetClaimError;
 
   @override
   Widget build(BuildContext context) {
@@ -512,6 +572,8 @@ class ScannerReviewStateView extends StatelessWidget {
       session: session,
       result: result,
       onContinue: onContinue,
+      packetClaim: packetClaim,
+      packetClaimError: packetClaimError,
     );
   }
 }
@@ -551,12 +613,16 @@ class ScannerPageResultScreen extends StatelessWidget {
     required this.session,
     required this.result,
     required this.onContinue,
+    this.packetClaim,
+    this.packetClaimError,
     super.key,
   });
 
   final ScannerValidationSession session;
   final ScanResult result;
   final VoidCallback onContinue;
+  final PacketPageClaimResult? packetClaim;
+  final EngineError? packetClaimError;
 
   @override
   Widget build(BuildContext context) {
@@ -588,6 +654,14 @@ class ScannerPageResultScreen extends StatelessWidget {
             'Page ${session.currentPageIndex + 1} of ${session.pages.length}',
           ),
           Text('PageId: ${result.pageId.value}'),
+          if (result.packetIdentity case final identity?) ...[
+            Text('Packet: ${identity.packetId.value}'),
+            Text(
+              'Packet page: ${identity.pageIndex + 1} / ${identity.totalPages}',
+            ),
+          ],
+          if (packetClaim != null || packetClaimError != null)
+            _PacketClaimPanel(claim: packetClaim, error: packetClaimError),
           const Divider(),
           for (final classification in orderedClassifications)
             _QuestionResultTile(
@@ -630,6 +704,43 @@ class ScannerPageResultScreen extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PacketClaimPanel extends StatelessWidget {
+  const _PacketClaimPanel({this.claim, this.error});
+
+  final PacketPageClaimResult? claim;
+  final EngineError? error;
+
+  @override
+  Widget build(BuildContext context) {
+    final failure = error;
+    if (failure != null) {
+      return Material(
+        color: Theme.of(context).colorScheme.errorContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text('${failure.code}: ${failure.message}'),
+        ),
+      );
+    }
+    final value = claim!;
+    final duplicate = value.status == PacketPageClaimStatus.duplicate;
+    return Material(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          duplicate
+              ? 'Page already scanned\n'
+                    'Existing Response: ${value.response.responseId.value}'
+              : 'Response: ${value.response.responseId.value}\n'
+                    'Status: ${value.response.status.name.toUpperCase()}',
+          key: const Key('packet-claim-result'),
+        ),
       ),
     );
   }

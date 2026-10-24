@@ -279,6 +279,7 @@ void _finalScannerWorkerMain(_WorkerBootstrap bootstrap) {
           diagnosticSink: message.includeDiagnostics
               ? (snapshot) => diagnosticSnapshot = snapshot
               : null,
+          packetScanContext: message.context.packetScanContext,
         );
       } else {
         result = bootstrap.testError != null

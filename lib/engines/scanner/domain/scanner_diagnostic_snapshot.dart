@@ -87,6 +87,13 @@ final class ScannerDiagnosticSnapshot {
       'templateId': templateId.value,
       'templateVersion': templateVersion.value,
       'pageId': pageId.value,
+      'packetIdentity': result.packetIdentity == null
+          ? null
+          : {
+              'packetId': result.packetIdentity!.packetId.value,
+              'pageIndex': result.packetIdentity!.pageIndex,
+              'totalPages': result.packetIdentity!.totalPages,
+            },
       'scanSequenceIndex': scanSequenceIndex,
       'detectedMarkerIds': result.diagnostics.alignment.detectedMarkerIds,
       'canonicalImage': {

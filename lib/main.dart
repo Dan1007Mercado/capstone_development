@@ -9,6 +9,10 @@ import 'application/published_templates/in_memory_published_template_artifact_re
 import 'application/published_templates/published_template_artifact_repository.dart';
 import 'application/published_templates/published_template_artifact_service.dart';
 import 'application/real_scanner/published_scanner_resolver.dart';
+import 'application/answer_sheet_packets/file_packet_response_repository.dart';
+import 'application/answer_sheet_packets/in_memory_packet_response_repository.dart';
+import 'application/answer_sheet_packets/packet_generation_service.dart';
+import 'application/answer_sheet_packets/packet_response_repository.dart';
 import 'debug/p5_native_validation_screen.dart';
 import 'debug/p10_camera_diagnostics_screen.dart';
 import 'debug/p11_camera_scanner_screen.dart';
@@ -26,13 +30,25 @@ Future<void> main() async {
       'published_template_artifacts',
     ),
   );
-  runApp(MyApp(artifactRepository: artifactRepository));
+  final packetRepository = FilePacketResponseRepository(
+    rootDirectory: Directory(
+      '${supportDirectory.path}${Platform.pathSeparator}'
+      'answer_sheet_packets',
+    ),
+  );
+  runApp(
+    MyApp(
+      artifactRepository: artifactRepository,
+      packetRepository: packetRepository,
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key, this.artifactRepository});
+  const MyApp({super.key, this.artifactRepository, this.packetRepository});
 
   final PublishedTemplateArtifactRepository? artifactRepository;
+  final PacketResponseRepository? packetRepository;
 
   // This widget is the root of your application.
   @override
@@ -60,13 +76,19 @@ class MyApp extends StatelessWidget {
       home: MyHomePage(
         title: 'Flutter Demo Home Page',
         artifactRepository: artifactRepository,
+        packetRepository: packetRepository,
       ),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title, this.artifactRepository});
+  const MyHomePage({
+    super.key,
+    required this.title,
+    this.artifactRepository,
+    this.packetRepository,
+  });
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -79,6 +101,7 @@ class MyHomePage extends StatefulWidget {
 
   final String title;
   final PublishedTemplateArtifactRepository? artifactRepository;
+  final PacketResponseRepository? packetRepository;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -88,6 +111,7 @@ class _MyHomePageState extends State<MyHomePage> {
   int _counter = 0;
   late final TemplatePublicationService _publicationService;
   late final PublishedTemplateArtifactRepository _artifactRepository;
+  late final PacketResponseRepository _packetRepository;
 
   @override
   void initState() {
@@ -98,6 +122,8 @@ class _MyHomePageState extends State<MyHomePage> {
     _artifactRepository =
         widget.artifactRepository ??
         InMemoryPublishedTemplateArtifactRepository();
+    _packetRepository =
+        widget.packetRepository ?? InMemoryPacketResponseRepository();
   }
 
   void _incrementCounter() {
@@ -190,6 +216,9 @@ class _MyHomePageState extends State<MyHomePage> {
                       densePublicationService: PublishedTemplateArtifactService(
                         repository: _artifactRepository,
                       ),
+                      packetGenerationService: PacketGenerationService(
+                        repository: _packetRepository,
+                      ),
                     ),
                   ),
                 ),
@@ -203,6 +232,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       resolver: PublishedScannerResolver(
                         artifactRepository: _artifactRepository,
                       ),
+                      packetRepository: _packetRepository,
                     ),
                   ),
                 ),

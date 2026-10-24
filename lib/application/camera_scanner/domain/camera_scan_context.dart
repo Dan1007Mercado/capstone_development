@@ -2,6 +2,7 @@ import '../../../core/errors/engine_error.dart';
 import '../../../core/ids/identifiers.dart';
 import '../../../engines/layout/domain/page_layout.dart';
 import '../../../engines/scanner/domain/scanner_config.dart';
+import '../../../engines/scanner/domain/packet_scan_identity.dart';
 import '../../../engines/template/domain/template_definition.dart';
 
 final class CameraScanContext {
@@ -13,6 +14,7 @@ final class CameraScanContext {
     required this.pageId,
     required this.scannerConfig,
     this.candidatePageLayouts = const [],
+    this.packetScanContext,
   });
 
   final TemplateDefinition template;
@@ -22,6 +24,7 @@ final class CameraScanContext {
   final PageId pageId;
   final ScannerConfig scannerConfig;
   final List<PageLayout> candidatePageLayouts;
+  final PacketScanContext? packetScanContext;
 
   List<PageLayout> get availablePages =>
       candidatePageLayouts.isEmpty ? [pageLayout] : candidatePageLayouts;
@@ -34,6 +37,7 @@ final class CameraScanContext {
     pageId: page.pageId,
     scannerConfig: scannerConfig,
     candidatePageLayouts: availablePages,
+    packetScanContext: packetScanContext,
   );
 
   EngineError? validate() {

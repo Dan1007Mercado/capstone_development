@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../application/answer_sheet_packets/in_memory_packet_response_repository.dart';
+import '../application/answer_sheet_packets/packet_generation_service.dart';
+import '../application/answer_sheet_packets/packet_models.dart';
 import '../application/template_builder/template_builder_controller.dart';
 import '../application/template_builder/template_pdf_exporter.dart';
 import '../application/template_builder/user_accessible_template_pdf_exporter.dart';
@@ -39,6 +42,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.publicationService,
     this.densePublicationService,
     this.answerSheetPublicationService,
+    this.packetGenerationService,
   });
 
   final TemplateBuilderController? controller;
@@ -49,6 +53,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
   final TemplatePublicationService? publicationService;
   final PublishedTemplateArtifactService? densePublicationService;
   final PublishedTemplateArtifactService? answerSheetPublicationService;
+  final PacketGenerationService? packetGenerationService;
 
   @override
   State<P12TemplateBuilderScreen> createState() =>
@@ -64,6 +69,10 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplatePublicationService _publicationService;
   late PublishedTemplateArtifactService _densePublicationService;
   late PublishedTemplateArtifactService _answerSheetPublicationService;
+  late PacketGenerationService _packetGenerationService;
+  final TextEditingController _packetCountController = TextEditingController(
+    text: '25',
+  );
   final TemplateValidator _validator = TemplateValidator();
   ValidationResult? _validation;
   TemplateLayoutPreview? _preview;
@@ -79,6 +88,10 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   String? _densePublicationMessage;
   String? _multiPagePublicationMessage;
   String? _answerSheetPublicationMessage;
+  PublishedTemplateArtifact? _publishedAnswerSheetArtifact;
+  List<PacketArtifact> _generatedPackets = const [];
+  int _responseCount = 0;
+  bool _generatingPackets = false;
 
   @override
   void initState() {
@@ -99,6 +112,15 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         );
     _answerSheetPublicationService =
         widget.answerSheetPublicationService ?? _densePublicationService;
+    _packetGenerationService =
+        widget.packetGenerationService ??
+        PacketGenerationService(repository: InMemoryPacketResponseRepository());
+  }
+
+  @override
+  void dispose() {
+    _packetCountController.dispose();
+    super.dispose();
   }
 
   TemplateDefinition get _activeDefinition =>
@@ -321,6 +343,42 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     });
   }
 
+  Future<void> _generateAnswerSheetPackets() async {
+    final published = _publishedAnswerSheetArtifact;
+    final count = int.tryParse(_packetCountController.text.trim());
+    if (published == null || count == null || count <= 0) {
+      setState(() {
+        _error = EngineError(
+          code: 'PACKET_COUNT_INVALID',
+          message: published == null
+              ? 'Publish an answer sheet before generating packets.'
+              : 'Packet count must be a positive integer.',
+        );
+      });
+      return;
+    }
+    setState(() {
+      _generatingPackets = true;
+      _error = null;
+    });
+    final generated = await _packetGenerationService.generatePackets(
+      published,
+      count: count,
+    );
+    final responses = generated.isSuccess
+        ? await _packetGenerationService.repository.listResponses()
+        : null;
+    if (!mounted) return;
+    setState(() {
+      _generatingPackets = false;
+      _error = generated.errorOrNull ?? responses?.errorOrNull;
+      if (generated.isSuccess) {
+        _generatedPackets = [..._generatedPackets, ...generated.value];
+        _responseCount = responses?.valueOrNull?.length ?? _responseCount;
+      }
+    });
+  }
+
   Future<void> _publishP14_2AnswerSheetArtifact() async {
     if (!_isEditable) return;
     final draft = _controller.buildDefinition();
@@ -349,6 +407,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _validation = _validator.validate(draft);
       if (result.isSuccess) {
         final artifact = result.value;
+        _publishedAnswerSheetArtifact = artifact;
         _publishedDefinition = artifact.template;
         _publishedVersions = history == null || history.isFailure
             ? _mergePublishedVersion(artifact.template)
@@ -748,6 +807,67 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 key: const Key('answer-sheet-publication-result'),
               ),
             ),
+          const SizedBox(height: 12),
+          Card(
+            key: const Key('answer-sheet-packet-controls'),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Generate Answer Sheet Packets',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const Key('packet-count'),
+                    controller: _packetCountController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Packet count',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    key: const Key('generate-answer-sheet-packets'),
+                    onPressed:
+                        _generatingPackets ||
+                            _publishing ||
+                            _publishedAnswerSheetArtifact == null
+                        ? null
+                        : _generateAnswerSheetPackets,
+                    child: Text(
+                      _generatingPackets ? 'Generating...' : 'Generate',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Generated packets: ${_generatedPackets.length}\n'
+                    'Responses: $_responseCount',
+                    key: const Key('packet-generation-summary'),
+                  ),
+                  if (_generatedPackets.isNotEmpty)
+                    ExpansionTile(
+                      key: const Key('generated-packet-inspection'),
+                      title: const Text('Inspect generated packets'),
+                      children: [
+                        for (final artifact in _generatedPackets)
+                          ListTile(
+                            dense: true,
+                            title: Text(artifact.packet.packetId.value),
+                            subtitle: Text(
+                              'Template v${artifact.packet.templateVersion.value} '
+                              '• ${artifact.packet.pages.length} page(s) '
+                              '• ${artifact.packet.status.name.toUpperCase()}',
+                            ),
+                          ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
           if (_error case final error?) _ErrorPanel(error: error),
           if (_preview case final preview?)
             _LayoutPreviewPanel(preview: preview),

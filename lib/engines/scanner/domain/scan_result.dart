@@ -4,6 +4,7 @@ import '../../../core/ids/identifiers.dart';
 import '../../aruco/domain/page_alignment_result.dart';
 import '../../preprocessing/domain/preprocessed_page.dart';
 import '../../recognition/domain/mark_classification.dart';
+import 'packet_scan_identity.dart';
 
 enum ScanStage {
   alignment,
@@ -87,6 +88,7 @@ final class ScanResult {
     required Iterable<ScanReviewReason> reviewReasons,
     required Iterable<QuestionId> reviewQuestionIds,
     required this.diagnostics,
+    this.packetIdentity,
   }) : questions = UnmodifiableListView(List.of(questions)),
        reviewReasons = UnmodifiableListView(List.of(reviewReasons)),
        reviewQuestionIds = UnmodifiableListView(List.of(reviewQuestionIds));
@@ -99,6 +101,7 @@ final class ScanResult {
   final List<ScanReviewReason> reviewReasons;
   final List<QuestionId> reviewQuestionIds;
   final ScanDiagnostics diagnostics;
+  final PacketPageIdentity? packetIdentity;
 
   ScanSummary get summary => diagnostics.summary;
 }

@@ -187,6 +187,13 @@ final class PdfEngine {
       return EngineResult.failure(planResult.error);
     }
 
+    return renderPlan(planResult.value, title: template.name);
+  }
+
+  Future<EngineResult<Uint8List>> renderPlan(
+    PdfRenderPlan plan, {
+    required String title,
+  }) async {
     final fontsResult = await fontLoader.load();
     if (fontsResult.isFailure) {
       return EngineResult.failure(fontsResult.error);
@@ -194,11 +201,11 @@ final class PdfEngine {
 
     try {
       final document = pw.Document(
-        title: template.name,
+        title: title,
         creator: 'TalaanScan PDF Engine',
         producer: 'TalaanScan',
       );
-      for (final page in planResult.value.pages) {
+      for (final page in plan.pages) {
         document.addPage(_buildPage(page, fontsResult.value));
       }
       final bytes = await document.save();
@@ -536,7 +543,7 @@ final class PdfEngine {
   pw.Widget _markerWidget(PdfMarkerCommand command) {
     final modules = command.marker.modules;
     return _positioned(
-      command.region.physicalBounds,
+      command.bounds,
       pw.LayoutBuilder(
         builder: (_, constraints) {
           final cellWidth = constraints!.maxWidth / modules.length;

@@ -12,6 +12,8 @@ import '../domain/scan_result.dart';
 import '../domain/scanner_config.dart';
 import '../domain/scanner_diagnostic_snapshot.dart';
 import '../domain/scanner_stages.dart';
+import '../domain/packet_scan_identity.dart';
+import 'packet_identity_resolver.dart';
 
 final class OfflineScannerEngine {
   const OfflineScannerEngine({
@@ -19,12 +21,14 @@ final class OfflineScannerEngine {
     required this.preprocessing,
     required this.measurement,
     required this.classification,
+    this.packetIdentityResolver = const PacketIdentityResolver(),
   });
 
   final ScannerAlignmentStage alignment;
   final ScannerPreprocessingStage preprocessing;
   final ScannerMeasurementStage measurement;
   final ScannerClassificationStage classification;
+  final PacketIdentityResolver packetIdentityResolver;
 
   EngineResult<ScanResult> scan({
     required Uint8List encodedImage,
@@ -32,6 +36,7 @@ final class OfflineScannerEngine {
     required PageLayout pageLayout,
     required ScannerConfig config,
     ScannerDiagnosticSink? diagnosticSink,
+    PacketScanContext? packetScanContext,
   }) {
     final validation = _validateTemplateLayout(template, pageLayout);
     if (validation != null) return EngineResult.failure(validation);
@@ -74,6 +79,17 @@ final class OfflineScannerEngine {
         alignmentResult.error,
         pageLayout,
       );
+    }
+
+    PacketPageIdentity? packetIdentity;
+    if (packetScanContext != null) {
+      final identity = packetIdentityResolver.resolve(
+        alignment: alignmentResult.value,
+        page: pageLayout,
+        context: packetScanContext,
+      );
+      if (identity.isFailure) return EngineResult.failure(identity.error);
+      packetIdentity = identity.value;
     }
 
     final preprocessingStopwatch = Stopwatch()..start();
@@ -221,6 +237,7 @@ final class OfflineScannerEngine {
         preprocessing: preprocessingResult.value.diagnostics,
         summary: summary,
       ),
+      packetIdentity: packetIdentity,
     );
     if (diagnosticSink != null) {
       final canonical = alignmentResult.value.canonicalPage;
