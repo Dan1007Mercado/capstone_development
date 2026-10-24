@@ -9,10 +9,14 @@ import '../../aruco/domain/page_marker_signature_resolver.dart';
 import '../../layout/domain/layout_config.dart';
 import '../../aruco/domain/image_geometry.dart';
 import '../../aruco/infrastructure/opencv_aruco_detector.dart';
+import '../application/frame_stability_tracker.dart';
+import '../application/live_frame_gate.dart';
 import '../domain/camera_backend.dart';
 import '../domain/camera_engine_config.dart';
 import '../domain/camera_models.dart';
+import '../domain/live_frame_analysis.dart';
 import 'camera_analysis_geometry.dart';
+import 'opencv_document_detector.dart';
 
 final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
   Isolate? _isolate;
@@ -43,6 +47,20 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
         'bytesPerRow': frame.bytesPerRow,
         'bytesPerPixel': frame.bytesPerPixel,
         'analysisMaxDimension': config.analysisMaxDimension,
+        'documentGateEnabled': config.documentGateEnabled,
+        'documentGateMaxDimension': config.documentGateMaxDimension,
+        'minimumDocumentAreaRatio': config.minimumDocumentAreaRatio,
+        'maximumDocumentPerspectiveRatio':
+            config.maximumDocumentPerspectiveRatio,
+        'documentStabilityThreshold': config.documentStabilityThreshold,
+        'minimumStableFrames': config.minimumStableFrames,
+        'arucoProbeEveryNFrames': config.arucoProbeEveryNFrames,
+        'minimumBrightness': config.minimumBrightness,
+        'maximumBrightness': config.maximumBrightness,
+        'minimumSharpness': config.minimumSharpness,
+        'documentCannyLowThreshold': config.documentCannyLowThreshold,
+        'documentCannyHighThreshold': config.documentCannyHighThreshold,
+        'documentPolygonEpsilonRatio': config.documentPolygonEpsilonRatio,
         'markerIds': config.markerIds.values,
         'pageMarkerSignatures': [
           for (final signature in config.pageMarkerSignatures)
@@ -64,6 +82,28 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
       final points = (message['registrationPoints']! as List<Object?>)
           .cast<List<Object?>>()
           .map((point) => ImagePoint(point[0]! as double, point[1]! as double));
+      final documentPoints = (message['documentCorners']! as List<Object?>)
+          .cast<List<Object?>>()
+          .map((point) => ImagePoint(point[0]! as double, point[1]! as double))
+          .toList(growable: false);
+      final document = documentPoints.length == 4
+          ? DetectedDocument(
+              geometry: DocumentGeometry(
+                corners: documentPoints,
+                areaRatio: message['documentAreaRatio']! as double,
+                centroid: ImagePoint(
+                  message['documentCentroidX']! as double,
+                  message['documentCentroidY']! as double,
+                ),
+                perspectiveRatio:
+                    message['documentPerspectiveRatio']! as double,
+              ),
+              confidence: message['documentConfidence']! as double,
+            )
+          : null;
+      final gateReason = LiveFrameGateReason.values.byName(
+        message['gateReason']! as String,
+      );
       return EngineResult.success(
         CameraFrameObservation(
           detectedMarkerIds: (message['detectedMarkerIds']! as List<Object?>)
@@ -90,6 +130,22 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
               : PageId(message['resolvedPageId']! as String),
           pageResolutionErrorCode:
               message['pageResolutionErrorCode'] as String?,
+          document: document,
+          documentQuality: DocumentQuality(
+            brightness: message['brightness']! as double,
+            sharpness: message['sharpness']! as double,
+          ),
+          documentStability: DocumentStability(
+            isStable: message['documentStable']! as bool,
+            stableFrameCount: message['documentStableFrames']! as int,
+            motion: message['documentMotion']! as double,
+          ),
+          gateResult: LiveFrameGateResult(
+            reason: gateReason,
+            shouldRunAruco: message['arucoRan']! as bool,
+            fallbackProbe: message['fallbackProbe']! as bool,
+          ),
+          arucoRan: message['arucoRan']! as bool,
         ),
       );
     } on Object catch (error) {
@@ -175,79 +231,171 @@ Map<Object?, Object?> _analyzeInWorker(
   final source = (task['luma']! as TransferableTypedData)
       .materialize()
       .asUint8List();
-  final prepared = prepareCameraAnalysisImage(
+  final documentGateEnabled = task['documentGateEnabled']! as bool;
+  final gatePrepared = prepareCameraAnalysisImage(
     source: source,
     width: width,
     height: height,
     bytesPerRow: bytesPerRow,
     bytesPerPixel: bytesPerPixel,
-    maximumDimension: task['analysisMaxDimension']! as int,
+    maximumDimension: documentGateEnabled
+        ? task['documentGateMaxDimension']! as int
+        : task['analysisMaxDimension']! as int,
   );
   preparationStopwatch.stop();
-  final sharpnessStopwatch = Stopwatch()..start();
-  final sharpness = _laplacianVariance(
-    prepared.pixels,
-    prepared.analysisSize.width,
-    prepared.analysisSize.height,
-  );
-  sharpnessStopwatch.stop();
-  final arucoStopwatch = Stopwatch()..start();
-  final detectionResult = state.detector.detectGray(
-    pixels: prepared.pixels,
-    width: prepared.analysisSize.width,
-    height: prepared.analysisSize.height,
-  );
-  arucoStopwatch.stop();
-  if (detectionResult.isFailure) {
-    return {
-      'ok': false,
-      'code': detectionResult.error.code,
-      'message': detectionResult.error.message,
-      'cause': detectionResult.error.details,
-    };
-  }
+  final documentStopwatch = Stopwatch()..start();
+  final detectedInAnalysis = documentGateEnabled
+      ? state.documentDetector.detect(
+          pixels: gatePrepared.pixels,
+          width: gatePrepared.analysisSize.width,
+          height: gatePrepared.analysisSize.height,
+          cannyLowThreshold: task['documentCannyLowThreshold']! as double,
+          cannyHighThreshold: task['documentCannyHighThreshold']! as double,
+          polygonEpsilonRatio: task['documentPolygonEpsilonRatio']! as double,
+        )
+      : null;
+  documentStopwatch.stop();
 
-  final geometryStopwatch = Stopwatch()..start();
-  final sourceDetection = remapArucoDetectionToSource(
-    detectionResult.value,
-    prepared.sourceSize,
+  final qualityStopwatch = Stopwatch()..start();
+  final quality = _measureDocumentQuality(gatePrepared, detectedInAnalysis);
+  qualityStopwatch.stop();
+  final sharpnessStopwatch = Stopwatch()
+    ..start()
+    ..stop();
+
+  final stabilityStopwatch = Stopwatch()..start();
+  final normalizedDocument = _normalizedDocument(
+    detectedInAnalysis,
+    gatePrepared.analysisSize,
   );
-  final resolver = state.resolverFor(
-    (task['pageMarkerSignatures']! as List<Object?>)
-        .cast<Map<Object?, Object?>>(),
+  final stability = state.stabilityTrackerFor(task).update(normalizedDocument);
+  stabilityStopwatch.stop();
+  final frameIndex = state.nextFrameIndex();
+  final fallbackDue =
+      (frameIndex - 1) % (task['arucoProbeEveryNFrames']! as int) == 0;
+  final config = _workerConfig(task);
+  final gate = const LiveFrameGate().evaluate(
+    config: config,
+    document: normalizedDocument,
+    quality: quality,
+    stability: stability,
+    fallbackProbeDue: fallbackDue,
   );
-  EngineResult<ResolvedPageMarkerSignature>? resolution;
-  if (resolver != null) {
-    resolution = resolver.resolve(
-      sourceDetection.markers.map((marker) => marker.id),
+
+  var detectedMarkerIds = <int>[];
+  var registrationPoints = <ImagePoint>[];
+  double? pageAreaRatio;
+  double? perspectiveRatio;
+  double? minimumMarkerSidePixels;
+  String? resolvedPageId;
+  String? pageResolutionErrorCode;
+  var arucoPrepared = gatePrepared;
+  final arucoStopwatch = Stopwatch();
+  final geometryStopwatch = Stopwatch();
+  if (gate.shouldRunAruco) {
+    if ((task['analysisMaxDimension']! as int) !=
+        (documentGateEnabled
+            ? task['documentGateMaxDimension']! as int
+            : task['analysisMaxDimension']! as int)) {
+      preparationStopwatch.start();
+      arucoPrepared = prepareCameraAnalysisImage(
+        source: source,
+        width: width,
+        height: height,
+        bytesPerRow: bytesPerRow,
+        bytesPerPixel: bytesPerPixel,
+        maximumDimension: task['analysisMaxDimension']! as int,
+      );
+      preparationStopwatch.stop();
+    }
+    arucoStopwatch.start();
+    final detectionResult = state.detector.detectGray(
+      pixels: arucoPrepared.pixels,
+      width: arucoPrepared.analysisSize.width,
+      height: arucoPrepared.analysisSize.height,
     );
+    arucoStopwatch.stop();
+    if (detectionResult.isFailure) {
+      return {
+        'ok': false,
+        'code': detectionResult.error.code,
+        'message': detectionResult.error.message,
+        'cause': detectionResult.error.details,
+      };
+    }
+    geometryStopwatch.start();
+    final sourceDetection = remapArucoDetectionToSource(
+      detectionResult.value,
+      arucoPrepared.sourceSize,
+    );
+    final resolver = state.resolverFor(
+      (task['pageMarkerSignatures']! as List<Object?>)
+          .cast<Map<Object?, Object?>>(),
+    );
+    EngineResult<ResolvedPageMarkerSignature>? resolution;
+    if (resolver != null) {
+      resolution = resolver.resolve(
+        sourceDetection.markers.map((marker) => marker.id),
+      );
+    }
+    final geometry = calculateCameraMarkerGeometry(
+      sourceDetection: sourceDetection,
+      markerIds:
+          resolution?.valueOrNull?.markerIds.values ??
+          (task['markerIds']! as List<Object?>).cast<int>(),
+    );
+    detectedMarkerIds = geometry.detectedMarkerIds;
+    registrationPoints = geometry.registrationPoints;
+    pageAreaRatio = geometry.pageAreaRatio;
+    perspectiveRatio = geometry.perspectiveRatio;
+    minimumMarkerSidePixels = geometry.minimumMarkerSidePixels;
+    resolvedPageId = resolution?.valueOrNull?.pageId.value;
+    pageResolutionErrorCode = resolution?.errorOrNull?.code;
+    geometryStopwatch.stop();
   }
-  final geometry = calculateCameraMarkerGeometry(
-    sourceDetection: sourceDetection,
-    markerIds:
-        resolution?.valueOrNull?.markerIds.values ??
-        (task['markerIds']! as List<Object?>).cast<int>(),
+  final sourceDocument = _remapDocument(
+    detectedInAnalysis,
+    gatePrepared.sourceSize,
+    gatePrepared.analysisSize,
   );
-  geometryStopwatch.stop();
   workerStopwatch.stop();
   return {
     'ok': true,
-    'detectedMarkerIds': geometry.detectedMarkerIds,
-    'resolvedPageId': resolution?.valueOrNull?.pageId.value,
-    'pageResolutionErrorCode': resolution?.errorOrNull?.code,
+    'detectedMarkerIds': detectedMarkerIds,
+    'resolvedPageId': resolvedPageId,
+    'pageResolutionErrorCode': pageResolutionErrorCode,
     'registrationPoints': [
-      for (final point in geometry.registrationPoints) [point.x, point.y],
+      for (final point in registrationPoints) [point.x, point.y],
     ],
-    'pageAreaRatio': geometry.pageAreaRatio,
-    'perspectiveRatio': geometry.perspectiveRatio,
-    'minimumMarkerSidePixels': geometry.minimumMarkerSidePixels,
-    'brightness': prepared.brightness,
-    'sharpness': sharpness,
-    'analysisWidth': prepared.analysisSize.width,
-    'analysisHeight': prepared.analysisSize.height,
-    'analysisScaleX': prepared.analysisScaleX,
-    'analysisScaleY': prepared.analysisScaleY,
+    'pageAreaRatio': pageAreaRatio,
+    'perspectiveRatio': perspectiveRatio,
+    'minimumMarkerSidePixels': minimumMarkerSidePixels,
+    'brightness': quality.brightness,
+    'sharpness': quality.sharpness,
+    'analysisWidth': arucoPrepared.analysisSize.width,
+    'analysisHeight': arucoPrepared.analysisSize.height,
+    'analysisScaleX': arucoPrepared.analysisScaleX,
+    'analysisScaleY': arucoPrepared.analysisScaleY,
+    'documentCorners': [
+      for (final point
+          in sourceDocument?.geometry.corners ?? const <ImagePoint>[])
+        [point.x, point.y],
+    ],
+    'documentAreaRatio': sourceDocument?.geometry.areaRatio,
+    'documentPerspectiveRatio': sourceDocument?.geometry.perspectiveRatio,
+    'documentCentroidX': sourceDocument?.geometry.centroid.x,
+    'documentCentroidY': sourceDocument?.geometry.centroid.y,
+    'documentConfidence': sourceDocument?.confidence,
+    'documentStable': stability.isStable,
+    'documentStableFrames': stability.stableFrameCount,
+    'documentMotion': stability.motion,
+    'gateReason': gate.reason.name,
+    'arucoRan': gate.shouldRunAruco,
+    'fallbackProbe': gate.fallbackProbe,
     'preparationUs': preparationStopwatch.elapsedMicroseconds,
+    'documentDetectionUs': documentStopwatch.elapsedMicroseconds,
+    'qualityEvaluationUs': qualityStopwatch.elapsedMicroseconds,
+    'stabilityEvaluationUs': stabilityStopwatch.elapsedMicroseconds,
     'sharpnessUs': sharpnessStopwatch.elapsedMicroseconds,
     'arucoUs': arucoStopwatch.elapsedMicroseconds,
     'geometryUs': geometryStopwatch.elapsedMicroseconds,
@@ -257,8 +405,32 @@ Map<Object?, Object?> _analyzeInWorker(
 
 final class _CameraWorkerState {
   final OpenCvArucoDetector detector = OpenCvArucoDetector();
+  final OpenCvDocumentDetector documentDetector =
+      const OpenCvDocumentDetector();
   String? _signatureKey;
   PageMarkerSignatureResolver? _resolver;
+  FrameStabilityTracker? _stabilityTracker;
+  double? _stabilityThreshold;
+  int? _minimumStableFrames;
+  int _frameIndex = 0;
+
+  int nextFrameIndex() => ++_frameIndex;
+
+  FrameStabilityTracker stabilityTrackerFor(Map<Object?, Object?> task) {
+    final threshold = task['documentStabilityThreshold']! as double;
+    final frames = task['minimumStableFrames']! as int;
+    if (_stabilityTracker == null ||
+        _stabilityThreshold != threshold ||
+        _minimumStableFrames != frames) {
+      _stabilityThreshold = threshold;
+      _minimumStableFrames = frames;
+      _stabilityTracker = FrameStabilityTracker(
+        maximumMotion: threshold,
+        minimumStableFrames: frames,
+      );
+    }
+    return _stabilityTracker!;
+  }
 
   PageMarkerSignatureResolver? resolverFor(
     List<Map<Object?, Object?>> signatureData,
@@ -286,6 +458,7 @@ final class _CameraWorkerState {
 
   void dispose() {
     detector.dispose();
+    _stabilityTracker = null;
     _resolver = null;
     _signatureKey = null;
   }
@@ -315,11 +488,176 @@ CameraAnalysisTimings _readWorkerTimings(
     preparationDuration: Duration(
       microseconds: message['preparationUs']! as int,
     ),
+    documentDetectionDuration: Duration(
+      microseconds: message['documentDetectionUs']! as int,
+    ),
+    qualityEvaluationDuration: Duration(
+      microseconds: message['qualityEvaluationUs']! as int,
+    ),
+    stabilityEvaluationDuration: Duration(
+      microseconds: message['stabilityEvaluationUs']! as int,
+    ),
     sharpnessDuration: Duration(microseconds: message['sharpnessUs']! as int),
     arucoDetectionDuration: Duration(microseconds: message['arucoUs']! as int),
     geometryDuration: Duration(microseconds: message['geometryUs']! as int),
     workerDuration: workerDuration,
     totalDuration: roundTripDuration,
+  );
+}
+
+CameraEngineConfig _workerConfig(Map<Object?, Object?> task) =>
+    CameraEngineConfig(
+      analysisMaxDimension: task['analysisMaxDimension']! as int,
+      documentGateEnabled: task['documentGateEnabled']! as bool,
+      documentGateMaxDimension: task['documentGateMaxDimension']! as int,
+      minimumDocumentAreaRatio: task['minimumDocumentAreaRatio']! as double,
+      maximumDocumentPerspectiveRatio:
+          task['maximumDocumentPerspectiveRatio']! as double,
+      documentStabilityThreshold: task['documentStabilityThreshold']! as double,
+      arucoProbeEveryNFrames: task['arucoProbeEveryNFrames']! as int,
+      minimumStableFrames: task['minimumStableFrames']! as int,
+      stabilityWindowSize: task['minimumStableFrames']! as int,
+      minimumBrightness: task['minimumBrightness']! as double,
+      maximumBrightness: task['maximumBrightness']! as double,
+      minimumSharpness: task['minimumSharpness']! as double,
+      documentCannyLowThreshold: task['documentCannyLowThreshold']! as double,
+      documentCannyHighThreshold: task['documentCannyHighThreshold']! as double,
+      documentPolygonEpsilonRatio:
+          task['documentPolygonEpsilonRatio']! as double,
+    );
+
+DocumentQuality _measureDocumentQuality(
+  PreparedCameraAnalysisImage image,
+  DetectedDocument? document,
+) {
+  final geometry = document?.geometry;
+  if (geometry == null) {
+    return DocumentQuality(
+      brightness: image.brightness,
+      sharpness: _laplacianVariance(
+        image.pixels,
+        image.analysisSize.width,
+        image.analysisSize.height,
+      ),
+    );
+  }
+  final xs = geometry.corners.map((point) => point.x);
+  final ys = geometry.corners.map((point) => point.y);
+  final left = xs
+      .reduce((a, b) => a < b ? a : b)
+      .floor()
+      .clamp(1, image.analysisSize.width - 2);
+  final right = xs
+      .reduce((a, b) => a > b ? a : b)
+      .ceil()
+      .clamp(1, image.analysisSize.width - 2);
+  final top = ys
+      .reduce((a, b) => a < b ? a : b)
+      .floor()
+      .clamp(1, image.analysisSize.height - 2);
+  final bottom = ys
+      .reduce((a, b) => a > b ? a : b)
+      .ceil()
+      .clamp(1, image.analysisSize.height - 2);
+  var count = 0;
+  var sum = 0.0;
+  var laplacianSum = 0.0;
+  var laplacianSquaredSum = 0.0;
+  final width = image.analysisSize.width;
+  for (var y = top; y <= bottom; y += 2) {
+    for (var x = left; x <= right; x += 2) {
+      if (!_insideConvexQuad(x.toDouble(), y.toDouble(), geometry.corners)) {
+        continue;
+      }
+      final index = y * width + x;
+      final laplacian =
+          4 * image.pixels[index] -
+          image.pixels[index - 1] -
+          image.pixels[index + 1] -
+          image.pixels[index - width] -
+          image.pixels[index + width];
+      count++;
+      sum += image.pixels[index];
+      laplacianSum += laplacian;
+      laplacianSquaredSum += laplacian * laplacian;
+    }
+  }
+  if (count < 2) {
+    return DocumentQuality(
+      brightness: image.brightness,
+      sharpness: _laplacianVariance(
+        image.pixels,
+        image.analysisSize.width,
+        image.analysisSize.height,
+      ),
+    );
+  }
+  final mean = laplacianSum / count;
+  return DocumentQuality(
+    brightness: sum / count,
+    sharpness: (laplacianSquaredSum - count * mean * mean) / (count - 1),
+  );
+}
+
+bool _insideConvexQuad(double x, double y, List<ImagePoint> corners) {
+  double? sign;
+  for (var index = 0; index < 4; index++) {
+    final a = corners[index];
+    final b = corners[(index + 1) % 4];
+    final cross = (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+    if (cross.abs() < 0.000001) continue;
+    sign ??= cross.sign;
+    if (cross.sign != sign) return false;
+  }
+  return true;
+}
+
+DetectedDocument? _normalizedDocument(
+  DetectedDocument? document,
+  ImageSize size,
+) {
+  if (document == null) return null;
+  final geometry = document.geometry;
+  return DetectedDocument(
+    geometry: DocumentGeometry(
+      corners: [
+        for (final point in geometry.corners)
+          ImagePoint(point.x / size.width, point.y / size.height),
+      ],
+      areaRatio: geometry.areaRatio,
+      centroid: ImagePoint(
+        geometry.centroid.x / size.width,
+        geometry.centroid.y / size.height,
+      ),
+      perspectiveRatio: geometry.perspectiveRatio,
+    ),
+    confidence: document.confidence,
+  );
+}
+
+DetectedDocument? _remapDocument(
+  DetectedDocument? document,
+  ImageSize sourceSize,
+  ImageSize analysisSize,
+) {
+  if (document == null) return null;
+  final scaleX = sourceSize.width / analysisSize.width;
+  final scaleY = sourceSize.height / analysisSize.height;
+  final geometry = document.geometry;
+  return DetectedDocument(
+    geometry: DocumentGeometry(
+      corners: [
+        for (final point in geometry.corners)
+          ImagePoint(point.x * scaleX, point.y * scaleY),
+      ],
+      areaRatio: geometry.areaRatio,
+      centroid: ImagePoint(
+        geometry.centroid.x * scaleX,
+        geometry.centroid.y * scaleY,
+      ),
+      perspectiveRatio: geometry.perspectiveRatio,
+    ),
+    confidence: document.confidence,
   );
 }
 

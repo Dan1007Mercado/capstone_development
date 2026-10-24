@@ -8,6 +8,7 @@ import 'package:capstone_development/engines/camera/application/camera_engine.da
 import 'package:capstone_development/engines/camera/domain/camera_backend.dart';
 import 'package:capstone_development/engines/camera/domain/camera_engine_config.dart';
 import 'package:capstone_development/engines/camera/domain/camera_models.dart';
+import 'package:capstone_development/engines/camera/domain/live_frame_analysis.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -499,6 +500,73 @@ void main() {
     );
     await fixture.dispose();
   });
+
+  test(
+    'recent ArUco confirmation is required and stale confirmation blocks ready',
+    () async {
+      final analyzer = _FakeAnalyzer(
+        observations: [
+          _observation(gateReason: LiveFrameGateReason.pass),
+          _observation(
+            ids: const [],
+            points: const [],
+            arucoRan: false,
+            gateReason: LiveFrameGateReason.pass,
+          ),
+        ],
+      );
+      final fixture = _Fixture(
+        analyzer: analyzer,
+        config: CameraEngineConfig(
+          minimumStableFrames: 1,
+          stabilityWindowSize: 1,
+          arucoConfirmationMaxAge: const Duration(milliseconds: 300),
+        ),
+      );
+      await fixture.initializeAndStart();
+      await fixture.emitAndSettle(0);
+      expect(
+        fixture.engine.state.readiness.status,
+        CaptureReadinessStatus.ready,
+      );
+      await fixture.emitAndSettle(500);
+      expect(
+        fixture.engine.state.readiness.status,
+        CaptureReadinessStatus.verifyingMarkers,
+      );
+      await fixture.dispose();
+    },
+  );
+
+  test(
+    'frame diagnostics count ArUco attempted, skipped, and fallback frames',
+    () async {
+      final analyzer = _FakeAnalyzer(
+        observations: [
+          _observation(
+            ids: const [],
+            points: const [],
+            arucoRan: false,
+            gateReason: LiveFrameGateReason.tooDark,
+          ),
+          _observation(
+            gateReason: LiveFrameGateReason.noDocument,
+            fallbackProbe: true,
+          ),
+        ],
+      );
+      final fixture = _Fixture(analyzer: analyzer);
+      await fixture.initializeAndStart();
+      await fixture.emitAndSettle(0);
+      await fixture.emitAndSettle(200);
+      final diagnostics = fixture.engine.diagnostics;
+      expect(diagnostics.arucoSkippedFrameCount, 1);
+      expect(diagnostics.arucoAttemptedFrameCount, 1);
+      expect(diagnostics.arucoFallbackProbeFrameCount, 1);
+      expect(diagnostics.arucoAvoidanceRatio, 0.5);
+      await fixture.dispose();
+    },
+  );
 }
 
 final class _Fixture {
@@ -675,6 +743,9 @@ CameraFrameObservation _observation({
   double markerSide = 30,
   double brightness = 128,
   double sharpness = 200,
+  bool arucoRan = true,
+  LiveFrameGateReason gateReason = LiveFrameGateReason.disabled,
+  bool fallbackProbe = false,
 }) => CameraFrameObservation(
   detectedMarkerIds: ids,
   registrationPoints: points ?? _points(),
@@ -684,6 +755,12 @@ CameraFrameObservation _observation({
   brightness: brightness,
   sharpness: sharpness,
   frameSize: ImageSize(width: 1000, height: 1000),
+  arucoRan: arucoRan,
+  gateResult: LiveFrameGateResult(
+    reason: gateReason,
+    shouldRunAruco: arucoRan,
+    fallbackProbe: fallbackProbe,
+  ),
 );
 
 List<ImagePoint> _points({double offset = 0}) => [

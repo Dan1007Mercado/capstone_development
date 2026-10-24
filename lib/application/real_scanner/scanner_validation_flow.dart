@@ -4,6 +4,7 @@ import '../../core/result/engine_result.dart';
 import '../../engines/scanner/domain/scan_result.dart';
 import '../camera_scanner/domain/camera_scan_state.dart';
 import 'multi_page_validation_recorder.dart';
+import 'scan_acceptance_policy.dart';
 import 'scanner_validation_session.dart';
 
 const scannerReviewResultMissingCode = 'SCAN_REVIEW_RESULT_MISSING';
@@ -31,19 +32,24 @@ final class ScannerValidationFlowController {
   ScannerValidationFlowController({
     required ScannerValidationSession session,
     required CameraScanState initialCameraState,
+    ScanAcceptancePolicy acceptancePolicy = const ScanAcceptancePolicy(),
   }) : _session = session,
        _latestCameraState = initialCameraState,
-       _reviewResult = _resultBeingReviewed(session);
+       _reviewResult = _resultBeingReviewed(session),
+       _acceptancePolicy = acceptancePolicy;
 
   ScannerValidationSession _session;
   CameraScanState _latestCameraState;
   ScanResult? _reviewResult;
   EngineError? _sessionError;
+  ScanAcceptanceResult? _acceptanceRejection;
+  final ScanAcceptancePolicy _acceptancePolicy;
 
   ScannerValidationSession get session => _session;
   CameraScanState get latestCameraState => _latestCameraState;
   ScanResult? get reviewResult => _reviewResult;
   EngineError? get sessionError => _sessionError;
+  ScanAcceptanceResult? get acceptanceRejection => _acceptanceRejection;
   Iterable<PageId> get completedPageIds => session.resultsByPageId.keys;
 
   ScannerValidationFlowAction handleCoordinatorState(CameraScanState state) {
@@ -81,6 +87,20 @@ final class ScannerValidationFlowController {
 
     final duplicateCheckActive =
         _session.state == ScannerValidationSessionState.duplicateChecking;
+    final acceptance = _acceptancePolicy.evaluate(completedResult);
+    if (!acceptance.accepted) {
+      _reviewResult = null;
+      _sessionError = null;
+      _acceptanceRejection = acceptance;
+      _session = _session.recordMultiPageAttempt(
+        detectedPageId: completedResult.pageId,
+        detectedMarkerIds: _detectedMarkerIds(state),
+        outcome: MultiPageValidationAttemptOutcome.sessionRejected,
+        processingDuration: _processingDuration(state, completedResult),
+        rejectionCode: acceptance.decision.name,
+      );
+      return ScannerValidationFlowAction.resultRejected;
+    }
     final recorded = _session.recordResult(completedResult);
     if (recorded.isFailure) {
       _sessionError = recorded.error;
@@ -112,6 +132,7 @@ final class ScannerValidationFlowController {
     );
     _reviewResult = completedResult;
     _sessionError = null;
+    _acceptanceRejection = null;
     return ScannerValidationFlowAction.resultRecorded;
   }
 
@@ -124,6 +145,7 @@ final class ScannerValidationFlowController {
     _session = advanced.value;
     _reviewResult = null;
     _sessionError = null;
+    _acceptanceRejection = null;
     return advanced;
   }
 
@@ -141,6 +163,7 @@ final class ScannerValidationFlowController {
 
   void clearSessionError() {
     _sessionError = null;
+    _acceptanceRejection = null;
   }
 
   static ScanResult? _resultBeingReviewed(ScannerValidationSession session) {

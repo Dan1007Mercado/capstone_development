@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../application/camera_scanner/domain/camera_scan_state.dart';
 import '../engines/aruco/domain/image_geometry.dart';
 import '../engines/camera/domain/camera_models.dart';
+import '../engines/camera/domain/live_frame_analysis.dart';
 
 enum ScannerOverlayState {
   searching,
@@ -32,9 +33,18 @@ ScannerOverlayState scannerOverlayState(CameraScanState state) {
     case CameraScanPhase.cameraReady:
       return ScannerOverlayState.searching;
     case CameraScanPhase.tracking:
+      final document = state.cameraState.analysis?.document;
+      final legacyTracking =
+          state.cameraState.analysis?.gateResult.reason ==
+          LiveFrameGateReason.disabled;
+      if (document == null && !legacyTracking) {
+        return ScannerOverlayState.searching;
+      }
       final count =
           state.cameraState.analysis?.tracking.detectedMarkerIds.length ?? 0;
-      if (count == 0) return ScannerOverlayState.searching;
+      if (count == 0 && document == null) {
+        return ScannerOverlayState.searching;
+      }
       if (count < 4) return ScannerOverlayState.partial;
       return ScannerOverlayState.unstable;
     case CameraScanPhase.disposed:
@@ -66,6 +76,11 @@ String scannerStatusText(
       CaptureReadinessStatus.tooBlurry => 'Hold steady',
       CaptureReadinessStatus.tooDark => 'Find brighter light',
       CaptureReadinessStatus.tooBright => 'Reduce glare',
+      CaptureReadinessStatus.verifyingMarkers ||
+      CaptureReadinessStatus.documentFound => 'Verifying sheet...',
+      CaptureReadinessStatus.unknownSheet =>
+        'Sheet does not belong to selected template',
+      CaptureReadinessStatus.searching => 'Searching for sheet...',
       _ =>
         pageDetected
             ? 'Page $pageNumber detected · Hold steady'

@@ -5,6 +5,7 @@ import '../../../core/errors/engine_error.dart';
 import '../../../core/ids/identifiers.dart';
 import '../../aruco/domain/image_geometry.dart';
 import 'camera_engine_config.dart';
+import 'live_frame_analysis.dart';
 
 enum CameraLifecycleState {
   uninitialized,
@@ -26,7 +27,11 @@ enum CameraDeviceOrientation {
 
 enum CaptureReadinessStatus {
   notReady,
+  searching,
+  documentFound,
   markersMissing,
+  verifyingMarkers,
+  unknownSheet,
   tooSmall,
   tooSkewed,
   tooBlurry,
@@ -98,6 +103,9 @@ final class CameraAnalysisTimings {
     this.materializationDuration = Duration.zero,
     this.isolateOverheadDuration = Duration.zero,
     this.preparationDuration = Duration.zero,
+    this.documentDetectionDuration = Duration.zero,
+    this.qualityEvaluationDuration = Duration.zero,
+    this.stabilityEvaluationDuration = Duration.zero,
     this.sharpnessDuration = Duration.zero,
     this.arucoDetectionDuration = Duration.zero,
     this.geometryDuration = Duration.zero,
@@ -110,6 +118,9 @@ final class CameraAnalysisTimings {
   final Duration materializationDuration;
   final Duration isolateOverheadDuration;
   final Duration preparationDuration;
+  final Duration documentDetectionDuration;
+  final Duration qualityEvaluationDuration;
+  final Duration stabilityEvaluationDuration;
   final Duration sharpnessDuration;
   final Duration arucoDetectionDuration;
   final Duration geometryDuration;
@@ -118,6 +129,9 @@ final class CameraAnalysisTimings {
 
   Duration get measuredWorkerStages =>
       preparationDuration +
+      documentDetectionDuration +
+      qualityEvaluationDuration +
+      stabilityEvaluationDuration +
       sharpnessDuration +
       arucoDetectionDuration +
       geometryDuration;
@@ -127,6 +141,9 @@ final class CameraAnalysisTimings {
       materializationDuration,
       isolateOverheadDuration,
       preparationDuration,
+      documentDetectionDuration,
+      qualityEvaluationDuration,
+      stabilityEvaluationDuration,
       sharpnessDuration,
       arucoDetectionDuration,
       geometryDuration,
@@ -146,6 +163,9 @@ final class CameraAnalysisTimings {
     materializationDuration: materializationDuration,
     isolateOverheadDuration: isolateOverheadDuration,
     preparationDuration: preparationDuration,
+    documentDetectionDuration: documentDetectionDuration,
+    qualityEvaluationDuration: qualityEvaluationDuration,
+    stabilityEvaluationDuration: stabilityEvaluationDuration,
     sharpnessDuration: sharpnessDuration,
     arucoDetectionDuration: arucoDetectionDuration,
     geometryDuration: geometryDuration,
@@ -172,6 +192,15 @@ final class CameraFrameObservation {
     this.deviceOrientation = CameraDeviceOrientation.unknown,
     this.resolvedPageId,
     this.pageResolutionErrorCode,
+    this.document,
+    this.documentQuality,
+    this.documentStability = DocumentStability.unavailable,
+    this.gateResult = const LiveFrameGateResult(
+      reason: LiveFrameGateReason.disabled,
+      shouldRunAruco: true,
+      fallbackProbe: false,
+    ),
+    this.arucoRan = true,
   }) : analysisFrameSize = analysisFrameSize ?? frameSize,
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        registrationPoints = UnmodifiableListView(List.of(registrationPoints));
@@ -192,6 +221,11 @@ final class CameraFrameObservation {
   final CameraDeviceOrientation deviceOrientation;
   final PageId? resolvedPageId;
   final String? pageResolutionErrorCode;
+  final DetectedDocument? document;
+  final DocumentQuality? documentQuality;
+  final DocumentStability documentStability;
+  final LiveFrameGateResult gateResult;
+  final bool arucoRan;
 }
 
 final class FrameQuality {
@@ -256,6 +290,13 @@ final class CameraAnalysisState {
     required this.timings,
     this.sensorOrientationDegrees = 0,
     this.deviceOrientation = CameraDeviceOrientation.unknown,
+    this.document,
+    this.gateResult = const LiveFrameGateResult(
+      reason: LiveFrameGateReason.disabled,
+      shouldRunAruco: true,
+      fallbackProbe: false,
+    ),
+    this.arucoConfirmationAge,
   });
 
   final MarkerTrackingState tracking;
@@ -270,6 +311,9 @@ final class CameraAnalysisState {
   final CameraAnalysisTimings timings;
   final int sensorOrientationDegrees;
   final CameraDeviceOrientation deviceOrientation;
+  final DetectedDocument? document;
+  final LiveFrameGateResult gateResult;
+  final Duration? arucoConfirmationAge;
 }
 
 final class CameraDiagnostics {
@@ -282,6 +326,15 @@ final class CameraDiagnostics {
     this.averageAnalysisDuration = Duration.zero,
     this.readinessDurations = const {},
     this.firstRecognitionToReadyDuration,
+    this.documentDetectedFrameCount = 0,
+    this.documentRejectedFrameCount = 0,
+    this.arucoAttemptedFrameCount = 0,
+    this.arucoSkippedFrameCount = 0,
+    this.arucoFallbackProbeFrameCount = 0,
+    this.readyFrameCount = 0,
+    this.averageDocumentGateDuration = Duration.zero,
+    this.averageArucoDuration = Duration.zero,
+    this.firstDocumentToReadyDuration,
   });
 
   final int receivedFrameCount;
@@ -292,6 +345,22 @@ final class CameraDiagnostics {
   final Duration averageAnalysisDuration;
   final Map<CaptureReadinessStatus, Duration> readinessDurations;
   final Duration? firstRecognitionToReadyDuration;
+  final int documentDetectedFrameCount;
+  final int documentRejectedFrameCount;
+  final int arucoAttemptedFrameCount;
+  final int arucoSkippedFrameCount;
+  final int arucoFallbackProbeFrameCount;
+  final int readyFrameCount;
+  final Duration averageDocumentGateDuration;
+  final Duration averageArucoDuration;
+  final Duration? firstDocumentToReadyDuration;
+
+  double get arucoAvoidanceRatio => processedFrameCount == 0
+      ? 0
+      : arucoSkippedFrameCount / processedFrameCount;
+
+  double get droppedFrameRatio =>
+      receivedFrameCount == 0 ? 0 : droppedFrameCount / receivedFrameCount;
 }
 
 final class CameraEngineState {

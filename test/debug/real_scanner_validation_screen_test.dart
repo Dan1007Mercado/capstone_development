@@ -9,6 +9,7 @@ import 'package:capstone_development/application/real_scanner/scanner_validation
 import 'package:capstone_development/application/published_templates/in_memory_published_template_artifact_repository.dart';
 import 'package:capstone_development/application/published_templates/published_template_artifact_service.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
+import 'package:capstone_development/core/ids/identifiers.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/debug/p11_1_scanner_validation_sheet.dart';
 import 'package:capstone_development/debug/real_scanner_validation_screen.dart';
@@ -17,7 +18,9 @@ import 'package:capstone_development/engines/aruco/domain/page_alignment_result.
 import 'package:capstone_development/engines/camera/domain/camera_models.dart';
 import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/preprocessing/domain/preprocessed_page.dart';
+import 'package:capstone_development/engines/recognition/domain/mark_classification.dart';
 import 'package:capstone_development/engines/scanner/domain/scan_result.dart';
+import 'package:capstone_development/engines/template/domain/question_type.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -159,6 +162,27 @@ void main() {
       );
       expect(fixture.flow.reviewResult, isNull);
       expect(fixture.flow.sessionError?.code, 'SCAN_COMPLETED_RESULT_MISSING');
+    });
+
+    test('rejected blank page is not completed and same page can retry', () {
+      final fixture = _FlowFixture();
+      final rejected = fixture.resultForPage(0, questions: [_blankQuestion()]);
+
+      expect(
+        fixture.flow.handleCoordinatorState(_completed(rejected)),
+        ScannerValidationFlowAction.resultRejected,
+      );
+      expect(fixture.flow.session.completedPageCount, 0);
+      expect(fixture.flow.reviewResult, isNull);
+      expect(fixture.flow.acceptanceRejection, isNotNull);
+
+      final corrected = fixture.resultForPage(0);
+      expect(
+        fixture.flow.handleCoordinatorState(_completed(corrected)),
+        ScannerValidationFlowAction.resultRecorded,
+      );
+      expect(fixture.flow.session.completedPageCount, 1);
+      expect(fixture.flow.reviewResult, same(corrected));
     });
   });
 
@@ -317,7 +341,10 @@ final class _FlowFixture {
 
   late final ScannerValidationFlowController flow;
 
-  ScanResult resultForPage(int index) {
+  ScanResult resultForPage(
+    int index, {
+    List<QuestionClassification> questions = const [],
+  }) {
     final session = flow.session;
     final page = session.pages[index];
     final markerIds = page.markerRegions
@@ -335,7 +362,7 @@ final class _FlowFixture {
       templateId: session.artifact.templateId,
       templateVersion: session.artifact.templateVersion,
       pageId: page.pageId,
-      questions: const [],
+      questions: questions,
       pageState: ScanPageState.accepted,
       reviewReasons: const [],
       reviewQuestionIds: const [],
@@ -369,13 +396,17 @@ final class _FlowFixture {
           binaryForegroundRatio: 0.1,
           processingDuration: Duration.zero,
         ),
-        summary: const ScanSummary(
-          totalQuestions: 0,
-          marked: 0,
-          blank: 0,
-          multiple: 0,
-          ambiguous: 0,
-          invalid: 0,
+        summary: ScanSummary(
+          totalQuestions: questions.length,
+          marked: questions.where((q) => q.state == MarkState.marked).length,
+          blank: questions.where((q) => q.state == MarkState.blank).length,
+          multiple: questions
+              .where((q) => q.state == MarkState.multiple)
+              .length,
+          ambiguous: questions
+              .where((q) => q.state == MarkState.ambiguous)
+              .length,
+          invalid: questions.where((q) => q.state == MarkState.invalid).length,
           requiredBlank: 0,
           measuredBubbles: 0,
         ),
@@ -383,6 +414,22 @@ final class _FlowFixture {
     );
   }
 }
+
+QuestionClassification _blankQuestion() => QuestionClassification(
+  questionId: QuestionId('blank-question'),
+  questionNumber: 1,
+  questionType: QuestionType.singleChoice,
+  state: MarkState.blank,
+  selectedOptionIds: const [],
+  numericSelection: null,
+  bubbleDecisions: const [],
+  diagnostics: const QuestionClassificationDiagnostics(
+    topScore: 0,
+    secondScore: 0,
+    scoreGap: 0,
+    reason: ClassificationReason.clearBlank,
+  ),
+);
 
 CameraScanState _completed(ScanResult result) => CameraScanState(
   phase: CameraScanPhase.scanCompleted,

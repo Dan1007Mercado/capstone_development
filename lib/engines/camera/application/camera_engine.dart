@@ -9,6 +9,7 @@ import '../../aruco/domain/image_geometry.dart';
 import '../domain/camera_backend.dart';
 import '../domain/camera_engine_config.dart';
 import '../domain/camera_models.dart';
+import '../domain/live_frame_analysis.dart';
 
 final class CameraEngine {
   CameraEngine({
@@ -37,12 +38,23 @@ final class CameraEngine {
   int _processedFrames = 0;
   int _droppedFrames = 0;
   Duration _totalAnalysisDuration = Duration.zero;
+  Duration _totalDocumentGateDuration = Duration.zero;
+  Duration _totalArucoDuration = Duration.zero;
+  int _documentDetectedFrames = 0;
+  int _documentRejectedFrames = 0;
+  int _arucoAttemptedFrames = 0;
+  int _arucoSkippedFrames = 0;
+  int _arucoFallbackProbeFrames = 0;
+  int _readyFrames = 0;
   final Queue<DateTime> _processedFrameTimes = Queue<DateTime>();
   final Map<CaptureReadinessStatus, Duration> _readinessDurations = {};
   CaptureReadinessStatus? _lastReadinessStatus;
   DateTime? _lastReadinessEvaluatedAt;
   DateTime? _firstPageRecognizedAt;
+  DateTime? _firstDocumentDetectedAt;
   Duration? _firstRecognitionToReadyDuration;
+  Duration? _firstDocumentToReadyDuration;
+  DateTime? _lastSuccessfulArucoConfirmationAt;
 
   CameraEngineState get state => _state;
   CameraDiagnostics get diagnostics => _diagnostics;
@@ -255,6 +267,19 @@ final class CameraEngine {
     );
     _processedFrames++;
     _totalAnalysisDuration += timings.totalDuration;
+    _totalDocumentGateDuration +=
+        timings.documentDetectionDuration +
+        timings.qualityEvaluationDuration +
+        timings.stabilityEvaluationDuration;
+    if (result.value.document != null) _documentDetectedFrames++;
+    if (!result.value.gateResult.passed) _documentRejectedFrames++;
+    if (result.value.arucoRan) {
+      _arucoAttemptedFrames++;
+      _totalArucoDuration += timings.arucoDetectionDuration;
+    } else {
+      _arucoSkippedFrames++;
+    }
+    if (result.value.gateResult.fallbackProbe) _arucoFallbackProbeFrames++;
     _processedFrameTimes.addLast(frame.timestamp);
     while (_processedFrameTimes.length > config.stabilityWindowSize) {
       _processedFrameTimes.removeFirst();
@@ -287,6 +312,11 @@ final class CameraEngine {
           timings: timings,
           sensorOrientationDegrees: frame.sensorOrientationDegrees,
           deviceOrientation: frame.deviceOrientation,
+          document: result.value.document,
+          gateResult: result.value.gateResult,
+          arucoConfirmationAge: _lastSuccessfulArucoConfirmationAt == null
+              ? null
+              : frame.timestamp.difference(_lastSuccessfulArucoConfirmationAt!),
         ),
         diagnostics: _diagnostics,
         readiness: evaluation.$1,
@@ -302,25 +332,66 @@ final class CameraEngine {
     final expected = config.markerIds.values.toSet();
     final detected = observation.detectedMarkerIds.toSet();
     CaptureReadinessStatus? failure;
-    if (config.pageMarkerSignatures.isNotEmpty &&
+    failure = switch (observation.gateResult.reason) {
+      LiveFrameGateReason.noDocument => CaptureReadinessStatus.searching,
+      LiveFrameGateReason.tooSmall => CaptureReadinessStatus.tooSmall,
+      LiveFrameGateReason.tooSkewed => CaptureReadinessStatus.tooSkewed,
+      LiveFrameGateReason.tooDark => CaptureReadinessStatus.tooDark,
+      LiveFrameGateReason.tooBright => CaptureReadinessStatus.tooBright,
+      LiveFrameGateReason.tooBlurry => CaptureReadinessStatus.tooBlurry,
+      LiveFrameGateReason.unstable => CaptureReadinessStatus.unstable,
+      LiveFrameGateReason.disabled || LiveFrameGateReason.pass => null,
+    };
+    final validArucoConfirmation =
+        observation.arucoRan &&
+        observation.registrationPoints.length == 4 &&
+        (config.pageMarkerSignatures.isEmpty ||
+            observation.resolvedPageId != null);
+    if (validArucoConfirmation) {
+      _lastSuccessfulArucoConfirmationAt = timestamp;
+    }
+    final confirmationAt = _lastSuccessfulArucoConfirmationAt;
+    final confirmationRecent =
+        confirmationAt != null &&
+        !timestamp.difference(confirmationAt).isNegative &&
+        timestamp.difference(confirmationAt) <= config.arucoConfirmationMaxAge;
+    if (failure == null &&
+        config.pageMarkerSignatures.isNotEmpty &&
         observation.resolvedPageId == null) {
-      failure = CaptureReadinessStatus.markersMissing;
-    } else if (config.requireAllMarkers &&
+      failure =
+          observation.pageResolutionErrorCode == 'SCAN_UNKNOWN_PAGE_MARKERS' ||
+              observation.pageResolutionErrorCode ==
+                  'SCAN_DUPLICATE_PAGE_MARKERS'
+          ? CaptureReadinessStatus.unknownSheet
+          : observation.gateResult.reason != LiveFrameGateReason.disabled
+          ? CaptureReadinessStatus.verifyingMarkers
+          : CaptureReadinessStatus.markersMissing;
+    } else if (failure == null &&
+        config.requireAllMarkers &&
         config.pageMarkerSignatures.isEmpty &&
         !detected.containsAll(expected)) {
-      failure = CaptureReadinessStatus.markersMissing;
-    } else if ((observation.pageAreaRatio ?? 0) < config.minimumPageAreaRatio ||
-        (observation.minimumMarkerSidePixels ?? 0) <
-            config.minimumMarkerSidePixels) {
+      failure = observation.gateResult.reason != LiveFrameGateReason.disabled
+          ? CaptureReadinessStatus.verifyingMarkers
+          : CaptureReadinessStatus.markersMissing;
+    } else if (failure == null && !confirmationRecent) {
+      failure = CaptureReadinessStatus.verifyingMarkers;
+    } else if (failure == null &&
+        ((observation.pageAreaRatio ?? 0) < config.minimumPageAreaRatio ||
+            (observation.minimumMarkerSidePixels ?? 0) <
+                config.minimumMarkerSidePixels)) {
       failure = CaptureReadinessStatus.tooSmall;
-    } else if ((observation.perspectiveRatio ?? double.infinity) >
-        config.maximumPerspectiveRatio) {
+    } else if (failure == null &&
+        (observation.perspectiveRatio ?? double.infinity) >
+            config.maximumPerspectiveRatio) {
       failure = CaptureReadinessStatus.tooSkewed;
-    } else if (observation.brightness < config.minimumBrightness) {
+    } else if (failure == null &&
+        observation.brightness < config.minimumBrightness) {
       failure = CaptureReadinessStatus.tooDark;
-    } else if (observation.brightness > config.maximumBrightness) {
+    } else if (failure == null &&
+        observation.brightness > config.maximumBrightness) {
       failure = CaptureReadinessStatus.tooBright;
-    } else if (observation.sharpness < config.minimumSharpness) {
+    } else if (failure == null &&
+        observation.sharpness < config.minimumSharpness) {
       failure = CaptureReadinessStatus.tooBlurry;
     }
 
@@ -379,6 +450,7 @@ final class CameraEngine {
       requiredStableFrameCount: config.minimumStableFrames,
     );
     _recordReadinessTiming(observation, readiness.status, timestamp);
+    if (readiness.isReady) _readyFrames++;
     var autoCaptureRequested = false;
     if (readiness.isReady && config.autoCaptureEnabled) {
       final lastRequest = _lastAutoCaptureRequestAt;
@@ -417,6 +489,25 @@ final class CameraEngine {
             ),
       readinessDurations: Map.unmodifiable(_readinessDurations),
       firstRecognitionToReadyDuration: _firstRecognitionToReadyDuration,
+      documentDetectedFrameCount: _documentDetectedFrames,
+      documentRejectedFrameCount: _documentRejectedFrames,
+      arucoAttemptedFrameCount: _arucoAttemptedFrames,
+      arucoSkippedFrameCount: _arucoSkippedFrames,
+      arucoFallbackProbeFrameCount: _arucoFallbackProbeFrames,
+      readyFrameCount: _readyFrames,
+      averageDocumentGateDuration: _processedFrames == 0
+          ? Duration.zero
+          : Duration(
+              microseconds:
+                  _totalDocumentGateDuration.inMicroseconds ~/ _processedFrames,
+            ),
+      averageArucoDuration: _arucoAttemptedFrames == 0
+          ? Duration.zero
+          : Duration(
+              microseconds:
+                  _totalArucoDuration.inMicroseconds ~/ _arucoAttemptedFrames,
+            ),
+      firstDocumentToReadyDuration: _firstDocumentToReadyDuration,
     );
   }
 
@@ -439,11 +530,22 @@ final class CameraEngine {
     if (observation.resolvedPageId != null) {
       _firstPageRecognizedAt ??= timestamp;
     }
+    if (observation.document != null) {
+      _firstDocumentDetectedAt ??= timestamp;
+    }
     if (status == CaptureReadinessStatus.ready &&
         _firstRecognitionToReadyDuration == null &&
         _firstPageRecognizedAt != null) {
       final elapsed = timestamp.difference(_firstPageRecognizedAt!);
       _firstRecognitionToReadyDuration = elapsed.isNegative
+          ? Duration.zero
+          : elapsed;
+    }
+    if (status == CaptureReadinessStatus.ready &&
+        _firstDocumentToReadyDuration == null &&
+        _firstDocumentDetectedAt != null) {
+      final elapsed = timestamp.difference(_firstDocumentDetectedAt!);
+      _firstDocumentToReadyDuration = elapsed.isNegative
           ? Duration.zero
           : elapsed;
     }

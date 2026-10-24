@@ -147,15 +147,6 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
         ),
         Text('Readiness: ${camera.readiness.status.name}'),
         Text(
-          'First recognition to ready: '
-          '${_milliseconds(camera.diagnostics.firstRecognitionToReadyDuration)} ms',
-        ),
-        for (final status in CaptureReadinessStatus.values)
-          Text(
-            'Readiness ${status.name}: '
-            '${_milliseconds(camera.diagnostics.readinessDurations[status])} ms',
-          ),
-        Text(
           'Stable frames: ${camera.readiness.stableFrameCount}/'
           '${camera.readiness.requiredStableFrameCount}',
         ),
@@ -171,6 +162,47 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
             child: const Text('Retry / Scan Another'),
           ),
         const SizedBox(height: 8),
+        Text(
+          'Frames received/accepted/processed/dropped: '
+          '${camera.diagnostics.receivedFrameCount}/'
+          '${camera.diagnostics.acceptedFrameCount}/'
+          '${camera.diagnostics.processedFrameCount}/'
+          '${camera.diagnostics.droppedFrameCount}',
+        ),
+        Text(
+          'Document detected/rejected: '
+          '${camera.diagnostics.documentDetectedFrameCount}/'
+          '${camera.diagnostics.documentRejectedFrameCount}',
+        ),
+        Text(
+          'ArUco attempted/skipped/fallback: '
+          '${camera.diagnostics.arucoAttemptedFrameCount}/'
+          '${camera.diagnostics.arucoSkippedFrameCount}/'
+          '${camera.diagnostics.arucoFallbackProbeFrameCount}',
+        ),
+        Text(
+          'ArUco avoidance: '
+          '${(camera.diagnostics.arucoAvoidanceRatio * 100).toStringAsFixed(1)}%',
+        ),
+        Text(
+          'Average live/document gate/ArUco: '
+          '${_milliseconds(camera.diagnostics.averageAnalysisDuration)}/'
+          '${_milliseconds(camera.diagnostics.averageDocumentGateDuration)}/'
+          '${_milliseconds(camera.diagnostics.averageArucoDuration)} ms',
+        ),
+        Text(
+          'First recognition to ready: '
+          '${_milliseconds(camera.diagnostics.firstRecognitionToReadyDuration)} ms',
+        ),
+        Text(
+          'First document to ready: '
+          '${_milliseconds(camera.diagnostics.firstDocumentToReadyDuration)} ms',
+        ),
+        for (final status in CaptureReadinessStatus.values)
+          Text(
+            'Readiness ${status.name}: '
+            '${_milliseconds(camera.diagnostics.readinessDurations[status])} ms',
+          ),
         Text('Scan status: ${result?.pageState.name ?? state.phase.name}'),
         Text(
           'Final scanner worker: '

@@ -5,7 +5,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../application/camera_scanner/domain/camera_scan_state.dart';
-import '../application/camera_scanner/domain/detected_page_geometry.dart';
 import '../application/camera_scanner/domain/preview_coordinate_mapper.dart';
 import '../application/real_scanner/published_scanner_resolver.dart';
 import '../application/real_scanner/multi_page_validation_recorder.dart';
@@ -283,7 +282,8 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
         _claimPacketResult(state.result);
         break;
       case ScannerValidationFlowAction.resultRejected:
-        _claimPacketResult(state.result);
+        _packetClaim = null;
+        _packetClaimError = null;
         _runtime.coordinator.reset();
         break;
       case ScannerValidationFlowAction.stateUpdated:
@@ -379,6 +379,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     final duplicateChecking =
         session.state == ScannerValidationSessionState.duplicateChecking;
     final displayedError = _flow.sessionError ?? state.error;
+    final acceptanceRejection = _flow.acceptanceRejection;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -470,6 +471,29 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                 ],
               ),
             ),
+          if (acceptanceRejection != null)
+            Container(
+              key: const Key('scan-rescan-required'),
+              width: double.infinity,
+              color: Colors.red.shade900,
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    acceptanceRejection.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    acceptanceRejection.guidance,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
           if (_packetClaim != null || _packetClaimError != null)
             _PacketClaimPanel(claim: _packetClaim, error: _packetClaimError),
           if (duplicateChecking)
@@ -518,14 +542,12 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
 
   List<ImagePoint> _mappedPoints(Size viewport, CameraScanState state) {
     final analysis = state.cameraState.analysis;
-    if (analysis == null || analysis.tracking.registrationPoints.length != 4) {
+    final documentCorners = analysis?.document?.geometry.corners;
+    if (analysis == null || documentCorners?.length != 4) {
       return const [];
     }
     return _coordinateMapper.mapQuadrilateral(
-      sourcePoints: projectDetectedPageOutline(
-        page: _runtime.coordinator.activeContext.pageLayout,
-        sourceRegistrationPoints: analysis.tracking.registrationPoints,
-      ),
+      sourcePoints: documentCorners!,
       sourceSize: analysis.sourceFrameSize,
       viewportSize: PreviewSize(viewport.width, viewport.height),
       sensorOrientationDegrees: analysis.sensorOrientationDegrees,
