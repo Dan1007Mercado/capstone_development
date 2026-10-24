@@ -1,21 +1,19 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'application/answer_sheet_packets/file_packet_response_repository.dart';
+import 'application/answer_sheet_packets/in_memory_packet_response_repository.dart';
+import 'application/answer_sheet_packets/packet_generation_service.dart';
+import 'application/answer_sheet_packets/packet_response_repository.dart';
 import 'application/published_templates/file_published_template_artifact_repository.dart';
 import 'application/published_templates/in_memory_published_template_artifact_repository.dart';
 import 'application/published_templates/published_template_artifact_repository.dart';
 import 'application/published_templates/published_template_artifact_service.dart';
 import 'application/real_scanner/published_scanner_resolver.dart';
-import 'application/answer_sheet_packets/file_packet_response_repository.dart';
-import 'application/answer_sheet_packets/in_memory_packet_response_repository.dart';
-import 'application/answer_sheet_packets/packet_generation_service.dart';
-import 'application/answer_sheet_packets/packet_response_repository.dart';
-import 'debug/p5_native_validation_screen.dart';
-import 'debug/p10_camera_diagnostics_screen.dart';
-import 'debug/p11_camera_scanner_screen.dart';
+import 'debug/developer_tools_screen.dart';
 import 'debug/p12_template_builder_screen.dart';
 import 'debug/real_scanner_validation_screen.dart';
 import 'engines/template/application/template_publication_service.dart';
@@ -50,54 +48,25 @@ class MyApp extends StatelessWidget {
   final PublishedTemplateArtifactRepository? artifactRepository;
   final PacketResponseRepository? packetRepository;
 
-  // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: MyHomePage(
-        title: 'Flutter Demo Home Page',
-        artifactRepository: artifactRepository,
-        packetRepository: packetRepository,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => MaterialApp(
+    title: 'Capstone OMR',
+    theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
+    home: MyHomePage(
+      title: 'Capstone OMR',
+      artifactRepository: artifactRepository,
+      packetRepository: packetRepository,
+    ),
+  );
 }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({
     super.key,
-    required this.title,
+    this.title = 'Capstone OMR',
     this.artifactRepository,
     this.packetRepository,
   });
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
 
   final String title;
   final PublishedTemplateArtifactRepository? artifactRepository;
@@ -108,7 +77,6 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
   late final TemplatePublicationService _publicationService;
   late final PublishedTemplateArtifactRepository _artifactRepository;
   late final PacketResponseRepository _packetRepository;
@@ -126,126 +94,86 @@ class _MyHomePageState extends State<MyHomePage> {
         widget.packetRepository ?? InMemoryPacketResponseRepository();
   }
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
-  }
-
   @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      title: Text(widget.title),
+    ),
+    body: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.all(24),
           children: [
-            const Text('You have pushed the button this many times:'),
             Text(
-              '$_counter',
+              'Capstone OMR',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              key: const Key('open-template-builder'),
+              onPressed: () => _openTemplateBuilder(context),
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('Template Builder'),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              key: const Key('open-scanner'),
+              onPressed: () => _openScanner(context),
+              icon: const Icon(Icons.document_scanner_outlined),
+              label: const Text('Scanner'),
             ),
             if (kDebugMode) ...[
               const SizedBox(height: 24),
-              ElevatedButton(
+              OutlinedButton.icon(
+                key: const Key('open-developer-tools'),
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => const P5NativeValidationScreen(),
-                  ),
-                ),
-                child: const Text('Open P5 Native OpenCV Validation'),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const P10CameraDiagnosticsScreen(),
-                  ),
-                ),
-                child: const Text('Open P10 Camera Diagnostics'),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const P11CameraScannerScreen(),
-                  ),
-                ),
-                child: const Text('Open P11 Camera Scanner Diagnostics'),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => P12TemplateBuilderScreen(
-                      publicationService: _publicationService,
-                      densePublicationService: PublishedTemplateArtifactService(
-                        repository: _artifactRepository,
-                      ),
-                      packetGenerationService: PacketGenerationService(
-                        repository: _packetRepository,
-                      ),
-                    ),
-                  ),
-                ),
-                child: const Text('Open P12 Template Builder'),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => RealScannerSelectionScreen(
-                      resolver: PublishedScannerResolver(
-                        artifactRepository: _artifactRepository,
-                      ),
+                    builder: (_) => DeveloperToolsScreen(
+                      artifactRepository: _artifactRepository,
                       packetRepository: _packetRepository,
+                      publicationService: _publicationService,
                     ),
                   ),
                 ),
-                child: const Text('Open Real Scanner Validation'),
+                icon: const Icon(Icons.build_outlined),
+                label: const Text('Developer Tools'),
               ),
             ],
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+    ),
+  );
+
+  void _openTemplateBuilder(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => P12TemplateBuilderScreen(
+          publicationService: _publicationService,
+          densePublicationService: PublishedTemplateArtifactService(
+            repository: _artifactRepository,
+          ),
+          packetGenerationService: PacketGenerationService(
+            repository: _packetRepository,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openScanner(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => RealScannerSelectionScreen(
+          resolver: PublishedScannerResolver(
+            artifactRepository: _artifactRepository,
+          ),
+          packetRepository: _packetRepository,
+        ),
       ),
     );
   }

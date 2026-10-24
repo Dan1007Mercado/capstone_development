@@ -41,6 +41,7 @@ dependencies:
   crypto: ^3.0.7
   path_provider: ^2.1.5
   pdf: ^3.12.0
+  printing: ^5.14.3
   # Compatibility pins: opencv_dart's pre-Native-Assets line keeps pure engine
   # tests runnable on hosts without a C++ toolchain and requires archive 3.x.
   image: 4.3.0

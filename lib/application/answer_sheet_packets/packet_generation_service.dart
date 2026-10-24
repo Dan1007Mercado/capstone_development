@@ -32,6 +32,26 @@ final class PacketGenerationService {
   final PacketMarkerCodec markerCodec;
   final DateTime Function() clock;
 
+  Future<EngineResult<PacketArtifact>> renderPacket(
+    PublishedTemplateArtifact published,
+    AnswerSheetPacket packet,
+  ) async {
+    if (published.templateId != packet.templateId ||
+        published.templateVersion != packet.templateVersion) {
+      return EngineResult.failure(
+        EngineError(
+          code: 'PACKET_ARTIFACT_INVALID',
+          message: 'Packet does not belong to the selected published artifact.',
+        ),
+      );
+    }
+    final rendered = await pdfRenderer(published, packet);
+    if (rendered.isFailure) return EngineResult.failure(rendered.error);
+    return EngineResult.success(
+      PacketArtifact(packet: packet, pdfBytes: rendered.value),
+    );
+  }
+
   Future<EngineResult<List<PacketArtifact>>> generatePackets(
     PublishedTemplateArtifact published, {
     required int count,
@@ -85,10 +105,10 @@ final class PacketGenerationService {
         pages: pages,
         status: AnswerSheetPacketStatus.unused,
       );
-      final rendered = await pdfRenderer(published, packet);
+      final rendered = await renderPacket(published, packet);
       if (rendered.isFailure) return EngineResult.failure(rendered.error);
       packets.add(packet);
-      artifacts.add(PacketArtifact(packet: packet, pdfBytes: rendered.value));
+      artifacts.add(rendered.value);
     }
     final saved = await repository.saveGeneratedPackets(packets);
     if (saved.isFailure) return EngineResult.failure(saved.error);

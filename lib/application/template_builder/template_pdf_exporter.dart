@@ -123,6 +123,14 @@ final class IoTemplatePdfExporter implements TemplatePdfExporter {
 String templatePdfFileName(String templateName, TemplateVersion version) =>
     '${_safeStem(templateName)}-v${version.value}.pdf';
 
+String packetPdfFileName(
+  String templateName,
+  PacketId packetId,
+  TemplateVersion version,
+) => sanitizePdfFileName(
+  '$templateName-packet-${packetId.value}-v${version.value}.pdf',
+);
+
 String sanitizePdfFileName(String value) {
   final withoutExtension = value.toLowerCase().endsWith('.pdf')
       ? value.substring(0, value.length - 4)

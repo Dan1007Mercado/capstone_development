@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../application/answer_sheet_packets/in_memory_packet_response_repository.dart';
@@ -27,6 +29,7 @@ import '../engines/template/infrastructure/in_memory_template_repository.dart';
 import 'p11_1_scanner_validation_sheet.dart';
 import 'p12_template_builder_fixture.dart';
 import 'p13_6_dense_validation_sheet.dart';
+import 'packet_pdf_preview_screen.dart';
 
 typedef TemplatePdfGenerator =
     Future<EngineResult<TemplatePdfArtifact>> Function();
@@ -43,6 +46,8 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.densePublicationService,
     this.answerSheetPublicationService,
     this.packetGenerationService,
+    this.packetPreviewer,
+    this.showDeveloperControls = false,
   });
 
   final TemplateBuilderController? controller;
@@ -54,6 +59,8 @@ class P12TemplateBuilderScreen extends StatefulWidget {
   final PublishedTemplateArtifactService? densePublicationService;
   final PublishedTemplateArtifactService? answerSheetPublicationService;
   final PacketGenerationService? packetGenerationService;
+  final PacketPdfPreviewer? packetPreviewer;
+  final bool showDeveloperControls;
 
   @override
   State<P12TemplateBuilderScreen> createState() =>
@@ -70,8 +77,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late PublishedTemplateArtifactService _densePublicationService;
   late PublishedTemplateArtifactService _answerSheetPublicationService;
   late PacketGenerationService _packetGenerationService;
+  late PacketPdfPreviewer _packetPreviewer;
   final TextEditingController _packetCountController = TextEditingController(
-    text: '25',
+    text: '1',
   );
   final TemplateValidator _validator = TemplateValidator();
   ValidationResult? _validation;
@@ -89,9 +97,16 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   String? _multiPagePublicationMessage;
   String? _answerSheetPublicationMessage;
   PublishedTemplateArtifact? _publishedAnswerSheetArtifact;
+  List<PublishedTemplateArtifact> _answerSheetArtifacts = const [];
+  List<AnswerSheetPacket> _persistedPackets = const [];
   List<PacketArtifact> _generatedPackets = const [];
   int _responseCount = 0;
   bool _generatingPackets = false;
+  bool _loadingPublishedArtifacts = true;
+  String? _packetGenerationMessage;
+  EngineError? _packetGenerationError;
+  final Set<PacketId> _busyPacketIds = {};
+  final Map<PacketId, PdfExportOutcome> _packetExportOutcomes = {};
 
   @override
   void initState() {
@@ -115,6 +130,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     _packetGenerationService =
         widget.packetGenerationService ??
         PacketGenerationService(repository: InMemoryPacketResponseRepository());
+    _packetPreviewer =
+        widget.packetPreviewer ?? const NavigatorPacketPdfPreviewer();
+    unawaited(_loadPersistedPacketWorkflow());
   }
 
   @override
@@ -128,6 +146,83 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
 
   bool get _isEditable =>
       _activeDefinition.status == TemplateStatus.draft && !_publishing;
+
+  bool get _validPacketCount =>
+      (int.tryParse(_packetCountController.text.trim()) ?? 0) > 0;
+
+  List<AnswerSheetPacket> get _visiblePackets {
+    final selected = _publishedAnswerSheetArtifact;
+    if (selected == null) return const [];
+    final byId = <PacketId, AnswerSheetPacket>{
+      for (final packet in _persistedPackets)
+        if (packet.templateId == selected.templateId &&
+            packet.templateVersion == selected.templateVersion)
+          packet.packetId: packet,
+      for (final artifact in _generatedPackets)
+        if (artifact.packet.templateId == selected.templateId &&
+            artifact.packet.templateVersion == selected.templateVersion)
+          artifact.packet.packetId: artifact.packet,
+    };
+    final values = byId.values.toList(growable: false)
+      ..sort(
+        (left, right) => left.packetId.value.compareTo(right.packetId.value),
+      );
+    return values;
+  }
+
+  Future<void> _loadPersistedPacketWorkflow() async {
+    final artifacts = await _answerSheetPublicationService.list();
+    final packets = await _packetGenerationService.repository.listPackets();
+    final responses = await _packetGenerationService.repository.listResponses();
+    if (!mounted) return;
+    final failure =
+        artifacts.errorOrNull ?? packets.errorOrNull ?? responses.errorOrNull;
+    final available =
+        artifacts.valueOrNull
+            ?.where(
+              (artifact) => artifact.layoutProfile == LayoutProfile.answerSheet,
+            )
+            .toList() ??
+        <PublishedTemplateArtifact>[];
+    available.sort(
+      (left, right) =>
+          right.templateVersion.value.compareTo(left.templateVersion.value),
+    );
+    final currentTemplateId = _controller.snapshot.definition.id;
+    final matching = available
+        .where((artifact) => artifact.templateId == currentTemplateId)
+        .toList(growable: false);
+    final selected = matching.firstOrNull;
+    setState(() {
+      _loadingPublishedArtifacts = false;
+      _answerSheetArtifacts = available;
+      _persistedPackets = packets.valueOrNull ?? const [];
+      _publishedAnswerSheetArtifact = selected;
+      _responseCount = responses.valueOrNull?.length ?? 0;
+      _error = failure;
+      if (selected != null) {
+        _publishedDefinition = selected.template;
+        _publishedVersions = matching
+            .map((artifact) => artifact.template)
+            .toList(growable: false);
+      }
+    });
+  }
+
+  void _selectPublishedAnswerSheet(PublishedTemplateArtifact? artifact) {
+    if (artifact == null) return;
+    setState(() {
+      _publishedAnswerSheetArtifact = artifact;
+      _publishedDefinition = artifact.template;
+      _publishedVersions = _answerSheetArtifacts
+          .where((item) => item.templateId == artifact.templateId)
+          .map((item) => item.template)
+          .toList(growable: false);
+      _packetGenerationError = null;
+      _packetGenerationMessage = null;
+      _packetExportOutcomes.clear();
+    });
+  }
 
   void _mutate(void Function() operation) {
     if (!_isEditable) return;
@@ -348,7 +443,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     final count = int.tryParse(_packetCountController.text.trim());
     if (published == null || count == null || count <= 0) {
       setState(() {
-        _error = EngineError(
+        _packetGenerationError = EngineError(
           code: 'PACKET_COUNT_INVALID',
           message: published == null
               ? 'Publish an answer sheet before generating packets.'
@@ -359,7 +454,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     }
     setState(() {
       _generatingPackets = true;
-      _error = null;
+      _packetGenerationError = null;
+      _packetGenerationMessage = null;
     });
     final generated = await _packetGenerationService.generatePackets(
       published,
@@ -371,10 +467,85 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     if (!mounted) return;
     setState(() {
       _generatingPackets = false;
-      _error = generated.errorOrNull ?? responses?.errorOrNull;
+      _packetGenerationError = generated.errorOrNull ?? responses?.errorOrNull;
       if (generated.isSuccess) {
         _generatedPackets = [..._generatedPackets, ...generated.value];
+        _persistedPackets = [
+          ..._persistedPackets,
+          ...generated.value.map((artifact) => artifact.packet),
+        ];
         _responseCount = responses?.valueOrNull?.length ?? _responseCount;
+        _packetGenerationMessage = count == 1
+            ? 'Generated 1 packet successfully'
+            : 'Generated $count packets successfully';
+      }
+    });
+  }
+
+  Future<PacketArtifact?> _packetArtifact(AnswerSheetPacket packet) async {
+    final cached = _generatedPackets
+        .where((artifact) => artifact.packet.packetId == packet.packetId)
+        .firstOrNull;
+    if (cached != null) return cached;
+    final published = _publishedAnswerSheetArtifact;
+    if (published == null) return null;
+    setState(() {
+      _busyPacketIds.add(packet.packetId);
+      _packetGenerationError = null;
+    });
+    final rendered = await _packetGenerationService.renderPacket(
+      published,
+      packet,
+    );
+    if (!mounted) return null;
+    setState(() {
+      _busyPacketIds.remove(packet.packetId);
+      _packetGenerationError = rendered.errorOrNull;
+      if (rendered.isSuccess) {
+        _generatedPackets = [..._generatedPackets, rendered.value];
+      }
+    });
+    return rendered.valueOrNull;
+  }
+
+  Future<void> _previewPacket(AnswerSheetPacket packet) async {
+    final artifact = await _packetArtifact(packet);
+    final published = _publishedAnswerSheetArtifact;
+    if (!mounted || artifact == null || published == null) return;
+    await _packetPreviewer.preview(
+      context,
+      bytes: artifact.pdfBytes,
+      fileName: packetPdfFileName(
+        published.template.name,
+        packet.packetId,
+        packet.templateVersion,
+      ),
+      packetId: packet.packetId.value,
+    );
+  }
+
+  Future<void> _savePacket(AnswerSheetPacket packet) async {
+    final artifact = await _packetArtifact(packet);
+    final published = _publishedAnswerSheetArtifact;
+    if (!mounted || artifact == null || published == null) return;
+    setState(() {
+      _busyPacketIds.add(packet.packetId);
+      _packetGenerationError = null;
+    });
+    final saved = await _exporter.export(
+      bytes: artifact.pdfBytes,
+      suggestedFileName: packetPdfFileName(
+        published.template.name,
+        packet.packetId,
+        packet.templateVersion,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _busyPacketIds.remove(packet.packetId);
+      _packetGenerationError = saved.errorOrNull;
+      if (saved.isSuccess) {
+        _packetExportOutcomes[packet.packetId] = saved.value;
       }
     });
   }
@@ -408,6 +579,14 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       if (result.isSuccess) {
         final artifact = result.value;
         _publishedAnswerSheetArtifact = artifact;
+        _answerSheetArtifacts = history == null || history.isFailure
+            ? [..._answerSheetArtifacts, artifact]
+            : history.value
+                  .where(
+                    (stored) =>
+                        stored.layoutProfile == LayoutProfile.answerSheet,
+                  )
+                  .toList(growable: false);
         _publishedDefinition = artifact.template;
         _publishedVersions = history == null || history.isFailure
             ? _mergePublishedVersion(artifact.template)
@@ -595,7 +774,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         .map((item) => 'v${item.version.value}')
         .join(', ');
     return Scaffold(
-      appBar: AppBar(title: const Text('P12/P13 Template Builder')),
+      appBar: AppBar(title: const Text('Template Builder')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -661,11 +840,12 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 icon: const Icon(Icons.add),
                 label: const Text('Add Section'),
               ),
-              OutlinedButton(
-                key: const Key('load-mixed-demo'),
-                onPressed: editable ? _loadDemo : null,
-                child: const Text('Load Mixed-Type Demo'),
-              ),
+              if (widget.showDeveloperControls)
+                OutlinedButton(
+                  key: const Key('load-mixed-demo'),
+                  onPressed: editable ? _loadDemo : null,
+                  child: const Text('Load Mixed-Type Demo'),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -694,79 +874,93 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                 onPressed: _validate,
                 child: const Text('Validate'),
               ),
-              OutlinedButton(
-                key: const Key('preview-layout'),
-                onPressed: _previewLayout,
-                child: const Text('Preview Layout'),
-              ),
-              FilledButton(
-                key: const Key('generate-pdf'),
-                onPressed: _generatingPdf || _savingPdf || _publishing
-                    ? null
-                    : _generatePdf,
-                child: Text(
-                  _generatingPdf ? 'Generating...' : 'Generate Preview PDF',
+              if (widget.showDeveloperControls)
+                OutlinedButton(
+                  key: const Key('preview-layout'),
+                  onPressed: _previewLayout,
+                  child: const Text('Preview Geometry'),
                 ),
-              ),
+              if (widget.showDeveloperControls)
+                FilledButton(
+                  key: const Key('generate-pdf'),
+                  onPressed: _generatingPdf || _savingPdf || _publishing
+                      ? null
+                      : _generatePdf,
+                  child: Text(
+                    _generatingPdf ? 'Generating...' : 'Generate Preview PDF',
+                  ),
+                ),
+              if (widget.showDeveloperControls)
+                FilledButton.tonal(
+                  key: const Key('generate-p14-1-dense-preview-pdf'),
+                  onPressed: _generatingPdf || _savingPdf || _publishing
+                      ? null
+                      : _generateP14_1DensePreviewPdf,
+                  child: const Text('Generate p14.1 Dense Preview PDF'),
+                ),
               FilledButton.tonal(
-                key: const Key('generate-p14-1-dense-preview-pdf'),
-                onPressed: _generatingPdf || _savingPdf || _publishing
-                    ? null
-                    : _generateP14_1DensePreviewPdf,
-                child: const Text('Generate p14.1 Dense Preview PDF'),
-              ),
-              FilledButton.tonal(
-                key: const Key('generate-p14-2-answer-sheet-pdf'),
+                key: const Key('preview-answer-sheet'),
                 onPressed: _generatingPdf || _savingPdf || _publishing
                     ? null
                     : _generateP14_2AnswerSheetPdf,
-                child: const Text('Generate p14.2 Answer Sheet PDF'),
+                child: Text(
+                  _generatingPdf ? 'Generating...' : 'Preview Answer Sheet',
+                ),
               ),
               FilledButton.tonal(
-                key: const Key('publish-p14-2-answer-sheet'),
+                key: const Key('publish-answer-sheet'),
                 onPressed:
                     editable && !_generatingPdf && !_savingPdf && !_publishing
                     ? _publishP14_2AnswerSheetArtifact
                     : null,
                 child: Text(
-                  _publishing ? 'Publishing...' : 'Publish p14.2 Answer Sheet',
+                  _publishing ? 'Publishing...' : 'Publish Answer Sheet',
                 ),
               ),
-              OutlinedButton(
-                key: const Key('generate-dense-validation-pdf'),
-                onPressed: _generatingPdf || _savingPdf || _publishing
-                    ? null
-                    : _generateDensePdf,
-                child: const Text('Generate Dense Validation PDF'),
-              ),
-              OutlinedButton(
-                key: const Key('generate-multi-page-validation-pdf'),
-                onPressed: _generatingPdf || _savingPdf || _publishing
-                    ? null
-                    : _generateMultiPagePdf,
-                child: const Text('Generate Multi-Page Validation PDF'),
-              ),
-              FilledButton.tonal(
-                key: const Key('publish-dense-template-v1'),
-                onPressed: _publishing || _generatingPdf || _savingPdf
-                    ? null
-                    : _publishDenseArtifact,
-                child: const Text('Publish Dense Template v1'),
-              ),
-              FilledButton.tonal(
-                key: const Key('publish-multi-page-template-v1'),
-                onPressed: _publishing || _generatingPdf || _savingPdf
-                    ? null
-                    : _publishMultiPageArtifact,
-                child: const Text('Publish Multi-Page Validation Template v1'),
-              ),
-              FilledButton.tonal(
-                key: const Key('publish-template'),
-                onPressed: editable && !_generatingPdf && !_savingPdf
-                    ? _publish
-                    : null,
-                child: Text(_publishing ? 'Publishing...' : 'Publish Template'),
-              ),
+              if (widget.showDeveloperControls)
+                OutlinedButton(
+                  key: const Key('generate-dense-validation-pdf'),
+                  onPressed: _generatingPdf || _savingPdf || _publishing
+                      ? null
+                      : _generateDensePdf,
+                  child: const Text('Generate Dense Validation PDF'),
+                ),
+              if (widget.showDeveloperControls)
+                OutlinedButton(
+                  key: const Key('generate-multi-page-validation-pdf'),
+                  onPressed: _generatingPdf || _savingPdf || _publishing
+                      ? null
+                      : _generateMultiPagePdf,
+                  child: const Text('Generate Multi-Page Validation PDF'),
+                ),
+              if (widget.showDeveloperControls)
+                FilledButton.tonal(
+                  key: const Key('publish-dense-template-v1'),
+                  onPressed: _publishing || _generatingPdf || _savingPdf
+                      ? null
+                      : _publishDenseArtifact,
+                  child: const Text('Publish Dense Template v1'),
+                ),
+              if (widget.showDeveloperControls)
+                FilledButton.tonal(
+                  key: const Key('publish-multi-page-template-v1'),
+                  onPressed: _publishing || _generatingPdf || _savingPdf
+                      ? null
+                      : _publishMultiPageArtifact,
+                  child: const Text(
+                    'Publish Multi-Page Validation Template v1',
+                  ),
+                ),
+              if (widget.showDeveloperControls)
+                FilledButton.tonal(
+                  key: const Key('publish-template'),
+                  onPressed: editable && !_generatingPdf && !_savingPdf
+                      ? _publish
+                      : null,
+                  child: Text(
+                    _publishing ? 'Publishing...' : 'Publish Template',
+                  ),
+                ),
               OutlinedButton(
                 key: const Key('create-revision'),
                 onPressed:
@@ -820,6 +1014,42 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
+                  if (_loadingPublishedArtifacts)
+                    const LinearProgressIndicator(
+                      key: Key('published-answer-sheets-loading'),
+                    )
+                  else if (_answerSheetArtifacts.isEmpty)
+                    const Text(
+                      'Publish an answer sheet before generating packets.',
+                    )
+                  else
+                    DropdownButtonFormField<PublishedTemplateArtifact>(
+                      key: const Key('published-answer-sheet-selector'),
+                      initialValue: _publishedAnswerSheetArtifact,
+                      decoration: const InputDecoration(
+                        labelText: 'Published answer sheet',
+                      ),
+                      items: [
+                        for (final artifact in _answerSheetArtifacts)
+                          DropdownMenuItem(
+                            value: artifact,
+                            child: Text(
+                              '${artifact.template.name} '
+                              'v${artifact.templateVersion.value}',
+                            ),
+                          ),
+                      ],
+                      onChanged: _selectPublishedAnswerSheet,
+                    ),
+                  if (_publishedAnswerSheetArtifact case final artifact?) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Published: ${artifact.template.name} '
+                      'v${artifact.templateVersion.value}',
+                      key: const Key('selected-answer-sheet'),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
                   TextField(
                     key: const Key('packet-count'),
                     controller: _packetCountController,
@@ -827,6 +1057,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Packet count',
                     ),
+                    onChanged: (_) => setState(() {
+                      _packetGenerationError = null;
+                    }),
                   ),
                   const SizedBox(height: 8),
                   FilledButton(
@@ -834,7 +1067,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     onPressed:
                         _generatingPackets ||
                             _publishing ||
-                            _publishedAnswerSheetArtifact == null
+                            _publishedAnswerSheetArtifact == null ||
+                            !_validPacketCount
                         ? null
                         : _generateAnswerSheetPackets,
                     child: Text(
@@ -843,24 +1077,40 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Generated packets: ${_generatedPackets.length}\n'
+                    'Generated packets: ${_visiblePackets.length}\n'
                     'Responses: $_responseCount',
                     key: const Key('packet-generation-summary'),
                   ),
-                  if (_generatedPackets.isNotEmpty)
+                  if (_packetGenerationMessage case final message?)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        message,
+                        key: const Key('packet-generation-success'),
+                      ),
+                    ),
+                  if (_packetGenerationError case final error?)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: SelectableText(
+                        'Packet generation failed\n'
+                        '${error.code}\n${error.message}',
+                        key: const Key('packet-generation-error'),
+                      ),
+                    ),
+                  if (_visiblePackets.isNotEmpty)
                     ExpansionTile(
                       key: const Key('generated-packet-inspection'),
                       title: const Text('Inspect generated packets'),
                       children: [
-                        for (final artifact in _generatedPackets)
-                          ListTile(
-                            dense: true,
-                            title: Text(artifact.packet.packetId.value),
-                            subtitle: Text(
-                              'Template v${artifact.packet.templateVersion.value} '
-                              '• ${artifact.packet.pages.length} page(s) '
-                              '• ${artifact.packet.status.name.toUpperCase()}',
-                            ),
+                        for (final packet in _visiblePackets)
+                          _PacketArtifactTile(
+                            packet: packet,
+                            busy: _busyPacketIds.contains(packet.packetId),
+                            exportOutcome:
+                                _packetExportOutcomes[packet.packetId],
+                            onPreview: () => _previewPacket(packet),
+                            onSave: () => _savePacket(packet),
                           ),
                       ],
                     ),
@@ -913,6 +1163,61 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       ),
     );
   }
+}
+
+class _PacketArtifactTile extends StatelessWidget {
+  const _PacketArtifactTile({
+    required this.packet,
+    required this.busy,
+    required this.onPreview,
+    required this.onSave,
+    this.exportOutcome,
+  });
+
+  final AnswerSheetPacket packet;
+  final bool busy;
+  final VoidCallback onPreview;
+  final VoidCallback onSave;
+  final PdfExportOutcome? exportOutcome;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    key: ValueKey('packet-${packet.packetId.value}'),
+    title: Text('Packet ${packet.packetId.value}'),
+    subtitle: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Template v${packet.templateVersion.value} · '
+          '${packet.pages.length} page(s) · '
+          '${packet.status.name.toUpperCase()}',
+        ),
+        if (exportOutcome case final outcome?)
+          Text(
+            outcome.userCancelled
+                ? 'Save cancelled'
+                : 'Packet PDF saved successfully\n'
+                      'URI: ${outcome.locationUri}',
+            key: ValueKey('packet-save-outcome-${packet.packetId.value}'),
+          ),
+      ],
+    ),
+    trailing: Wrap(
+      spacing: 4,
+      children: [
+        TextButton(
+          key: ValueKey('preview-packet-${packet.packetId.value}'),
+          onPressed: busy ? null : onPreview,
+          child: const Text('Preview PDF'),
+        ),
+        TextButton(
+          key: ValueKey('save-packet-${packet.packetId.value}'),
+          onPressed: busy ? null : onSave,
+          child: Text(busy ? 'Working...' : 'Save PDF'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _SectionEditor extends StatelessWidget {

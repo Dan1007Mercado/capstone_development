@@ -26,7 +26,12 @@ void main() {
   ) async {
     final controller = TemplateBuilderController();
     await tester.pumpWidget(
-      MaterialApp(home: P12TemplateBuilderScreen(controller: controller)),
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          controller: controller,
+          showDeveloperControls: true,
+        ),
+      ),
     );
 
     await tester.tap(find.byKey(const Key('add-section')));
@@ -51,14 +56,11 @@ void main() {
       findsOneWidget,
     );
     await tester.scrollUntilVisible(
-      find.byKey(const Key('generate-p14-2-answer-sheet-pdf')),
+      find.byKey(const Key('preview-answer-sheet')),
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(
-      find.byKey(const Key('generate-p14-2-answer-sheet-pdf')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('preview-answer-sheet')), findsOneWidget);
   });
 
   testWidgets('mixed demo validates and previews through LayoutEngine', (
@@ -66,7 +68,12 @@ void main() {
   ) async {
     final controller = buildP12MixedTemplateDemo();
     await tester.pumpWidget(
-      MaterialApp(home: P12TemplateBuilderScreen(controller: controller)),
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          controller: controller,
+          showDeveloperControls: true,
+        ),
+      ),
     );
 
     await tester.dragUntilVisible(
@@ -99,7 +106,12 @@ void main() {
       controller.addQuestion(section, prompt: 'Current response $index');
     }
     await tester.pumpWidget(
-      MaterialApp(home: P12TemplateBuilderScreen(controller: controller)),
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          controller: controller,
+          showDeveloperControls: true,
+        ),
+      ),
     );
 
     await _tapVisible(tester, const Key('generate-p14-1-dense-preview-pdf'));
@@ -138,7 +150,9 @@ void main() {
 
   testWidgets('p14.1 dense preview exposes validation errors', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: P12TemplateBuilderScreen()),
+      const MaterialApp(
+        home: P12TemplateBuilderScreen(showDeveloperControls: true),
+      ),
     );
 
     await _tapVisible(tester, const Key('generate-p14-1-dense-preview-pdf'));
@@ -166,10 +180,15 @@ void main() {
       controller.addQuestion(section, prompt: 'Current answer $index');
     }
     await tester.pumpWidget(
-      MaterialApp(home: P12TemplateBuilderScreen(controller: controller)),
+      MaterialApp(
+        home: P12TemplateBuilderScreen(
+          controller: controller,
+          showDeveloperControls: true,
+        ),
+      ),
     );
 
-    await _tapVisible(tester, const Key('generate-p14-2-answer-sheet-pdf'));
+    await _tapVisible(tester, const Key('preview-answer-sheet'));
 
     expect(
       find.byKey(const Key('layout-preview-panel'), skipOffstage: false),
@@ -200,10 +219,12 @@ void main() {
 
   testWidgets('p14.2 answer sheet exposes validation errors', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(home: P12TemplateBuilderScreen()),
+      const MaterialApp(
+        home: P12TemplateBuilderScreen(showDeveloperControls: true),
+      ),
     );
 
-    await _tapVisible(tester, const Key('generate-p14-2-answer-sheet-pdf'));
+    await _tapVisible(tester, const Key('preview-answer-sheet'));
 
     expect(
       find.textContaining('BUILDER_TEMPLATE_INVALID', skipOffstage: false),
@@ -230,6 +251,7 @@ void main() {
         MaterialApp(
           home: P12TemplateBuilderScreen(
             controller: controller,
+            showDeveloperControls: true,
             answerSheetPublicationService: PublishedTemplateArtifactService(
               repository: repository,
               pdfRenderer: (_, _) => renderCompleter.future,
@@ -238,7 +260,7 @@ void main() {
         ),
       );
 
-      final finder = find.byKey(const Key('publish-p14-2-answer-sheet'));
+      final finder = find.byKey(const Key('publish-answer-sheet'));
       await tester.scrollUntilVisible(
         finder,
         250,
@@ -253,9 +275,7 @@ void main() {
       expect(find.text('Publishing...'), findsWidgets);
       expect(
         tester
-            .widget<FilledButton>(
-              find.byKey(const Key('generate-p14-2-answer-sheet-pdf')),
-            )
+            .widget<FilledButton>(find.byKey(const Key('preview-answer-sheet')))
             .onPressed,
         isNull,
       );
@@ -316,6 +336,7 @@ void main() {
       MaterialApp(
         home: P12TemplateBuilderScreen(
           controller: TemplateBuilderController(name: ''),
+          showDeveloperControls: true,
           answerSheetPublicationService: PublishedTemplateArtifactService(
             repository: repository,
           ),
@@ -323,7 +344,7 @@ void main() {
       ),
     );
 
-    await _tapVisible(tester, const Key('publish-p14-2-answer-sheet'));
+    await _tapVisible(tester, const Key('publish-answer-sheet'));
 
     expect(
       find.textContaining('TEMPLATE_PUBLICATION_INVALID', skipOffstage: false),
@@ -366,6 +387,7 @@ void main() {
       MaterialApp(
         home: P12TemplateBuilderScreen(
           controller: controller,
+          showDeveloperControls: true,
           exporter: exporter,
           pdfGenerator: () async => EngineResult.success(artifact),
         ),
@@ -421,6 +443,7 @@ void main() {
       MaterialApp(
         home: P12TemplateBuilderScreen(
           controller: controller,
+          showDeveloperControls: true,
           densePdfGenerator: () async {
             calls++;
             return EngineResult.success(artifact);
@@ -452,6 +475,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: P12TemplateBuilderScreen(
+          showDeveloperControls: true,
           densePublicationService: PublishedTemplateArtifactService(
             repository: repository,
             pdfRenderer: (_, _) async =>
@@ -504,6 +528,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: P12TemplateBuilderScreen(
+          showDeveloperControls: true,
           multiPagePdfGenerator: () async {
             calls++;
             return EngineResult.success(artifact);
@@ -534,6 +559,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: P12TemplateBuilderScreen(
+          showDeveloperControls: true,
           densePublicationService: PublishedTemplateArtifactService(
             repository: repository,
             pdfRenderer: (_, _) async =>
@@ -622,6 +648,7 @@ void main() {
       MaterialApp(
         home: P12TemplateBuilderScreen(
           controller: controller,
+          showDeveloperControls: true,
           publicationService: publication,
         ),
       ),
@@ -677,6 +704,7 @@ void main() {
 
     await _tapVisible(tester, const Key('view-published-v1'));
     await _tapVisible(tester, const Key('preview-layout'));
+    await _revealVisible(tester, const Key('layout-preview-panel'));
     expect(
       find.textContaining('template-1-v1-p1', skipOffstage: false),
       findsOneWidget,
@@ -684,6 +712,7 @@ void main() {
     await _scrollToTop(tester);
     await _tapVisible(tester, const Key('view-published-v2'));
     await _tapVisible(tester, const Key('preview-layout'));
+    await _revealVisible(tester, const Key('layout-preview-panel'));
     expect(
       find.textContaining('template-1-v2-p1', skipOffstage: false),
       findsOneWidget,
@@ -737,6 +766,7 @@ final class _RecordingExporter implements TemplatePdfExporter {
     widget: MaterialApp(
       home: P12TemplateBuilderScreen(
         controller: controller,
+        showDeveloperControls: true,
         exporter: exporter,
         pdfGenerator: () async => EngineResult.success(artifact),
       ),
@@ -773,6 +803,15 @@ Future<void> _tapVisible(WidgetTester tester, Key key) async {
   );
   await tester.pump();
   await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _revealVisible(WidgetTester tester, Key key) async {
+  await tester.scrollUntilVisible(
+    find.byKey(key),
+    250,
+    scrollable: find.byType(Scrollable).first,
+  );
   await tester.pumpAndSettle();
 }
 
