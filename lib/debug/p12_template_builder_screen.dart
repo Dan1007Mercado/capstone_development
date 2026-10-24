@@ -35,6 +35,12 @@ import 'packet_pdf_preview_screen.dart';
 typedef TemplatePdfGenerator =
     Future<EngineResult<TemplatePdfArtifact>> Function();
 
+typedef _PublishedArtifactIdentity = ({
+  TemplateId templateId,
+  TemplateVersion templateVersion,
+  LayoutProfile layoutProfile,
+});
+
 class P12TemplateBuilderScreen extends StatefulWidget {
   const P12TemplateBuilderScreen({
     super.key,
@@ -160,8 +166,46 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   bool get _validPacketCount =>
       (int.tryParse(_packetCountController.text.trim()) ?? 0) > 0;
 
-  List<AnswerSheetPacket> get _visiblePackets {
+  PublishedTemplateArtifact? get _selectedArtifactFromCurrentList {
     final selected = _publishedAnswerSheetArtifact;
+    if (selected == null) return null;
+    return _findArtifact(_answerSheetArtifacts, selected);
+  }
+
+  _PublishedArtifactIdentity _artifactIdentity(
+    PublishedTemplateArtifact artifact,
+  ) => (
+    templateId: artifact.templateId,
+    templateVersion: artifact.templateVersion,
+    layoutProfile: artifact.layoutProfile,
+  );
+
+  PublishedTemplateArtifact? _findArtifact(
+    Iterable<PublishedTemplateArtifact> artifacts,
+    PublishedTemplateArtifact selected,
+  ) {
+    final identity = _artifactIdentity(selected);
+    for (final artifact in artifacts) {
+      if (_artifactIdentity(artifact) == identity) return artifact;
+    }
+    return null;
+  }
+
+  List<PublishedTemplateArtifact> _normalizeAnswerSheetArtifacts(
+    Iterable<PublishedTemplateArtifact> artifacts,
+  ) {
+    final byIdentity =
+        <_PublishedArtifactIdentity, PublishedTemplateArtifact>{};
+    for (final artifact in artifacts) {
+      if (artifact.layoutProfile == LayoutProfile.answerSheet) {
+        byIdentity.putIfAbsent(_artifactIdentity(artifact), () => artifact);
+      }
+    }
+    return List.unmodifiable(byIdentity.values);
+  }
+
+  List<AnswerSheetPacket> get _visiblePackets {
+    final selected = _selectedArtifactFromCurrentList;
     if (selected == null) return const [];
     final byId = <PacketId, AnswerSheetPacket>{
       for (final packet in _persistedPackets)
@@ -187,13 +231,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     if (!mounted) return;
     final failure =
         artifacts.errorOrNull ?? packets.errorOrNull ?? responses.errorOrNull;
-    final available =
-        artifacts.valueOrNull
-            ?.where(
-              (artifact) => artifact.layoutProfile == LayoutProfile.answerSheet,
-            )
-            .toList() ??
-        <PublishedTemplateArtifact>[];
+    final available = _normalizeAnswerSheetArtifacts(
+      artifacts.valueOrNull ?? const [],
+    ).toList();
     available.sort(
       (left, right) =>
           right.templateVersion.value.compareTo(left.templateVersion.value),
@@ -463,7 +503,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   }
 
   Future<void> _generateAnswerSheetPackets() async {
-    final published = _publishedAnswerSheetArtifact;
+    final published = _selectedArtifactFromCurrentList;
     final count = int.tryParse(_packetCountController.text.trim());
     if (published == null || count == null || count <= 0) {
       setState(() {
@@ -510,7 +550,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         .where((artifact) => artifact.packet.packetId == packet.packetId)
         .firstOrNull;
     if (cached != null) return cached;
-    final published = _publishedAnswerSheetArtifact;
+    final published = _selectedArtifactFromCurrentList;
     if (published == null) return null;
     setState(() {
       _busyPacketIds.add(packet.packetId);
@@ -533,7 +573,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
 
   Future<void> _previewPacket(AnswerSheetPacket packet) async {
     final artifact = await _packetArtifact(packet);
-    final published = _publishedAnswerSheetArtifact;
+    final published = _selectedArtifactFromCurrentList;
     if (!mounted || artifact == null || published == null) return;
     await _packetPreviewer.preview(
       context,
@@ -594,7 +634,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
 
   Future<void> _savePacket(AnswerSheetPacket packet) async {
     final artifact = await _packetArtifact(packet);
-    final published = _publishedAnswerSheetArtifact;
+    final published = _selectedArtifactFromCurrentList;
     if (!mounted || artifact == null || published == null) return;
     setState(() {
       _busyPacketIds.add(packet.packetId);
@@ -646,40 +686,47 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _validation = _validator.validate(draft);
       if (result.isSuccess) {
         final artifact = result.value;
-        _publishedAnswerSheetArtifact = artifact;
+        var available = history == null || history.isFailure
+            ? _normalizeAnswerSheetArtifacts([
+                ..._answerSheetArtifacts,
+                artifact,
+              ])
+            : _normalizeAnswerSheetArtifacts(history.value);
+        var refreshedArtifact = _findArtifact(available, artifact);
+        if (refreshedArtifact == null) {
+          available = _normalizeAnswerSheetArtifacts([...available, artifact]);
+          refreshedArtifact = _findArtifact(available, artifact)!;
+        }
+        final selectedArtifact = refreshedArtifact;
+        _answerSheetArtifacts = available;
+        _publishedAnswerSheetArtifact = selectedArtifact;
         _generatedPackets = const [];
         _generatedBatch = null;
         _batchExportOutcome = null;
         _packetGenerationMessage = null;
         _packetGenerationError = null;
         _packetExportOutcomes.clear();
-        _answerSheetArtifacts = history == null || history.isFailure
-            ? [..._answerSheetArtifacts, artifact]
-            : history.value
-                  .where(
-                    (stored) =>
-                        stored.layoutProfile == LayoutProfile.answerSheet,
-                  )
-                  .toList(growable: false);
-        _publishedDefinition = artifact.template;
-        _publishedVersions = history == null || history.isFailure
-            ? _mergePublishedVersion(artifact.template)
-            : history.value
-                  .where(
-                    (stored) =>
-                        stored.templateId == artifact.templateId &&
-                        stored.layoutProfile == LayoutProfile.answerSheet,
-                  )
-                  .map((stored) => stored.template)
-                  .toList(growable: false);
+        _publishedDefinition = selectedArtifact.template;
+        final selectedVersions =
+            available
+                .where(
+                  (stored) => stored.templateId == selectedArtifact.templateId,
+                )
+                .map((stored) => stored.template)
+                .toList()
+              ..sort(
+                (left, right) =>
+                    left.version.value.compareTo(right.version.value),
+              );
+        _publishedVersions = List.unmodifiable(selectedVersions);
         _pdf = TemplatePdfArtifact(
-          definition: artifact.template,
-          layout: artifact.layout,
-          bytes: artifact.pdfBytes,
+          definition: selectedArtifact.template,
+          layout: selectedArtifact.layout,
+          bytes: selectedArtifact.pdfBytes,
         );
         _preview = TemplateLayoutPreview(
-          definition: artifact.template,
-          layout: artifact.layout,
+          definition: selectedArtifact.template,
+          layout: selectedArtifact.layout,
         );
         _exportOutcome = null;
         _answerSheetPublicationMessage =
@@ -687,18 +734,6 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
             'locally with exact PDF and PageLayout.';
       }
     });
-  }
-
-  List<TemplateDefinition> _mergePublishedVersion(
-    TemplateDefinition published,
-  ) {
-    final merged = <TemplateDefinition>[
-      ..._publishedVersions.where(
-        (item) => item.id != published.id || item.version != published.version,
-      ),
-      published,
-    ]..sort((left, right) => left.version.value.compareTo(right.version.value));
-    return List.unmodifiable(merged);
   }
 
   Future<void> _publishMultiPageArtifact() async {
@@ -1116,7 +1151,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     DropdownButtonFormField<PublishedTemplateArtifact>(
                       key: const Key('published-answer-sheet-selector'),
                       isExpanded: true,
-                      initialValue: _publishedAnswerSheetArtifact,
+                      initialValue: _selectedArtifactFromCurrentList,
                       decoration: const InputDecoration(
                         labelText: 'Open existing published answer sheet',
                       ),
@@ -1134,7 +1169,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                       ],
                       onChanged: _selectPublishedAnswerSheet,
                     ),
-                  if (_publishedAnswerSheetArtifact case final artifact?) ...[
+                  if (_selectedArtifactFromCurrentList
+                      case final artifact?) ...[
                     const SizedBox(height: 8),
                     Text(
                       'Published: ${artifact.template.name} '
@@ -1160,7 +1196,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                     onPressed:
                         _generatingPackets ||
                             _publishing ||
-                            _publishedAnswerSheetArtifact == null ||
+                            _selectedArtifactFromCurrentList == null ||
                             !_validPacketCount
                         ? null
                         : _generateAnswerSheetPackets,
