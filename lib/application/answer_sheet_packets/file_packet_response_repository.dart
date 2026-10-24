@@ -272,6 +272,12 @@ final class FilePacketResponseRepository implements PacketResponseRepository {
   );
 
   PaperResponse _decodeResponse(Map<String, Object?> json) {
+    final source = ResponseSource.values.byName(json['source']! as String);
+    if (source != ResponseSource.paper) {
+      throw const FormatException(
+        'Packet repository only decodes paper response records.',
+      );
+    }
     final pages = <PageId, StoredPacketPageResult>{};
     for (final raw in (json['pages']! as List)) {
       final value = Map<String, Object?>.from(raw as Map);
@@ -291,7 +297,6 @@ final class FilePacketResponseRepository implements PacketResponseRepository {
       packetId: PacketId(json['packetId']! as String),
       templateId: TemplateId(json['templateId']! as String),
       templateVersion: TemplateVersion(json['templateVersion']! as int),
-      source: ResponseSource.values.byName(json['source']! as String),
       createdAt: DateTime.parse(json['createdAt']! as String),
       updatedAt: DateTime.parse(json['updatedAt']! as String),
       status: PaperResponseStatus.values.byName(json['status']! as String),

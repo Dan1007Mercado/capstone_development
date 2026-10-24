@@ -20,11 +20,15 @@ final class PacketIdentityMarkerRegion {
 final class PacketHeaderLayout {
   PacketHeaderLayout({
     required Iterable<PacketIdentityMarkerRegion> identityMarkers,
+    required this.markerRowBounds,
+    required this.packetInfoTextBounds,
     required this.packetLabelBounds,
     required this.pageLabelBounds,
   }) : identityMarkers = UnmodifiableListView(List.of(identityMarkers));
 
   final List<PacketIdentityMarkerRegion> identityMarkers;
+  final PhysicalRect markerRowBounds;
+  final PhysicalRect packetInfoTextBounds;
   final PhysicalRect packetLabelBounds;
   final PhysicalRect pageLabelBounds;
 }

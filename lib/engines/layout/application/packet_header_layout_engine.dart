@@ -16,11 +16,13 @@ final class PacketHeaderLayoutEngine {
     this.markerSizeMm = 10,
     this.markerGapMm = 2,
     this.registrationClearanceMm = 2,
+    this.textColumnGapMm = 2,
   });
 
   final double markerSizeMm;
   final double markerGapMm;
   final double registrationClearanceMm;
+  final double textColumnGapMm;
 
   EngineResult<PacketHeaderLayout> build(
     PageLayout page,
@@ -37,7 +39,12 @@ final class PacketHeaderLayoutEngine {
         'Header marker IDs do not match the packet marker contract.',
       );
     }
-    final values = [markerSizeMm, markerGapMm, registrationClearanceMm];
+    final values = [
+      markerSizeMm,
+      markerGapMm,
+      registrationClearanceMm,
+      textColumnGapMm,
+    ];
     if (values.any((value) => !value.isFinite || value <= 0)) {
       return _failure(
         'PACKET_HEADER_CONFIG_INVALID',
@@ -65,11 +72,14 @@ final class PacketHeaderLayoutEngine {
           ),
         ),
     ];
-    final groupRight = left + groupWidth;
-    final topRegistration = page.markerRegions.where(
-      (marker) =>
-          marker.physicalBounds.top.millimeters <
-          page.safeBounds.top.millimeters,
+    final markerRowBounds = PhysicalRect.millimeters(
+      left: left,
+      top: top,
+      width: groupWidth,
+      height: markerSizeMm,
+    );
+    final registrationBounds = page.markerRegions.map(
+      (marker) => marker.physicalBounds,
     );
     final allBounds = markerRegions.map((marker) => marker.physicalBounds);
     final invalid = allBounds.any(
@@ -81,11 +91,13 @@ final class PacketHeaderLayoutEngine {
           page.questionRegions.any(
             (question) => bounds.intersects(question.physicalBounds),
           ) ||
-          topRegistration.any(
+          page.sectionRegions.any(
+            (section) => bounds.intersects(section.physicalBounds),
+          ) ||
+          registrationBounds.any(
             (registration) =>
-                bounds.intersects(registration.physicalBounds) ||
-                _clearance(bounds, registration.physicalBounds) <
-                    registrationClearanceMm,
+                bounds.intersects(registration) ||
+                _clearance(bounds, registration) < registrationClearanceMm,
           ),
     );
     if (invalid) {
@@ -96,25 +108,56 @@ final class PacketHeaderLayoutEngine {
       );
     }
 
-    final labelTop = top;
-    final labelHeight = markerSizeMm;
-    final leftLabelRight = left - markerGapMm;
-    final rightLabelLeft = groupRight + markerGapMm;
+    final packetInfoTextBounds = page.templateIdentityRegion.physicalBounds;
+    final labelWidth =
+        (packetInfoTextBounds.width.millimeters - textColumnGapMm) / 2;
     final packetLabelBounds = PhysicalRect.millimeters(
-      left: page.printableBounds.left.millimeters,
-      top: labelTop,
-      width: leftLabelRight - page.printableBounds.left.millimeters,
-      height: labelHeight,
+      left: packetInfoTextBounds.left.millimeters,
+      top: packetInfoTextBounds.top.millimeters,
+      width: labelWidth,
+      height: packetInfoTextBounds.height.millimeters,
     );
     final pageLabelBounds = PhysicalRect.millimeters(
-      left: rightLabelLeft,
-      top: labelTop,
-      width: page.printableBounds.right.millimeters - rightLabelLeft,
-      height: labelHeight,
+      left:
+          packetInfoTextBounds.left.millimeters + labelWidth + textColumnGapMm,
+      top: packetInfoTextBounds.top.millimeters,
+      width: labelWidth,
+      height: packetInfoTextBounds.height.millimeters,
     );
+    final textBounds = [packetLabelBounds, pageLabelBounds];
+    final textInvalid =
+        !page.printableBounds.containsRect(packetInfoTextBounds) ||
+        markerRowBounds.bottom.millimeters >
+            packetInfoTextBounds.top.millimeters ||
+        !packetInfoTextBounds.containsRect(packetLabelBounds) ||
+        !packetInfoTextBounds.containsRect(pageLabelBounds) ||
+        packetLabelBounds.intersects(pageLabelBounds) ||
+        textBounds.any(
+          (bounds) =>
+              allBounds.any(bounds.intersects) ||
+              registrationBounds.any(bounds.intersects) ||
+              page.bubbleRegions.any(
+                (bubble) => bounds.intersects(bubble.physicalBounds),
+              ) ||
+              page.questionRegions.any(
+                (question) => bounds.intersects(question.physicalBounds),
+              ) ||
+              page.sectionRegions.any(
+                (section) => bounds.intersects(section.physicalBounds),
+              ),
+        );
+    if (textInvalid) {
+      return _failure(
+        'PACKET_HEADER_GEOMETRY_INVALID',
+        'Packet header text collides with published page geometry.',
+        {'pageId': page.pageId.value},
+      );
+    }
     return EngineResult.success(
       PacketHeaderLayout(
         identityMarkers: markerRegions,
+        markerRowBounds: markerRowBounds,
+        packetInfoTextBounds: packetInfoTextBounds,
         packetLabelBounds: packetLabelBounds,
         pageLabelBounds: pageLabelBounds,
       ),

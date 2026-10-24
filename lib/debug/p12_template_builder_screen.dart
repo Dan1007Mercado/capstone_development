@@ -6,6 +6,7 @@ import '../application/answer_sheet_packets/in_memory_packet_response_repository
 import '../application/answer_sheet_packets/packet_generation_service.dart';
 import '../application/answer_sheet_packets/packet_models.dart';
 import '../application/template_builder/template_builder_controller.dart';
+import '../application/template_builder/template_id_generator.dart';
 import '../application/template_builder/template_pdf_exporter.dart';
 import '../application/template_builder/user_accessible_template_pdf_exporter.dart';
 import '../application/published_templates/in_memory_published_template_artifact_repository.dart';
@@ -47,6 +48,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.answerSheetPublicationService,
     this.packetGenerationService,
     this.packetPreviewer,
+    this.templateIdGenerator,
     this.showDeveloperControls = false,
   });
 
@@ -60,6 +62,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
   final PublishedTemplateArtifactService? answerSheetPublicationService;
   final PacketGenerationService? packetGenerationService;
   final PacketPdfPreviewer? packetPreviewer;
+  final TemplateIdGenerator? templateIdGenerator;
   final bool showDeveloperControls;
 
   @override
@@ -100,6 +103,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   List<PublishedTemplateArtifact> _answerSheetArtifacts = const [];
   List<AnswerSheetPacket> _persistedPackets = const [];
   List<PacketArtifact> _generatedPackets = const [];
+  PacketBatchArtifact? _generatedBatch;
+  PdfExportOutcome? _batchExportOutcome;
   int _responseCount = 0;
   bool _generatingPackets = false;
   bool _loadingPublishedArtifacts = true;
@@ -107,11 +112,16 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   EngineError? _packetGenerationError;
   final Set<PacketId> _busyPacketIds = {};
   final Map<PacketId, PdfExportOutcome> _packetExportOutcomes = {};
+  bool _batchBusy = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = widget.controller ?? TemplateBuilderController();
+    _controller =
+        widget.controller ??
+        TemplateBuilderController(
+          templateIdGenerator: widget.templateIdGenerator,
+        );
     _exporter = widget.exporter ?? UserAccessibleTemplatePdfExporter();
     _pdfGenerator = widget.pdfGenerator ?? () => _controller.generatePdf();
     _densePdfGenerator = widget.densePdfGenerator ?? _generateDenseArtifact;
@@ -188,24 +198,12 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       (left, right) =>
           right.templateVersion.value.compareTo(left.templateVersion.value),
     );
-    final currentTemplateId = _controller.snapshot.definition.id;
-    final matching = available
-        .where((artifact) => artifact.templateId == currentTemplateId)
-        .toList(growable: false);
-    final selected = matching.firstOrNull;
     setState(() {
       _loadingPublishedArtifacts = false;
       _answerSheetArtifacts = available;
       _persistedPackets = packets.valueOrNull ?? const [];
-      _publishedAnswerSheetArtifact = selected;
       _responseCount = responses.valueOrNull?.length ?? 0;
       _error = failure;
-      if (selected != null) {
-        _publishedDefinition = selected.template;
-        _publishedVersions = matching
-            .map((artifact) => artifact.template)
-            .toList(growable: false);
-      }
     });
   }
 
@@ -221,6 +219,32 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _packetGenerationError = null;
       _packetGenerationMessage = null;
       _packetExportOutcomes.clear();
+      _generatedBatch = null;
+      _batchExportOutcome = null;
+    });
+  }
+
+  void _newTemplate() {
+    setState(() {
+      _controller = TemplateBuilderController(
+        templateIdGenerator: widget.templateIdGenerator,
+      );
+      _publishedDefinition = null;
+      _publishedVersions = const [];
+      _publishedAnswerSheetArtifact = null;
+      _generatedPackets = const [];
+      _generatedBatch = null;
+      _batchExportOutcome = null;
+      _packetExportOutcomes.clear();
+      _lifecycleMessage = 'Created a new independent template.';
+      _answerSheetPublicationMessage = null;
+      _packetGenerationMessage = null;
+      _packetGenerationError = null;
+      _validation = null;
+      _preview = null;
+      _pdf = null;
+      _exportOutcome = null;
+      _error = null;
     });
   }
 
@@ -457,7 +481,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _packetGenerationError = null;
       _packetGenerationMessage = null;
     });
-    final generated = await _packetGenerationService.generatePackets(
+    final generated = await _packetGenerationService.generateBatch(
       published,
       count: count,
     );
@@ -469,11 +493,10 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _generatingPackets = false;
       _packetGenerationError = generated.errorOrNull ?? responses?.errorOrNull;
       if (generated.isSuccess) {
-        _generatedPackets = [..._generatedPackets, ...generated.value];
-        _persistedPackets = [
-          ..._persistedPackets,
-          ...generated.value.map((artifact) => artifact.packet),
-        ];
+        final batch = generated.value;
+        _generatedBatch = batch;
+        _batchExportOutcome = null;
+        _persistedPackets = [..._persistedPackets, ...batch.packets];
         _responseCount = responses?.valueOrNull?.length ?? _responseCount;
         _packetGenerationMessage = count == 1
             ? 'Generated 1 packet successfully'
@@ -520,8 +543,53 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         packet.packetId,
         packet.templateVersion,
       ),
-      packetId: packet.packetId.value,
+      title: 'Packet ${packet.packetId.value}',
     );
+  }
+
+  Future<void> _previewBatch() async {
+    final batch = _generatedBatch;
+    if (batch == null) return;
+    final first = batch.packets.first.packetId;
+    final last = batch.packets.last.packetId;
+    await _packetPreviewer.preview(
+      context,
+      bytes: batch.pdfBytes,
+      fileName: packetBatchPdfFileName(
+        batch.publishedArtifact.template.name,
+        first,
+        last,
+        batch.publishedArtifact.templateVersion,
+      ),
+      title: 'Packet batch ${first.value}–${last.value}',
+    );
+  }
+
+  Future<void> _saveBatch() async {
+    final batch = _generatedBatch;
+    if (batch == null) return;
+    final first = batch.packets.first.packetId;
+    final last = batch.packets.last.packetId;
+    setState(() {
+      _batchBusy = true;
+      _packetGenerationError = null;
+      _batchExportOutcome = null;
+    });
+    final saved = await _exporter.export(
+      bytes: batch.pdfBytes,
+      suggestedFileName: packetBatchPdfFileName(
+        batch.publishedArtifact.template.name,
+        first,
+        last,
+        batch.publishedArtifact.templateVersion,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _batchBusy = false;
+      _packetGenerationError = saved.errorOrNull;
+      _batchExportOutcome = saved.valueOrNull;
+    });
   }
 
   Future<void> _savePacket(AnswerSheetPacket packet) async {
@@ -579,6 +647,12 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       if (result.isSuccess) {
         final artifact = result.value;
         _publishedAnswerSheetArtifact = artifact;
+        _generatedPackets = const [];
+        _generatedBatch = null;
+        _batchExportOutcome = null;
+        _packetGenerationMessage = null;
+        _packetGenerationError = null;
+        _packetExportOutcomes.clear();
         _answerSheetArtifacts = history == null || history.isFailure
             ? [..._answerSheetArtifacts, artifact]
             : history.value
@@ -756,6 +830,10 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _controller = buildP12MixedTemplateDemo();
       _publishedDefinition = null;
       _publishedVersions = const [];
+      _publishedAnswerSheetArtifact = null;
+      _generatedPackets = const [];
+      _generatedBatch = null;
+      _batchExportOutcome = null;
       _lifecycleMessage = null;
       _answerSheetPublicationMessage = null;
       _validation = null;
@@ -778,6 +856,18 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              key: const Key('new-template'),
+              onPressed: _publishing || _generatingPdf || _generatingPackets
+                  ? null
+                  : _newTemplate,
+              icon: const Icon(Icons.note_add_outlined),
+              label: const Text('New Template'),
+            ),
+          ),
+          const SizedBox(height: 8),
           Card(
             key: const Key('template-lifecycle-diagnostics'),
             child: Padding(
@@ -1025,9 +1115,10 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                   else
                     DropdownButtonFormField<PublishedTemplateArtifact>(
                       key: const Key('published-answer-sheet-selector'),
+                      isExpanded: true,
                       initialValue: _publishedAnswerSheetArtifact,
                       decoration: const InputDecoration(
-                        labelText: 'Published answer sheet',
+                        labelText: 'Open existing published answer sheet',
                       ),
                       items: [
                         for (final artifact in _answerSheetArtifacts)
@@ -1035,7 +1126,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                             value: artifact,
                             child: Text(
                               '${artifact.template.name} '
-                              'v${artifact.templateVersion.value}',
+                              'v${artifact.templateVersion.value} '
+                              '(${artifact.templateId.value})',
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                       ],
@@ -1096,6 +1189,58 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                         'Packet generation failed\n'
                         '${error.code}\n${error.message}',
                         key: const Key('packet-generation-error'),
+                      ),
+                    ),
+                  if (_generatedBatch case final batch?)
+                    Card(
+                      key: const Key('generated-packet-batch'),
+                      margin: const EdgeInsets.only(top: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Batch: ${batch.packets.length} packet(s) · '
+                              '${batch.pageCount} PDF page(s)',
+                            ),
+                            Text(
+                              '${batch.packets.first.packetId.value} – '
+                              '${batch.packets.last.packetId.value}',
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                FilledButton.tonal(
+                                  key: const Key('preview-packet-batch'),
+                                  onPressed: _batchBusy ? null : _previewBatch,
+                                  child: const Text('Preview Batch PDF'),
+                                ),
+                                FilledButton.tonal(
+                                  key: const Key('save-packet-batch'),
+                                  onPressed: _batchBusy ? null : _saveBatch,
+                                  child: Text(
+                                    _batchBusy
+                                        ? 'Saving...'
+                                        : 'Save / Print Batch PDF',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_batchExportOutcome case final outcome?) ...[
+                              const SizedBox(height: 8),
+                              SelectableText(
+                                outcome.userCancelled
+                                    ? 'Batch save cancelled. Generated packets remain reserved.'
+                                    : 'Batch PDF saved successfully.\n'
+                                          'URI: ${outcome.locationUri}',
+                                key: const Key('batch-save-outcome'),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                   if (_visiblePackets.isNotEmpty)

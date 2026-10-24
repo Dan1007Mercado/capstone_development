@@ -5,6 +5,7 @@ import '../../core/ids/identifiers.dart';
 import '../../core/protocol/packet_marker_codec.dart';
 import '../../core/result/engine_result.dart';
 import '../../engines/layout/domain/layout_config.dart';
+import '../../engines/pdf/application/packet_batch_pdf_engine.dart';
 import '../../engines/pdf/application/packet_pdf_engine.dart';
 import '../../engines/scanner/domain/packet_scan_identity.dart';
 import '../../engines/template/domain/template_status.dart';
@@ -18,17 +19,26 @@ typedef PacketPdfRenderer =
       AnswerSheetPacket packet,
     );
 
+typedef PacketBatchPdfRenderer =
+    Future<EngineResult<Uint8List>> Function(
+      PublishedTemplateArtifact published,
+      Iterable<AnswerSheetPacket> packets,
+    );
+
 final class PacketGenerationService {
   PacketGenerationService({
     required this.repository,
     PacketPdfRenderer? pdfRenderer,
+    PacketBatchPdfRenderer? batchPdfRenderer,
     this.markerCodec = const PacketMarkerCodec(),
     DateTime Function()? clock,
   }) : pdfRenderer = pdfRenderer ?? PacketPdfEngine().render,
+       batchPdfRenderer = batchPdfRenderer ?? PacketBatchPdfEngine().render,
        clock = clock ?? DateTime.now;
 
   final PacketResponseRepository repository;
   final PacketPdfRenderer pdfRenderer;
+  final PacketBatchPdfRenderer batchPdfRenderer;
   final PacketMarkerCodec markerCodec;
   final DateTime Function() clock;
 
@@ -56,28 +66,58 @@ final class PacketGenerationService {
     PublishedTemplateArtifact published, {
     required int count,
   }) async {
-    if (published.template.status != TemplateStatus.published ||
-        published.layoutProfile != LayoutProfile.answerSheet) {
-      return EngineResult.failure(
-        EngineError(
-          code: 'PACKET_ARTIFACT_INVALID',
-          message: 'Packets require a published answer-sheet artifact.',
-        ),
-      );
+    final packetsResult = await _reservePackets(published, count);
+    if (packetsResult.isFailure) {
+      return EngineResult.failure(packetsResult.error);
     }
-    if (published.layout.pages.length >
-        PacketMarkerCodec.maximumPageIndex + 1) {
-      return EngineResult.failure(
-        EngineError(
-          code: 'PACKET_MARKER_CAPACITY_EXCEEDED',
-          message: 'Published artifact has too many pages for packet markers.',
-        ),
-      );
+    final packets = packetsResult.value;
+    final artifacts = <PacketArtifact>[];
+    for (final packet in packets) {
+      final rendered = await renderPacket(published, packet);
+      if (rendered.isFailure) return EngineResult.failure(rendered.error);
+      artifacts.add(rendered.value);
     }
+    final saved = await repository.saveGeneratedPackets(packets);
+    if (saved.isFailure) return EngineResult.failure(saved.error);
+    return EngineResult.success(List.unmodifiable(artifacts));
+  }
+
+  /// Reserves unique packet identities, renders one ordered batch PDF, then
+  /// commits all packet metadata atomically. Reserved IDs are never reused if
+  /// rendering or persistence fails.
+  Future<EngineResult<PacketBatchArtifact>> generateBatch(
+    PublishedTemplateArtifact published, {
+    required int count,
+  }) async {
+    final packetsResult = await _reservePackets(published, count);
+    if (packetsResult.isFailure) {
+      return EngineResult.failure(packetsResult.error);
+    }
+    final packets = packetsResult.value;
+    final rendered = await batchPdfRenderer(published, packets);
+    if (rendered.isFailure) return EngineResult.failure(rendered.error);
+    final saved = await repository.saveGeneratedPackets(packets);
+    if (saved.isFailure) return EngineResult.failure(saved.error);
+    return EngineResult.success(
+      PacketBatchArtifact(
+        publishedArtifact: published,
+        packets: packets,
+        pdfBytes: rendered.value,
+        createdAt: clock().toUtc(),
+      ),
+    );
+  }
+
+  Future<EngineResult<List<AnswerSheetPacket>>> _reservePackets(
+    PublishedTemplateArtifact published,
+    int count,
+  ) async {
+    final validation = _validatePublishedArtifact(published);
+    if (validation != null) return EngineResult.failure(validation);
     final reserved = await repository.reservePacketSequences(count);
     if (reserved.isFailure) return EngineResult.failure(reserved.error);
+    final createdAt = clock().toUtc();
     final packets = <AnswerSheetPacket>[];
-    final artifacts = <PacketArtifact>[];
     for (final sequence in reserved.value) {
       final packetId = PacketId.fromSequence(sequence);
       final pages = <AnswerSheetPacketPage>[];
@@ -97,22 +137,36 @@ final class PacketGenerationService {
           ),
         );
       }
-      final packet = AnswerSheetPacket(
-        packetId: packetId,
-        templateId: published.templateId,
-        templateVersion: published.templateVersion,
-        createdAt: clock().toUtc(),
-        pages: pages,
-        status: AnswerSheetPacketStatus.unused,
+      packets.add(
+        AnswerSheetPacket(
+          packetId: packetId,
+          templateId: published.templateId,
+          templateVersion: published.templateVersion,
+          createdAt: createdAt,
+          pages: pages,
+          status: AnswerSheetPacketStatus.unused,
+        ),
       );
-      final rendered = await renderPacket(published, packet);
-      if (rendered.isFailure) return EngineResult.failure(rendered.error);
-      packets.add(packet);
-      artifacts.add(rendered.value);
     }
-    final saved = await repository.saveGeneratedPackets(packets);
-    if (saved.isFailure) return EngineResult.failure(saved.error);
-    return EngineResult.success(List.unmodifiable(artifacts));
+    return EngineResult.success(List.unmodifiable(packets));
+  }
+
+  EngineError? _validatePublishedArtifact(PublishedTemplateArtifact published) {
+    if (published.template.status != TemplateStatus.published ||
+        published.layoutProfile != LayoutProfile.answerSheet) {
+      return EngineError(
+        code: 'PACKET_ARTIFACT_INVALID',
+        message: 'Packets require a published answer-sheet artifact.',
+      );
+    }
+    if (published.layout.pages.length >
+        PacketMarkerCodec.maximumPageIndex + 1) {
+      return EngineError(
+        code: 'PACKET_MARKER_CAPACITY_EXCEEDED',
+        message: 'Published artifact has too many pages for packet markers.',
+      );
+    }
+    return null;
   }
 }
 

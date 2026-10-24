@@ -3,12 +3,13 @@ import 'dart:typed_data';
 
 import '../../core/ids/identifiers.dart';
 import '../../engines/recognition/domain/mark_classification.dart';
+import '../published_templates/published_template_artifact.dart';
 
 enum AnswerSheetPacketStatus { unused, partial, complete }
 
 enum PaperResponseStatus { partial, complete }
 
-enum ResponseSource { paper }
+enum ResponseSource { paper, online }
 
 enum PacketPageClaimStatus { accepted, duplicate }
 
@@ -91,25 +92,43 @@ final class StoredPacketPageResult {
   final List<StoredQuestionResponse> questions;
 }
 
-final class PaperResponse {
+/// Shared response identity without requiring a paper packet.
+///
+/// Future online response records can implement this contract without a
+/// synthetic [PacketId].
+abstract interface class ResponseRecord {
+  ResponseId get responseId;
+  TemplateId get templateId;
+  TemplateVersion get templateVersion;
+  ResponseSource get source;
+  DateTime get createdAt;
+  DateTime get updatedAt;
+}
+
+final class PaperResponse implements ResponseRecord {
   PaperResponse({
     required this.responseId,
     required this.packetId,
     required this.templateId,
     required this.templateVersion,
-    required this.source,
     required this.createdAt,
     required this.updatedAt,
     required this.status,
     required Map<PageId, StoredPacketPageResult> pageResults,
   }) : pageResults = UnmodifiableMapView(Map.of(pageResults));
 
+  @override
   final ResponseId responseId;
   final PacketId packetId;
+  @override
   final TemplateId templateId;
+  @override
   final TemplateVersion templateVersion;
-  final ResponseSource source;
+  @override
+  ResponseSource get source => ResponseSource.paper;
+  @override
   final DateTime createdAt;
+  @override
   final DateTime updatedAt;
   final PaperResponseStatus status;
   final Map<PageId, StoredPacketPageResult> pageResults;
@@ -121,6 +140,24 @@ final class PacketArtifact {
 
   final AnswerSheetPacket packet;
   final Uint8List pdfBytes;
+}
+
+final class PacketBatchArtifact {
+  PacketBatchArtifact({
+    required this.publishedArtifact,
+    required Iterable<AnswerSheetPacket> packets,
+    required Uint8List pdfBytes,
+    required this.createdAt,
+  }) : packets = UnmodifiableListView(List.of(packets)),
+       pdfBytes = Uint8List.fromList(pdfBytes);
+
+  final PublishedTemplateArtifact publishedArtifact;
+  final List<AnswerSheetPacket> packets;
+  final Uint8List pdfBytes;
+  final DateTime createdAt;
+
+  int get pageCount =>
+      packets.fold(0, (count, packet) => count + packet.pages.length);
 }
 
 final class PacketPageClaimResult {

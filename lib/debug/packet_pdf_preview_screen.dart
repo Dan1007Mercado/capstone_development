@@ -8,7 +8,7 @@ abstract interface class PacketPdfPreviewer {
     BuildContext context, {
     required Uint8List bytes,
     required String fileName,
-    required String packetId,
+    required String title,
   });
 }
 
@@ -20,13 +20,13 @@ final class NavigatorPacketPdfPreviewer implements PacketPdfPreviewer {
     BuildContext context, {
     required Uint8List bytes,
     required String fileName,
-    required String packetId,
+    required String title,
   }) => Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => PacketPdfPreviewScreen(
         bytes: bytes,
         fileName: fileName,
-        packetId: packetId,
+        title: title,
       ),
     ),
   );
@@ -36,17 +36,17 @@ class PacketPdfPreviewScreen extends StatelessWidget {
   PacketPdfPreviewScreen({
     required Uint8List bytes,
     required this.fileName,
-    required this.packetId,
+    required this.title,
     super.key,
   }) : bytes = Uint8List.fromList(bytes);
 
   final Uint8List bytes;
   final String fileName;
-  final String packetId;
+  final String title;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text('Packet $packetId')),
+    appBar: AppBar(title: Text(title)),
     body: PdfPreview(
       key: const Key('packet-pdf-preview'),
       build: (_) async => bytes,

@@ -131,6 +131,16 @@ String packetPdfFileName(
   '$templateName-packet-${packetId.value}-v${version.value}.pdf',
 );
 
+String packetBatchPdfFileName(
+  String templateName,
+  PacketId firstPacketId,
+  PacketId lastPacketId,
+  TemplateVersion version,
+) => sanitizePdfFileName(
+  '$templateName-packets-${firstPacketId.value}-${lastPacketId.value}'
+  '-v${version.value}.pdf',
+);
+
 String sanitizePdfFileName(String value) {
   final withoutExtension = value.toLowerCase().endsWith('.pdf')
       ? value.substring(0, value.length - 4)

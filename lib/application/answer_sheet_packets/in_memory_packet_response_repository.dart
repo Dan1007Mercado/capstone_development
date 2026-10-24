@@ -149,7 +149,6 @@ final class InMemoryPacketResponseRepository
         packetId: packetId,
         templateId: packet.templateId,
         templateVersion: packet.templateVersion,
-        source: ResponseSource.paper,
         createdAt: scannedAt,
         updatedAt: scannedAt,
         status: packet.pages.length == 1
@@ -195,7 +194,6 @@ final class InMemoryPacketResponseRepository
       packetId: response.packetId,
       templateId: response.templateId,
       templateVersion: response.templateVersion,
-      source: response.source,
       createdAt: response.createdAt,
       updatedAt: scannedAt,
       status: complete

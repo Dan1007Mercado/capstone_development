@@ -453,6 +453,7 @@ void main() {
     );
 
     await _tapVisible(tester, const Key('generate-dense-validation-pdf'));
+    await _revealVisible(tester, const Key('pdf-export-result'));
 
     expect(calls, 1);
     expect(
@@ -641,7 +642,10 @@ void main() {
   ) async {
     final repository = InMemoryTemplateRepository();
     final publication = TemplatePublicationService(repository: repository);
-    final controller = TemplateBuilderController(name: 'Lifecycle Survey');
+    final controller = TemplateBuilderController(
+      templateId: TemplateId('template-1'),
+      name: 'Lifecycle Survey',
+    );
     final section = controller.addSection(title: 'Section');
     controller.addQuestion(section, prompt: 'Question');
     await tester.pumpWidget(

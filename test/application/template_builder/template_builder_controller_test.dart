@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:capstone_development/application/template_builder/template_builder_controller.dart';
+import 'package:capstone_development/application/template_builder/template_id_generator.dart';
+import 'package:capstone_development/core/ids/identifiers.dart';
 import 'package:capstone_development/debug/p12_template_builder_fixture.dart';
 import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/layout/domain/layout_regions.dart';
@@ -11,6 +13,44 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('TemplateBuilderController structure', () {
+    test('fresh controllers receive independent name-free identities', () {
+      final first = TemplateBuilderController(name: 'Same Name');
+      final second = TemplateBuilderController(name: 'Same Name');
+
+      expect(
+        first.snapshot.definition.id,
+        isNot(second.snapshot.definition.id),
+      );
+      expect(first.snapshot.definition.version, TemplateVersion(1));
+      expect(second.snapshot.definition.sections, isEmpty);
+    });
+
+    test('template identity generation is injectable and stable', () {
+      final controller = TemplateBuilderController(
+        templateIdGenerator: _FixedTemplateIdGenerator('tmpl-test-fixed'),
+      );
+
+      expect(controller.snapshot.definition.id.value, 'tmpl-test-fixed');
+      controller.updateName('Renamed');
+      controller.addSection();
+      expect(controller.snapshot.definition.id.value, 'tmpl-test-fixed');
+    });
+
+    test('revision keeps TemplateId and increments TemplateVersion', () {
+      final original = TemplateBuilderController(
+        templateId: TemplateId('tmpl-revision'),
+      );
+      final section = original.addSection(title: 'Section');
+      original.addQuestion(section, prompt: 'Question');
+      final published = original.buildDefinition().toPublishedAfterValidation();
+      final revision = TemplateBuilderController.fromDraft(
+        published.createNextDraftRevision(),
+      );
+
+      expect(revision.snapshot.definition.id, published.id);
+      expect(revision.snapshot.definition.version, TemplateVersion(2));
+    });
+
     test('creates an immutable empty/new draft', () {
       final controller = TemplateBuilderController();
 
@@ -377,3 +417,12 @@ void main() {
 
 List<TemplateQuestion> _questions(TemplateBuilderController controller) =>
     controller.snapshot.definition.sections.single.questions;
+
+final class _FixedTemplateIdGenerator implements TemplateIdGenerator {
+  _FixedTemplateIdGenerator(this.value);
+
+  final String value;
+
+  @override
+  TemplateId generate() => TemplateId(value);
+}

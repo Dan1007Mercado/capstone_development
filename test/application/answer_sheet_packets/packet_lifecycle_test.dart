@@ -7,6 +7,7 @@ import 'package:capstone_development/application/answer_sheet_packets/packet_gen
 import 'package:capstone_development/application/answer_sheet_packets/packet_models.dart';
 import 'package:capstone_development/application/answer_sheet_packets/packet_response_service.dart';
 import 'package:capstone_development/application/published_templates/published_template_artifact.dart';
+import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/ids/identifiers.dart';
 import 'package:capstone_development/core/protocol/packet_marker_codec.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
@@ -82,6 +83,82 @@ void main() {
         hasLength(100 * artifact.layout.pages.length),
       );
       expect((await repository.listResponses()).value, isEmpty);
+    },
+  );
+
+  test(
+    'batch generation commits 50 unused packets and scan creates one response',
+    () async {
+      final repository = InMemoryPacketResponseRepository();
+      final artifact = _publishedArtifact();
+      var renderCalls = 0;
+      final generated = await PacketGenerationService(
+        repository: repository,
+        batchPdfRenderer: (_, packets) async {
+          renderCalls++;
+          expect(packets, hasLength(50));
+          return EngineResult.success(
+            Uint8List.fromList([37, 80, 68, 70, 45, 66]),
+          );
+        },
+      ).generateBatch(artifact, count: 50);
+
+      expect(
+        generated.isSuccess,
+        isTrue,
+        reason: generated.errorOrNull?.toString(),
+      );
+      expect(renderCalls, 1);
+      expect(generated.value.packets, hasLength(50));
+      expect(
+        generated.value.packets.map((packet) => packet.packetId).toSet(),
+        hasLength(50),
+      );
+      expect(
+        generated.value.packets.every(
+          (packet) => packet.status == AnswerSheetPacketStatus.unused,
+        ),
+        isTrue,
+      );
+      expect((await repository.listResponses()).value, isEmpty);
+
+      final claimed = await PacketResponseService(
+        repository: repository,
+      ).claim(_scan(generated.value.packets.first, 0));
+
+      expect(claimed.isSuccess, isTrue);
+      expect((await repository.listResponses()).value, hasLength(1));
+      final stored = (await repository.listPackets()).value;
+      expect(
+        stored.where(
+          (packet) => packet.status == AnswerSheetPacketStatus.unused,
+        ),
+        hasLength(49),
+      );
+    },
+  );
+
+  test(
+    'failed batch commits no packets and never reuses reserved IDs',
+    () async {
+      final repository = InMemoryPacketResponseRepository();
+      final artifact = _publishedArtifact();
+      final service = PacketGenerationService(
+        repository: repository,
+        batchPdfRenderer: (_, _) async => EngineResult.failure(
+          EngineError(
+            code: 'PACKET_BATCH_RENDER_FAILED',
+            message: 'Synthetic batch failure.',
+          ),
+        ),
+      );
+
+      final failed = await service.generateBatch(artifact, count: 2);
+
+      expect(failed.error.code, 'PACKET_BATCH_RENDER_FAILED');
+      expect((await repository.listPackets()).value, isEmpty);
+      expect((await repository.listResponses()).value, isEmpty);
+      expect((await repository.reservePacketSequences(1)).value, [2]);
     },
   );
 

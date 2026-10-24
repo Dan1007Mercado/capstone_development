@@ -16,6 +16,7 @@ import '../../engines/template/domain/template_option.dart';
 import '../../engines/template/domain/template_question.dart';
 import '../../engines/template/domain/template_section.dart';
 import '../../engines/template/domain/template_status.dart';
+import 'template_id_generator.dart';
 
 /// Immutable view of the active, unpublished builder draft.
 final class TemplateBuilderSnapshot {
@@ -60,7 +61,10 @@ final class TemplateBuilderController {
     LayoutEngine? layoutEngine,
     PdfEngine? pdfEngine,
     LayoutConfig? layoutConfig,
-  }) : _templateId = templateId ?? TemplateId('template-1'),
+    TemplateIdGenerator? templateIdGenerator,
+  }) : _templateId =
+           templateId ??
+           (templateIdGenerator ?? RandomTemplateIdGenerator()).generate(),
        _version = version ?? TemplateVersion(1),
        _name = name,
        _description = description,

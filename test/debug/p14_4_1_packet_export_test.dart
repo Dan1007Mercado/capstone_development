@@ -1,6 +1,7 @@
 import 'package:capstone_development/application/answer_sheet_packets/in_memory_packet_response_repository.dart';
 import 'package:capstone_development/application/answer_sheet_packets/packet_generation_service.dart';
 import 'package:capstone_development/application/published_templates/in_memory_published_template_artifact_repository.dart';
+import 'package:capstone_development/application/published_templates/published_template_artifact.dart';
 import 'package:capstone_development/application/published_templates/published_template_artifact_service.dart';
 import 'package:capstone_development/application/template_builder/template_pdf_exporter.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
@@ -64,6 +65,8 @@ void main() {
       final packetService = PacketGenerationService(
         repository: packetRepository,
         pdfRenderer: (_, _) async => EngineResult.success(packetBytes),
+        batchPdfRenderer: (_, _) async =>
+            EngineResult.success(Uint8List.fromList([37, 80, 68, 70, 45, 66])),
       );
       final previewer = _RecordingPreviewer();
       final exporter = _RecordingExporter();
@@ -80,6 +83,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await _selectArtifact(tester, published.value);
       final generate = find.byKey(const Key('generate-answer-sheet-packets'));
       await _reveal(tester, generate);
 
@@ -115,7 +119,7 @@ void main() {
       previewButton.onPressed!();
       await tester.pumpAndSettle();
       expect(listEquals(previewer.bytes, packetBytes), isTrue);
-      expect(previewer.packetId, packetId);
+      expect(previewer.title, 'Packet $packetId');
 
       final saveButton = tester.widget<TextButton>(
         find.byKey(ValueKey('save-packet-$packetId')),
@@ -155,6 +159,9 @@ void main() {
       pdfRenderer: (_, packet) async => EngineResult.success(
         Uint8List.fromList([37, 80, 68, 70, packet.packetId.sequence]),
       ),
+      batchPdfRenderer: (_, packets) async => EngineResult.success(
+        Uint8List.fromList([37, 80, 68, 70, packets.length]),
+      ),
     );
 
     await tester.pumpWidget(
@@ -167,6 +174,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectArtifact(tester, published.value);
     await _tapVisible(
       tester,
       find.byKey(const Key('generate-answer-sheet-packets')),
@@ -184,6 +192,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('selected-answer-sheet'), skipOffstage: false),
+      findsNothing,
+    );
+    await _selectArtifact(tester, published.value);
     final generate = find.byKey(const Key('generate-answer-sheet-packets'));
     await _reveal(tester, generate);
 
@@ -216,13 +229,13 @@ void main() {
       pdfRenderer: (_, _) async =>
           EngineResult.success(Uint8List.fromList([37, 80, 68, 70, 3])),
     );
-    await publicationService.publish(
+    final published = await publicationService.publish(
       draft: controller.buildDefinition(),
       layoutConfig: LayoutConfig.a4AnswerSheet(),
     );
     final packetService = PacketGenerationService(
       repository: InMemoryPacketResponseRepository(),
-      pdfRenderer: (_, _) async => EngineResult.failure(
+      batchPdfRenderer: (_, _) async => EngineResult.failure(
         EngineError(
           code: 'PACKET_RENDER_FAILED',
           message: 'Unable to render packet bytes.',
@@ -240,6 +253,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await _selectArtifact(tester, published.value);
     await _tapVisible(
       tester,
       find.byKey(const Key('generate-answer-sheet-packets')),
@@ -294,21 +308,33 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _selectArtifact(
+  WidgetTester tester,
+  PublishedTemplateArtifact artifact,
+) async {
+  final finder = find.byKey(const Key('published-answer-sheet-selector'));
+  await _reveal(tester, finder);
+  tester
+      .widget<DropdownButtonFormField<PublishedTemplateArtifact>>(finder)
+      .onChanged!(artifact);
+  await tester.pumpAndSettle();
+}
+
 final class _RecordingPreviewer implements PacketPdfPreviewer {
   Uint8List? bytes;
   String? fileName;
-  String? packetId;
+  String? title;
 
   @override
   Future<void> preview(
     BuildContext context, {
     required Uint8List bytes,
     required String fileName,
-    required String packetId,
+    required String title,
   }) async {
     this.bytes = Uint8List.fromList(bytes);
     this.fileName = fileName;
-    this.packetId = packetId;
+    this.title = title;
   }
 }
 

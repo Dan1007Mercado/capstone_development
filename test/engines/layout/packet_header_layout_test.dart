@@ -22,7 +22,53 @@ void main() {
     final result = const PacketHeaderLayoutEngine().build(page, markerIds);
 
     expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
-    for (final identity in result.value.identityMarkers) {
+    final header = result.value;
+    expect(
+      header.markerRowBounds.bottom.millimeters,
+      lessThanOrEqualTo(header.packetInfoTextBounds.top.millimeters),
+    );
+    expect(
+      header.packetInfoTextBounds.containsRect(header.packetLabelBounds),
+      isTrue,
+    );
+    expect(
+      header.packetInfoTextBounds.containsRect(header.pageLabelBounds),
+      isTrue,
+    );
+    expect(
+      header.packetLabelBounds.intersects(header.pageLabelBounds),
+      isFalse,
+    );
+    for (final textBounds in [
+      header.packetLabelBounds,
+      header.pageLabelBounds,
+    ]) {
+      expect(
+        page.markerRegions.any(
+          (marker) => marker.physicalBounds.intersects(textBounds),
+        ),
+        isFalse,
+      );
+      expect(
+        header.identityMarkers.any(
+          (marker) => marker.physicalBounds.intersects(textBounds),
+        ),
+        isFalse,
+      );
+      expect(
+        page.questionRegions.any(
+          (question) => question.physicalBounds.intersects(textBounds),
+        ),
+        isFalse,
+      );
+      expect(
+        page.bubbleRegions.any(
+          (bubble) => bubble.physicalBounds.intersects(textBounds),
+        ),
+        isFalse,
+      );
+    }
+    for (final identity in header.identityMarkers) {
       expect(
         page.printableBounds.containsRect(identity.physicalBounds),
         isTrue,
