@@ -28,6 +28,31 @@ final class DetectedDocument {
   final double confidence;
 }
 
+enum DocumentTrackingPhase { searching, acquired, tracking, temporarilyLost }
+
+final class DocumentTrackingUpdate {
+  const DocumentTrackingUpdate({
+    required this.phase,
+    required this.document,
+    required this.isFresh,
+    required this.temporaryMissCount,
+    required this.stability,
+  });
+
+  const DocumentTrackingUpdate.searching()
+    : phase = DocumentTrackingPhase.searching,
+      document = null,
+      isFresh = false,
+      temporaryMissCount = 0,
+      stability = DocumentStability.unavailable;
+
+  final DocumentTrackingPhase phase;
+  final DetectedDocument? document;
+  final bool isFresh;
+  final int temporaryMissCount;
+  final DocumentStability stability;
+}
+
 final class DocumentQuality {
   const DocumentQuality({required this.brightness, required this.sharpness});
 
@@ -43,7 +68,6 @@ enum LiveFrameGateReason {
   tooDark,
   tooBright,
   tooBlurry,
-  unstable,
   pass,
 }
 

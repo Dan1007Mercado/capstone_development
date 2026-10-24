@@ -17,12 +17,10 @@ camera preview (independent platform texture)
                          480-640 px preparation
                                 |
                     document contour + local quality
-                                |
-                       contour stability tracker
                          /                  \
-                    reject                 promising
+          persistent visual tracker     usable candidate
                       |                       |
-                  guidance             640-800 px ArUco
+               immediate outline       640-800 px ArUco
                                               |
                                 page identity + registration
                                               |
@@ -70,12 +68,21 @@ white-paper-on-light-background deadlock. Setting `documentGateEnabled` to
 
 ## Stability and readiness
 
-`FrameStabilityTracker` compares normalized document corners, centroid, and
-area between observations. This cheap stability gate does not replace the
-existing marker-based confirmation. READY requires acceptable document
-quality, document stability, resolved page identity, usable registration
-geometry, marker stability, and an ArUco confirmation no older than
-`arucoConfirmationMaxAge` (450 ms by default).
+P15.0.2 separates two concurrent live phases. `DocumentTracker` acquires,
+associates, and lightly smooths physical-paper geometry for immediate preview
+feedback. It retains that visual geometry for at most three missed analysis
+frames, but marks it stale so it cannot authorize capture.
+
+In parallel, every fresh plausible document frame runs ArUco immediately.
+Document stability no longer has to complete before marker analysis begins;
+this removes the serial document-stability then marker-stability delay. Cheap
+document brightness, sharpness, size, and gross-skew checks only decide whether
+heavy live ArUco work is worthwhile. Resolved page identity, registration
+geometry, and marker stability remain the single authoritative READY path.
+
+READY requires acceptable frame quality, resolved page identity, usable
+registration geometry, marker stability, and an ArUco confirmation no older
+than `arucoConfirmationMaxAge` (450 ms by default).
 
 When no contour is available, a successful fallback probe may instead use the
 p14 marker-based readiness path. Stability is accumulated only from successful
@@ -112,11 +119,13 @@ can remain partial while another page is rejected and later rescanned.
 Developer diagnostics retain existing timings and add document detection,
 quality, stability, ArUco, and total live-analysis timing. Counters include
 received, accepted, processed, dropped, document-detected, document-rejected,
-document-detector-failed, recoverable-analysis-failed, ArUco-attempted,
-ArUco-skipped, fallback-probe, and ready frames. Derived output includes ArUco
-avoidance, dropped-frame ratio, first-document-to-ready, and
-first-identity-to-ready durations. Device performance goals are measurements,
-not CI wall-clock assertions.
+document-detector-failed, temporary-document-loss, recoverable-analysis-failed,
+ArUco-attempted, ArUco-skipped, fallback-probe, and ready frames. Derived output
+includes ArUco attempt/avoidance ratios, dropped-frame ratio,
+first-document-to-identity, first-document-to-ready, and
+first-identity-to-ready durations. These measurements show whether ArUco began
+with acquisition rather than after document stabilization. Device performance
+goals are measurements, not CI wall-clock assertions.
 
 ## Manual physical test matrix
 

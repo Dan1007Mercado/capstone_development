@@ -8,7 +8,6 @@ final class LiveFrameGate {
     required CameraEngineConfig config,
     required DetectedDocument? document,
     required DocumentQuality quality,
-    required DocumentStability stability,
     required bool fallbackProbeDue,
   }) {
     if (!config.documentGateEnabled) {
@@ -40,9 +39,6 @@ final class LiveFrameGate {
     if (document.geometry.perspectiveRatio >
         config.maximumDocumentPerspectiveRatio) {
       return _reject(LiveFrameGateReason.tooSkewed);
-    }
-    if (!stability.isStable) {
-      return _reject(LiveFrameGateReason.unstable);
     }
     return const LiveFrameGateResult(
       reason: LiveFrameGateReason.pass,

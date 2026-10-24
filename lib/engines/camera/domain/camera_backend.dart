@@ -30,5 +30,7 @@ abstract interface class CameraFrameAnalyzer {
     CameraEngineConfig config,
   );
 
+  void resetTracking();
+
   Future<void> dispose();
 }

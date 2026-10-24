@@ -44,6 +44,8 @@ final class CameraEngine {
   int _documentRejectedFrames = 0;
   int _documentDetectionFailures = 0;
   String? _lastDocumentDetectionError;
+  int _documentTemporaryLosses = 0;
+  bool _documentTemporarilyLost = false;
   int _recoverableAnalysisFailures = 0;
   String? _lastRecoverableAnalysisError;
   int _arucoAttemptedFrames = 0;
@@ -58,6 +60,7 @@ final class CameraEngine {
   DateTime? _firstDocumentDetectedAt;
   Duration? _firstRecognitionToReadyDuration;
   Duration? _firstDocumentToReadyDuration;
+  Duration? _firstDocumentToIdentityDuration;
   DateTime? _lastSuccessfulArucoConfirmationAt;
   PageId? _lastConfirmedPageId;
   Set<int>? _lastConfirmedMarkerIds;
@@ -126,7 +129,7 @@ final class CameraEngine {
       );
       return result;
     }
-    _resetStability(clearConfirmation: true);
+    resetTracking();
     _emit(_copyState(lifecycle: CameraLifecycleState.ready));
     return result;
   }
@@ -191,7 +194,7 @@ final class CameraEngine {
       await backend.stopAnalysis();
     }
     await backend.dispose();
-    _resetStability(clearConfirmation: true);
+    resetTracking();
     _emit(const CameraEngineState.uninitialized());
     return EngineResult.success(true);
   }
@@ -296,7 +299,14 @@ final class CameraEngine {
         timings.documentDetectionDuration +
         timings.qualityEvaluationDuration +
         timings.stabilityEvaluationDuration;
-    if (result.value.document != null) _documentDetectedFrames++;
+    if (result.value.documentFresh) _documentDetectedFrames++;
+    final temporarilyLost =
+        result.value.documentTrackingPhase ==
+        DocumentTrackingPhase.temporarilyLost;
+    if (temporarilyLost && !_documentTemporarilyLost) {
+      _documentTemporaryLosses++;
+    }
+    _documentTemporarilyLost = temporarilyLost;
     if (!result.value.gateResult.passed) _documentRejectedFrames++;
     if (result.value.documentDetectionFailed) {
       _documentDetectionFailures++;
@@ -342,6 +352,8 @@ final class CameraEngine {
           sensorOrientationDegrees: frame.sensorOrientationDegrees,
           deviceOrientation: frame.deviceOrientation,
           document: result.value.document,
+          documentFresh: result.value.documentFresh,
+          documentTrackingPhase: result.value.documentTrackingPhase,
           gateResult: result.value.gateResult,
           arucoConfirmationAge: _lastSuccessfulArucoConfirmationAt == null
               ? null
@@ -378,7 +390,6 @@ final class CameraEngine {
       LiveFrameGateReason.tooDark => CaptureReadinessStatus.tooDark,
       LiveFrameGateReason.tooBright => CaptureReadinessStatus.tooBright,
       LiveFrameGateReason.tooBlurry => CaptureReadinessStatus.tooBlurry,
-      LiveFrameGateReason.unstable => CaptureReadinessStatus.unstable,
       LiveFrameGateReason.disabled || LiveFrameGateReason.pass => null,
     };
     if (validArucoConfirmation) {
@@ -554,6 +565,7 @@ final class CameraEngine {
       documentRejectedFrameCount: _documentRejectedFrames,
       documentDetectionFailureCount: _documentDetectionFailures,
       lastDocumentDetectionError: _lastDocumentDetectionError,
+      documentTemporaryLossCount: _documentTemporaryLosses,
       recoverableAnalysisFailureCount: _recoverableAnalysisFailures,
       lastRecoverableAnalysisError: _lastRecoverableAnalysisError,
       arucoAttemptedFrameCount: _arucoAttemptedFrames,
@@ -573,6 +585,7 @@ final class CameraEngine {
                   _totalArucoDuration.inMicroseconds ~/ _arucoAttemptedFrames,
             ),
       firstDocumentToReadyDuration: _firstDocumentToReadyDuration,
+      firstDocumentToIdentityDuration: _firstDocumentToIdentityDuration,
     );
   }
 
@@ -592,11 +605,18 @@ final class CameraEngine {
     }
     _lastReadinessEvaluatedAt = timestamp;
     _lastReadinessStatus = status;
+    if (observation.documentFresh) {
+      _firstDocumentDetectedAt ??= timestamp;
+    }
     if (observation.resolvedPageId != null) {
       _firstPageRecognizedAt ??= timestamp;
-    }
-    if (observation.document != null) {
-      _firstDocumentDetectedAt ??= timestamp;
+      if (_firstDocumentDetectedAt != null &&
+          _firstDocumentToIdentityDuration == null) {
+        final elapsed = timestamp.difference(_firstDocumentDetectedAt!);
+        _firstDocumentToIdentityDuration = elapsed.isNegative
+            ? Duration.zero
+            : elapsed;
+      }
     }
     if (status == CaptureReadinessStatus.ready &&
         _firstRecognitionToReadyDuration == null &&
@@ -618,6 +638,8 @@ final class CameraEngine {
 
   void resetTracking() {
     if (_disposed) return;
+    analyzer.resetTracking();
+    _documentTemporarilyLost = false;
     _resetStability(clearConfirmation: true);
   }
 

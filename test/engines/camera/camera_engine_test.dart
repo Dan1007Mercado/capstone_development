@@ -731,6 +731,101 @@ void main() {
     );
     await fixture.dispose();
   });
+
+  test('document motion does not add a second readiness window', () async {
+    final movingDocument = _testDocument();
+    final observations = [
+      for (var index = 0; index < 3; index++)
+        _observation(
+          document: movingDocument,
+          documentFresh: true,
+          documentStability: DocumentStability(
+            isStable: false,
+            stableFrameCount: 1,
+            motion: 0.03 + index * 0.01,
+          ),
+          resolvedPageId: PageId('SH1'),
+          gateReason: LiveFrameGateReason.pass,
+        ),
+    ];
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(observations: observations),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    await fixture.emitAndSettle(400);
+
+    expect(fixture.engine.state.readiness.status, CaptureReadinessStatus.ready);
+    expect(fixture.engine.diagnostics.arucoAttemptedFrameCount, 3);
+    expect(
+      fixture.engine.diagnostics.firstDocumentToIdentityDuration,
+      Duration.zero,
+    );
+    await fixture.dispose();
+  });
+
+  test('retained visual document does not authorize capture', () async {
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observation: _observation(
+          ids: const [],
+          points: const [],
+          arucoRan: false,
+          document: _testDocument(),
+          documentFresh: false,
+          documentTrackingPhase: DocumentTrackingPhase.temporarilyLost,
+          gateReason: LiveFrameGateReason.noDocument,
+        ),
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+
+    expect(fixture.engine.state.analysis!.document, isNotNull);
+    expect(fixture.engine.state.analysis!.documentFresh, isFalse);
+    expect(
+      fixture.engine.state.readiness.status,
+      CaptureReadinessStatus.searching,
+    );
+    expect(fixture.engine.state.autoCaptureRequested, isFalse);
+    await fixture.dispose();
+  });
+
+  test('diagnostics count temporary-loss episodes once', () async {
+    final retained = _observation(
+      ids: const [],
+      points: const [],
+      arucoRan: false,
+      document: _testDocument(),
+      documentFresh: false,
+      documentTrackingPhase: DocumentTrackingPhase.temporarilyLost,
+      gateReason: LiveFrameGateReason.noDocument,
+    );
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [
+          retained,
+          retained,
+          _observation(
+            ids: const [],
+            points: const [],
+            arucoRan: false,
+            gateReason: LiveFrameGateReason.noDocument,
+          ),
+          retained,
+        ],
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    await fixture.emitAndSettle(400);
+    await fixture.emitAndSettle(600);
+
+    expect(fixture.engine.diagnostics.documentTemporaryLossCount, 2);
+    await fixture.dispose();
+  });
 }
 
 final class _Fixture {
@@ -881,6 +976,9 @@ final class _FakeAnalyzer implements CameraFrameAnalyzer {
   Future<void> dispose() async {
     disposed = true;
   }
+
+  @override
+  void resetTracking() {}
 }
 
 CameraAnalysisFrame _frame(
@@ -913,6 +1011,10 @@ CameraFrameObservation _observation({
   PageId? resolvedPageId,
   bool documentDetectionFailed = false,
   String? documentDetectionError,
+  DetectedDocument? document,
+  bool documentFresh = false,
+  DocumentTrackingPhase documentTrackingPhase = DocumentTrackingPhase.searching,
+  DocumentStability documentStability = DocumentStability.unavailable,
 }) => CameraFrameObservation(
   detectedMarkerIds: ids,
   registrationPoints: points ?? _points(),
@@ -923,6 +1025,10 @@ CameraFrameObservation _observation({
   sharpness: sharpness,
   frameSize: ImageSize(width: 1000, height: 1000),
   resolvedPageId: resolvedPageId,
+  document: document,
+  documentFresh: documentFresh,
+  documentTrackingPhase: documentTrackingPhase,
+  documentStability: documentStability,
   arucoRan: arucoRan,
   documentDetectionFailed: documentDetectionFailed,
   documentDetectionError: documentDetectionError,
@@ -939,6 +1045,16 @@ List<ImagePoint> _points({double offset = 0}) => [
   ImagePoint(900 + offset, 900),
   ImagePoint(100 + offset, 900),
 ];
+
+DetectedDocument _testDocument() => DetectedDocument(
+  geometry: DocumentGeometry(
+    corners: _points(),
+    areaRatio: 0.4,
+    centroid: ImagePoint(500, 500),
+    perspectiveRatio: 1.5,
+  ),
+  confidence: 0.9,
+);
 
 EngineResult<T> _failure<T>(String code, String message) =>
     EngineResult.failure(EngineError(code: code, message: message));

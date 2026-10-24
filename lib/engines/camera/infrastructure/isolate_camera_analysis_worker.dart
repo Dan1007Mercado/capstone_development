@@ -9,7 +9,7 @@ import '../../aruco/domain/page_marker_signature_resolver.dart';
 import '../../layout/domain/layout_config.dart';
 import '../../aruco/domain/image_geometry.dart';
 import '../../aruco/infrastructure/opencv_aruco_detector.dart';
-import '../application/frame_stability_tracker.dart';
+import '../application/document_tracker.dart';
 import '../application/live_frame_gate.dart';
 import '../domain/camera_backend.dart';
 import '../domain/camera_engine_config.dart';
@@ -133,6 +133,12 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
           pageResolutionErrorCode:
               message['pageResolutionErrorCode'] as String?,
           document: document,
+          documentFresh: message['documentFresh']! as bool,
+          documentTrackingPhase: DocumentTrackingPhase.values.byName(
+            message['documentTrackingPhase']! as String,
+          ),
+          documentTemporaryMissCount:
+              message['documentTemporaryMissCount']! as int,
           documentQuality: DocumentQuality(
             brightness: message['brightness']! as double,
             sharpness: message['sharpness']! as double,
@@ -176,6 +182,11 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
   }
 
   @override
+  void resetTracking() {
+    _commands?.send({'resetTracking': true});
+  }
+
+  @override
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
@@ -206,6 +217,10 @@ void _cameraWorkerMain(SendPort ready) {
   ready.send(commands.sendPort);
   commands.listen((dynamic rawMessage) {
     final message = (rawMessage as Map<Object?, Object?>);
+    if (message['resetTracking'] == true) {
+      state.resetTracking();
+      return;
+    }
     final reply = message['reply']! as SendPort;
     if (message['dispose'] == true) {
       state.dispose();
@@ -283,11 +298,13 @@ Map<Object?, Object?> _analyzeInWorker(
     ..stop();
 
   final stabilityStopwatch = Stopwatch()..start();
+  final tracking = state
+      .documentTrackerFor(task)
+      .update(detectedInAnalysis, frameSize: gatePrepared.analysisSize);
   final normalizedDocument = _normalizedDocument(
     detectedInAnalysis,
     gatePrepared.analysisSize,
   );
-  final stability = state.stabilityTrackerFor(task).update(normalizedDocument);
   stabilityStopwatch.stop();
   final frameIndex = state.nextFrameIndex();
   final fallbackDue =
@@ -297,7 +314,6 @@ Map<Object?, Object?> _analyzeInWorker(
     config: config,
     document: normalizedDocument,
     quality: quality,
-    stability: stability,
     fallbackProbeDue: fallbackDue,
   );
 
@@ -373,7 +389,7 @@ Map<Object?, Object?> _analyzeInWorker(
     geometryStopwatch.stop();
   }
   final sourceDocument = _remapDocument(
-    detectedInAnalysis,
+    tracking.document,
     gatePrepared.sourceSize,
     gatePrepared.analysisSize,
   );
@@ -405,9 +421,12 @@ Map<Object?, Object?> _analyzeInWorker(
     'documentCentroidX': sourceDocument?.geometry.centroid.x,
     'documentCentroidY': sourceDocument?.geometry.centroid.y,
     'documentConfidence': sourceDocument?.confidence,
-    'documentStable': stability.isStable,
-    'documentStableFrames': stability.stableFrameCount,
-    'documentMotion': stability.motion,
+    'documentFresh': tracking.isFresh,
+    'documentTrackingPhase': tracking.phase.name,
+    'documentTemporaryMissCount': tracking.temporaryMissCount,
+    'documentStable': tracking.stability.isStable,
+    'documentStableFrames': tracking.stability.stableFrameCount,
+    'documentMotion': tracking.stability.motion,
     'gateReason': gate.reason.name,
     'arucoRan': gate.shouldRunAruco,
     'fallbackProbe': gate.fallbackProbe,
@@ -430,27 +449,27 @@ final class _CameraWorkerState {
       const OpenCvDocumentDetector();
   String? _signatureKey;
   PageMarkerSignatureResolver? _resolver;
-  FrameStabilityTracker? _stabilityTracker;
+  DocumentTracker? _documentTracker;
   double? _stabilityThreshold;
   int? _minimumStableFrames;
   int _frameIndex = 0;
 
   int nextFrameIndex() => ++_frameIndex;
 
-  FrameStabilityTracker stabilityTrackerFor(Map<Object?, Object?> task) {
+  DocumentTracker documentTrackerFor(Map<Object?, Object?> task) {
     final threshold = task['documentStabilityThreshold']! as double;
     final frames = task['minimumStableFrames']! as int;
-    if (_stabilityTracker == null ||
+    if (_documentTracker == null ||
         _stabilityThreshold != threshold ||
         _minimumStableFrames != frames) {
       _stabilityThreshold = threshold;
       _minimumStableFrames = frames;
-      _stabilityTracker = FrameStabilityTracker(
+      _documentTracker = DocumentTracker(
         maximumMotion: threshold,
         minimumStableFrames: frames,
       );
     }
-    return _stabilityTracker!;
+    return _documentTracker!;
   }
 
   PageMarkerSignatureResolver? resolverFor(
@@ -479,10 +498,12 @@ final class _CameraWorkerState {
 
   void dispose() {
     detector.dispose();
-    _stabilityTracker = null;
+    _documentTracker = null;
     _resolver = null;
     _signatureKey = null;
   }
+
+  void resetTracking() => _documentTracker?.reset();
 }
 
 MarkerIds _markerIds(List<int> ids) {

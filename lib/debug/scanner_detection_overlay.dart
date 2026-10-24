@@ -207,16 +207,16 @@ final class _ScannerDetectionPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth =
             geometrySource == ScannerOverlayGeometrySource.markerRegistration
-            ? 2
-            : 3,
+            ? 1.5
+            : 2,
     );
     final cornerPaint = Paint()..color = color;
     for (final point in points) {
       canvas.drawCircle(
         Offset(point.x, point.y),
         geometrySource == ScannerOverlayGeometrySource.markerRegistration
-            ? 3
-            : 5,
+            ? 2
+            : 3,
         cornerPaint,
       );
     }

@@ -193,6 +193,9 @@ final class CameraFrameObservation {
     this.resolvedPageId,
     this.pageResolutionErrorCode,
     this.document,
+    this.documentFresh = false,
+    this.documentTrackingPhase = DocumentTrackingPhase.searching,
+    this.documentTemporaryMissCount = 0,
     this.documentQuality,
     this.documentStability = DocumentStability.unavailable,
     this.gateResult = const LiveFrameGateResult(
@@ -224,6 +227,9 @@ final class CameraFrameObservation {
   final PageId? resolvedPageId;
   final String? pageResolutionErrorCode;
   final DetectedDocument? document;
+  final bool documentFresh;
+  final DocumentTrackingPhase documentTrackingPhase;
+  final int documentTemporaryMissCount;
   final DocumentQuality? documentQuality;
   final DocumentStability documentStability;
   final LiveFrameGateResult gateResult;
@@ -295,6 +301,8 @@ final class CameraAnalysisState {
     this.sensorOrientationDegrees = 0,
     this.deviceOrientation = CameraDeviceOrientation.unknown,
     this.document,
+    this.documentFresh = false,
+    this.documentTrackingPhase = DocumentTrackingPhase.searching,
     this.gateResult = const LiveFrameGateResult(
       reason: LiveFrameGateReason.disabled,
       shouldRunAruco: true,
@@ -316,6 +324,8 @@ final class CameraAnalysisState {
   final int sensorOrientationDegrees;
   final CameraDeviceOrientation deviceOrientation;
   final DetectedDocument? document;
+  final bool documentFresh;
+  final DocumentTrackingPhase documentTrackingPhase;
   final LiveFrameGateResult gateResult;
   final Duration? arucoConfirmationAge;
 }
@@ -334,6 +344,7 @@ final class CameraDiagnostics {
     this.documentRejectedFrameCount = 0,
     this.documentDetectionFailureCount = 0,
     this.lastDocumentDetectionError,
+    this.documentTemporaryLossCount = 0,
     this.recoverableAnalysisFailureCount = 0,
     this.lastRecoverableAnalysisError,
     this.arucoAttemptedFrameCount = 0,
@@ -343,6 +354,7 @@ final class CameraDiagnostics {
     this.averageDocumentGateDuration = Duration.zero,
     this.averageArucoDuration = Duration.zero,
     this.firstDocumentToReadyDuration,
+    this.firstDocumentToIdentityDuration,
   });
 
   final int receivedFrameCount;
@@ -357,6 +369,7 @@ final class CameraDiagnostics {
   final int documentRejectedFrameCount;
   final int documentDetectionFailureCount;
   final String? lastDocumentDetectionError;
+  final int documentTemporaryLossCount;
   final int recoverableAnalysisFailureCount;
   final String? lastRecoverableAnalysisError;
   final int arucoAttemptedFrameCount;
@@ -366,6 +379,11 @@ final class CameraDiagnostics {
   final Duration averageDocumentGateDuration;
   final Duration averageArucoDuration;
   final Duration? firstDocumentToReadyDuration;
+  final Duration? firstDocumentToIdentityDuration;
+
+  double get arucoAttemptRatio => processedFrameCount == 0
+      ? 0
+      : arucoAttemptedFrameCount / processedFrameCount;
 
   double get arucoAvoidanceRatio => processedFrameCount == 0
       ? 0
