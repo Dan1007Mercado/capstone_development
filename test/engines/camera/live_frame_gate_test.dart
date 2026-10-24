@@ -15,7 +15,7 @@ void main() {
         gate
             .evaluate(
               config: config,
-              document: _document(),
+              analysisMode: LiveAnalysisMode.active,
               quality: const DocumentQuality(brightness: 20, sharpness: 20),
               fallbackProbeDue: true,
             )
@@ -24,46 +24,35 @@ void main() {
       );
       final blurred = gate.evaluate(
         config: config,
-        document: _document(),
-        quality: const DocumentQuality(brightness: 120, sharpness: 5),
+        analysisMode: LiveAnalysisMode.active,
+        quality: const DocumentQuality(brightness: 120, sharpness: 4),
         fallbackProbeDue: true,
       );
       expect(blurred.reason, LiveFrameGateReason.tooBlurry);
       expect(blurred.shouldRunAruco, isFalse);
     });
 
-    test('small document skips and valid document allows ArUco', () {
-      final small = gate.evaluate(
+    test('active mode does not let contour quality throttle ArUco', () {
+      final result = gate.evaluate(
         config: config,
-        document: _document(areaRatio: 0.05),
+        analysisMode: LiveAnalysisMode.active,
         quality: _quality,
         fallbackProbeDue: false,
       );
-      expect(small.reason, LiveFrameGateReason.tooSmall);
-      expect(small.shouldRunAruco, isFalse);
-      expect(
-        gate
-            .evaluate(
-              config: config,
-              document: _document(),
-              quality: _quality,
-              fallbackProbeDue: false,
-            )
-            .shouldRunAruco,
-        isTrue,
-      );
+      expect(result.reason, LiveFrameGateReason.pass);
+      expect(result.shouldRunAruco, isTrue);
     });
 
     test('no-contour fallback probe occurs', () {
       final ordinary = gate.evaluate(
         config: config,
-        document: null,
+        analysisMode: LiveAnalysisMode.search,
         quality: _quality,
         fallbackProbeDue: false,
       );
       final probe = gate.evaluate(
         config: config,
-        document: null,
+        analysisMode: LiveAnalysisMode.search,
         quality: _quality,
         fallbackProbeDue: true,
       );
@@ -75,7 +64,7 @@ void main() {
     test('disabled gate restores unconditional ArUco behavior', () {
       final result = gate.evaluate(
         config: CameraEngineConfig(documentGateEnabled: false),
-        document: null,
+        analysisMode: LiveAnalysisMode.search,
         quality: const DocumentQuality(brightness: 0, sharpness: 0),
         fallbackProbeDue: false,
       );
@@ -86,13 +75,58 @@ void main() {
     test('plausible moving document starts ArUco immediately', () {
       final result = gate.evaluate(
         config: config,
-        document: _document(),
+        analysisMode: LiveAnalysisMode.active,
         quality: _quality,
         fallbackProbeDue: false,
       );
 
       expect(result.reason, LiveFrameGateReason.pass);
       expect(result.shouldRunAruco, isTrue);
+    });
+  });
+
+  group('LiveAnalysisModeTracker', () {
+    test('document candidate activates full-rate acquisition immediately', () {
+      final tracker = LiveAnalysisModeTracker();
+
+      expect(
+        tracker.beginFrame(hasDocumentCandidate: true),
+        LiveAnalysisMode.active,
+      );
+    });
+
+    test('one marker wakes active mode and brief loss does not demote it', () {
+      final tracker = LiveAnalysisModeTracker(maximumAbsentFrames: 2);
+      tracker.finishFrame(
+        hasDocumentCandidate: false,
+        hasMarker: true,
+        hasIdentity: false,
+      );
+      tracker.finishFrame(
+        hasDocumentCandidate: false,
+        hasMarker: false,
+        hasIdentity: false,
+      );
+
+      expect(tracker.mode, LiveAnalysisMode.active);
+    });
+
+    test('bounded complete evidence loss returns to search', () {
+      final tracker = LiveAnalysisModeTracker(maximumAbsentFrames: 2);
+      tracker.finishFrame(
+        hasDocumentCandidate: false,
+        hasMarker: true,
+        hasIdentity: false,
+      );
+      for (var index = 0; index < 3; index++) {
+        tracker.finishFrame(
+          hasDocumentCandidate: false,
+          hasMarker: false,
+          hasIdentity: false,
+        );
+      }
+
+      expect(tracker.mode, LiveAnalysisMode.search);
     });
   });
 
@@ -113,7 +147,7 @@ void main() {
       expect(acquired.phase, DocumentTrackingPhase.acquired);
       expect(acquired.isFresh, isTrue);
       expect(moving.phase, DocumentTrackingPhase.tracking);
-      expect(moving.document!.geometry.corners.first.x, closeTo(103.5, 1e-9));
+      expect(moving.document!.geometry.corners.first.x, closeTo(106.5, 1e-9));
     });
 
     test('temporary misses retain visual geometry then clear it', () {
@@ -171,22 +205,6 @@ void main() {
 }
 
 const _quality = DocumentQuality(brightness: 120, sharpness: 100);
-DetectedDocument _document({double areaRatio = 0.5, double offset = 0}) =>
-    DetectedDocument(
-      geometry: DocumentGeometry(
-        corners: [
-          ImagePoint(0.1 + offset, 0.1),
-          ImagePoint(0.9 + offset, 0.1),
-          ImagePoint(0.9 + offset, 0.9),
-          ImagePoint(0.1 + offset, 0.9),
-        ],
-        areaRatio: areaRatio,
-        centroid: ImagePoint(0.5 + offset, 0.5),
-        perspectiveRatio: 1,
-      ),
-      confidence: 0.9,
-    );
-
 DetectedDocument _pixelDocument({double areaRatio = 0.5, double offset = 0}) =>
     DetectedDocument(
       geometry: DocumentGeometry(

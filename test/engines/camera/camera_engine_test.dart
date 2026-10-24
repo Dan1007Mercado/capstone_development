@@ -5,6 +5,8 @@ import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/ids/identifiers.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
+import 'package:capstone_development/engines/aruco/domain/page_marker_signature_resolver.dart';
+import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/camera/application/camera_engine.dart';
 import 'package:capstone_development/engines/camera/domain/camera_backend.dart';
 import 'package:capstone_development/engines/camera/domain/camera_engine_config.dart';
@@ -824,8 +826,105 @@ void main() {
     await fixture.emitAndSettle(600);
 
     expect(fixture.engine.diagnostics.documentTemporaryLossCount, 2);
+    expect(fixture.engine.diagnostics.documentLossCount, 1);
     await fixture.dispose();
   });
+
+  test(
+    'wrong identity requires consistent observations and recovers',
+    () async {
+      final wrong = _observation(
+        ids: const [20, 21, 22, 23],
+        resolvedPageId: null,
+        pageResolutionErrorCode: 'SCAN_UNKNOWN_PAGE_MARKERS',
+        gateReason: LiveFrameGateReason.pass,
+        analysisMode: LiveAnalysisMode.active,
+      );
+      final fixture = _Fixture(
+        config: CameraEngineConfig(
+          minimumStableFrames: 1,
+          stabilityWindowSize: 1,
+          pageMarkerSignatures: [
+            PageMarkerSignature(
+              pageId: PageId('SH1'),
+              markerIds: MarkerIds.defaults,
+            ),
+          ],
+        ),
+        analyzer: _FakeAnalyzer(
+          observations: [
+            wrong,
+            wrong,
+            wrong,
+            _observation(
+              resolvedPageId: PageId('SH1'),
+              gateReason: LiveFrameGateReason.pass,
+              analysisMode: LiveAnalysisMode.active,
+            ),
+          ],
+        ),
+      );
+      await fixture.initializeAndStart();
+
+      await fixture.emitAndSettle(0);
+      expect(
+        fixture.engine.state.readiness.status,
+        CaptureReadinessStatus.verifyingMarkers,
+      );
+      expect(
+        fixture.engine.state.analysis!.tracking.pageResolutionErrorCode,
+        isNull,
+      );
+      await fixture.emitAndSettle(200);
+      expect(
+        fixture.engine.state.readiness.status,
+        CaptureReadinessStatus.verifyingMarkers,
+      );
+      await fixture.emitAndSettle(400);
+      expect(
+        fixture.engine.state.readiness.status,
+        CaptureReadinessStatus.unknownSheet,
+      );
+      expect(
+        fixture.engine.state.analysis!.tracking.pageResolutionErrorCode,
+        'SCAN_UNKNOWN_PAGE_MARKERS',
+      );
+      await fixture.emitAndSettle(600);
+      expect(fixture.engine.state.readiness.isReady, isTrue);
+      expect(
+        fixture.engine.state.analysis!.tracking.pageResolutionErrorCode,
+        isNull,
+      );
+      await fixture.dispose();
+    },
+  );
+
+  test(
+    'active acquisition attempts ArUco every frame through weak contour',
+    () async {
+      final fixture = _Fixture(
+        analyzer: _FakeAnalyzer(
+          observations: [
+            for (var index = 0; index < 3; index++)
+              _observation(
+                resolvedPageId: PageId('SH1'),
+                gateReason: LiveFrameGateReason.pass,
+                analysisMode: LiveAnalysisMode.active,
+              ),
+          ],
+        ),
+      );
+      await fixture.initializeAndStart();
+      await fixture.emitAndSettle(0);
+      await fixture.emitAndSettle(200);
+      await fixture.emitAndSettle(400);
+
+      expect(fixture.engine.state.readiness.isReady, isTrue);
+      expect(fixture.engine.diagnostics.activeFrameCount, 3);
+      expect(fixture.engine.diagnostics.activeArucoAttemptRatio, 1);
+      await fixture.dispose();
+    },
+  );
 }
 
 final class _Fixture {
@@ -1009,6 +1108,8 @@ CameraFrameObservation _observation({
   LiveFrameGateReason gateReason = LiveFrameGateReason.disabled,
   bool fallbackProbe = false,
   PageId? resolvedPageId,
+  String? pageResolutionErrorCode,
+  LiveAnalysisMode analysisMode = LiveAnalysisMode.search,
   bool documentDetectionFailed = false,
   String? documentDetectionError,
   DetectedDocument? document,
@@ -1025,6 +1126,8 @@ CameraFrameObservation _observation({
   sharpness: sharpness,
   frameSize: ImageSize(width: 1000, height: 1000),
   resolvedPageId: resolvedPageId,
+  pageResolutionErrorCode: pageResolutionErrorCode,
+  analysisMode: analysisMode,
   document: document,
   documentFresh: documentFresh,
   documentTrackingPhase: documentTrackingPhase,

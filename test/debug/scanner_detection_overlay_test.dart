@@ -7,6 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('paper outline uses a high-contrast dual stroke', () {
+    expect(scannerOverlayOuterStrokeWidth, 4);
+    expect(scannerOverlayInnerStrokeWidth, 2);
+  });
+
   test('overlay state maps real tracking and workflow phases', () {
     expect(
       scannerOverlayState(_state(markerIds: const [])),

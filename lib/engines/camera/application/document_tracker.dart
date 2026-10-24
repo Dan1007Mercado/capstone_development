@@ -14,9 +14,9 @@ final class DocumentTracker {
   });
 
   static const _maximumTemporaryMisses = 3;
-  static const _smoothing = 0.35;
-  static const _maximumCentroidDistance = 0.2;
-  static const _maximumAreaDifference = 0.4;
+  static const _smoothing = 0.65;
+  static const _maximumCentroidDistance = 0.3;
+  static const _maximumAreaDifference = 0.55;
 
   final double maximumMotion;
   final int minimumStableFrames;

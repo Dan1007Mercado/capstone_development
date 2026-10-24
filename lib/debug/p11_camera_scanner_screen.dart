@@ -182,6 +182,11 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
           'Document temporary losses: '
           '${camera.diagnostics.documentTemporaryLossCount}',
         ),
+        Text(
+          'Document acquisitions/losses: '
+          '${camera.diagnostics.documentAcquisitionCount}/'
+          '${camera.diagnostics.documentLossCount}',
+        ),
         if (camera.diagnostics.lastDocumentDetectionError case final error?)
           Text('Latest document detector diagnostic: $error'),
         Text(
@@ -202,6 +207,15 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
           '${(camera.diagnostics.arucoAvoidanceRatio * 100).toStringAsFixed(1)}%',
         ),
         Text(
+          'SEARCH/ACTIVE frames: '
+          '${camera.diagnostics.searchFrameCount}/'
+          '${camera.diagnostics.activeFrameCount}',
+        ),
+        Text(
+          'ACTIVE ArUco ratio: '
+          '${(camera.diagnostics.activeArucoAttemptRatio * 100).toStringAsFixed(1)}%',
+        ),
+        Text(
           'Average live/document gate/ArUco: '
           '${_milliseconds(camera.diagnostics.averageAnalysisDuration)}/'
           '${_milliseconds(camera.diagnostics.averageDocumentGateDuration)}/'
@@ -218,6 +232,12 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
         Text(
           'First document to identity: '
           '${_milliseconds(camera.diagnostics.firstDocumentToIdentityDuration)} ms',
+        ),
+        Text(
+          'First marker/identity/ready: '
+          '${_milliseconds(camera.diagnostics.timeToFirstMarker)}/'
+          '${_milliseconds(camera.diagnostics.timeToFirstIdentity)}/'
+          '${_milliseconds(camera.diagnostics.timeToReady)} ms',
         ),
         for (final status in CaptureReadinessStatus.values)
           Text(

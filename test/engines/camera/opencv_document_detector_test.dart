@@ -109,6 +109,39 @@ void main() {
     expect(attempt.failed, isTrue);
     expect(attempt.error, contains('synthetic contour failure'));
   });
+
+  test('marker-assisted search region is expanded and clamped', () {
+    final region = markerAssistedDocumentSearchRegion(
+      markerCorners: [ImagePoint(5, 10), ImagePoint(25, 30)],
+      sourceSize: ImageSize(width: 200, height: 300),
+      targetSize: ImageSize(width: 100, height: 150),
+    );
+
+    expect(region, isNotNull);
+    expect(region!.left, 0);
+    expect(region.top, 0);
+    expect(region.right, greaterThan(12.5));
+    expect(region.bottom, greaterThan(15));
+  });
+
+  test('marker-assisted region accepts the physical enclosing contour', () {
+    const region = DocumentSearchRegion(
+      left: 40,
+      top: 40,
+      right: 60,
+      bottom: 60,
+    );
+
+    expect(
+      region.isInside([
+        ImagePoint(10, 10),
+        ImagePoint(90, 10),
+        ImagePoint(90, 90),
+        ImagePoint(10, 90),
+      ]),
+      isTrue,
+    );
+  });
 }
 
 final class _ThrowingDocumentDetector implements DocumentDetector {
@@ -120,6 +153,7 @@ final class _ThrowingDocumentDetector implements DocumentDetector {
     required double cannyLowThreshold,
     required double cannyHighThreshold,
     required double polygonEpsilonRatio,
+    DocumentSearchRegion? searchRegion,
   }) => throw StateError('synthetic contour failure');
 }
 

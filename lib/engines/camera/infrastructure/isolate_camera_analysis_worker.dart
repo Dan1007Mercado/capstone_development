@@ -132,6 +132,9 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
               : PageId(message['resolvedPageId']! as String),
           pageResolutionErrorCode:
               message['pageResolutionErrorCode'] as String?,
+          analysisMode: LiveAnalysisMode.values.byName(
+            message['analysisMode']! as String,
+          ),
           document: document,
           documentFresh: message['documentFresh']! as bool,
           documentTrackingPhase: DocumentTrackingPhase.values.byName(
@@ -298,21 +301,20 @@ Map<Object?, Object?> _analyzeInWorker(
     ..stop();
 
   final stabilityStopwatch = Stopwatch()..start();
-  final tracking = state
+  var tracking = state
       .documentTrackerFor(task)
       .update(detectedInAnalysis, frameSize: gatePrepared.analysisSize);
-  final normalizedDocument = _normalizedDocument(
-    detectedInAnalysis,
-    gatePrepared.analysisSize,
-  );
   stabilityStopwatch.stop();
   final frameIndex = state.nextFrameIndex();
   final fallbackDue =
       (frameIndex - 1) % (task['arucoProbeEveryNFrames']! as int) == 0;
+  final analysisMode = state.analysisMode.beginFrame(
+    hasDocumentCandidate: detectedInAnalysis != null,
+  );
   final config = _workerConfig(task);
   final gate = const LiveFrameGate().evaluate(
     config: config,
-    document: normalizedDocument,
+    analysisMode: analysisMode,
     quality: quality,
     fallbackProbeDue: fallbackDue,
   );
@@ -324,6 +326,7 @@ Map<Object?, Object?> _analyzeInWorker(
   double? minimumMarkerSidePixels;
   String? resolvedPageId;
   String? pageResolutionErrorCode;
+  var markerCornersInSource = <ImagePoint>[];
   var arucoPrepared = gatePrepared;
   final arucoStopwatch = Stopwatch();
   final geometryStopwatch = Stopwatch();
@@ -363,6 +366,9 @@ Map<Object?, Object?> _analyzeInWorker(
       detectionResult.value,
       arucoPrepared.sourceSize,
     );
+    markerCornersInSource = [
+      for (final marker in sourceDetection.markers) ...marker.corners,
+    ];
     final resolver = state.resolverFor(
       (task['pageMarkerSignatures']! as List<Object?>)
           .cast<Map<Object?, Object?>>(),
@@ -388,6 +394,41 @@ Map<Object?, Object?> _analyzeInWorker(
     pageResolutionErrorCode = resolution?.errorOrNull?.code;
     geometryStopwatch.stop();
   }
+  if (!tracking.isFresh && markerCornersInSource.isNotEmpty) {
+    final searchRegion = markerAssistedDocumentSearchRegion(
+      markerCorners: markerCornersInSource,
+      sourceSize: gatePrepared.sourceSize,
+      targetSize: gatePrepared.analysisSize,
+    );
+    documentStopwatch.start();
+    final assistedAttempt = detectDocumentBestEffort(
+      detector: state.documentDetector,
+      pixels: gatePrepared.pixels,
+      width: gatePrepared.analysisSize.width,
+      height: gatePrepared.analysisSize.height,
+      cannyLowThreshold: task['documentCannyLowThreshold']! as double,
+      cannyHighThreshold: task['documentCannyHighThreshold']! as double,
+      polygonEpsilonRatio: task['documentPolygonEpsilonRatio']! as double,
+      searchRegion: searchRegion,
+    );
+    documentStopwatch.stop();
+    documentDetectionError ??= assistedAttempt.error;
+    if (assistedAttempt.document != null) {
+      stabilityStopwatch.start();
+      tracking = state
+          .documentTrackerFor(task)
+          .update(
+            assistedAttempt.document,
+            frameSize: gatePrepared.analysisSize,
+          );
+      stabilityStopwatch.stop();
+    }
+  }
+  state.analysisMode.finishFrame(
+    hasDocumentCandidate: tracking.isFresh,
+    hasMarker: detectedMarkerIds.isNotEmpty,
+    hasIdentity: resolvedPageId != null,
+  );
   final sourceDocument = _remapDocument(
     tracking.document,
     gatePrepared.sourceSize,
@@ -399,6 +440,7 @@ Map<Object?, Object?> _analyzeInWorker(
     'detectedMarkerIds': detectedMarkerIds,
     'resolvedPageId': resolvedPageId,
     'pageResolutionErrorCode': pageResolutionErrorCode,
+    'analysisMode': state.analysisMode.mode.name,
     'registrationPoints': [
       for (final point in registrationPoints) [point.x, point.y],
     ],
@@ -453,6 +495,7 @@ final class _CameraWorkerState {
   double? _stabilityThreshold;
   int? _minimumStableFrames;
   int _frameIndex = 0;
+  final LiveAnalysisModeTracker analysisMode = LiveAnalysisModeTracker();
 
   int nextFrameIndex() => ++_frameIndex;
 
@@ -501,9 +544,13 @@ final class _CameraWorkerState {
     _documentTracker = null;
     _resolver = null;
     _signatureKey = null;
+    analysisMode.reset();
   }
 
-  void resetTracking() => _documentTracker?.reset();
+  void resetTracking() {
+    _documentTracker?.reset();
+    analysisMode.reset();
+  }
 }
 
 MarkerIds _markerIds(List<int> ids) {
@@ -652,29 +699,6 @@ bool _insideConvexQuad(double x, double y, List<ImagePoint> corners) {
     if (cross.sign != sign) return false;
   }
   return true;
-}
-
-DetectedDocument? _normalizedDocument(
-  DetectedDocument? document,
-  ImageSize size,
-) {
-  if (document == null) return null;
-  final geometry = document.geometry;
-  return DetectedDocument(
-    geometry: DocumentGeometry(
-      corners: [
-        for (final point in geometry.corners)
-          ImagePoint(point.x / size.width, point.y / size.height),
-      ],
-      areaRatio: geometry.areaRatio,
-      centroid: ImagePoint(
-        geometry.centroid.x / size.width,
-        geometry.centroid.y / size.height,
-      ),
-      perspectiveRatio: geometry.perspectiveRatio,
-    ),
-    confidence: document.confidence,
-  );
 }
 
 DetectedDocument? _remapDocument(

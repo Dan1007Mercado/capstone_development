@@ -46,6 +46,9 @@ final class CameraEngine {
   String? _lastDocumentDetectionError;
   int _documentTemporaryLosses = 0;
   bool _documentTemporarilyLost = false;
+  bool _documentPresent = false;
+  int _documentAcquisitions = 0;
+  int _documentLosses = 0;
   int _recoverableAnalysisFailures = 0;
   String? _lastRecoverableAnalysisError;
   int _arucoAttemptedFrames = 0;
@@ -64,6 +67,15 @@ final class CameraEngine {
   DateTime? _lastSuccessfulArucoConfirmationAt;
   PageId? _lastConfirmedPageId;
   Set<int>? _lastConfirmedMarkerIds;
+  int _wrongIdentityStreak = 0;
+  bool _wrongIdentityConfirmed = false;
+  int _searchFrames = 0;
+  int _activeFrames = 0;
+  int _activeArucoAttemptedFrames = 0;
+  DateTime? _analysisStartedAt;
+  Duration? _timeToFirstMarker;
+  Duration? _timeToFirstIdentity;
+  Duration? _timeToReady;
 
   CameraEngineState get state => _state;
   CameraDiagnostics get diagnostics => _diagnostics;
@@ -300,6 +312,13 @@ final class CameraEngine {
         timings.qualityEvaluationDuration +
         timings.stabilityEvaluationDuration;
     if (result.value.documentFresh) _documentDetectedFrames++;
+    if (result.value.documentFresh && !_documentPresent) {
+      _documentAcquisitions++;
+    }
+    if (result.value.document == null && _documentPresent) {
+      _documentLosses++;
+    }
+    _documentPresent = result.value.document != null;
     final temporarilyLost =
         result.value.documentTrackingPhase ==
         DocumentTrackingPhase.temporarilyLost;
@@ -318,6 +337,12 @@ final class CameraEngine {
     } else {
       _arucoSkippedFrames++;
     }
+    if (result.value.analysisMode == LiveAnalysisMode.active) {
+      _activeFrames++;
+      if (result.value.arucoRan) _activeArucoAttemptedFrames++;
+    } else {
+      _searchFrames++;
+    }
     if (result.value.gateResult.fallbackProbe) _arucoFallbackProbeFrames++;
     _processedFrameTimes.addLast(frame.timestamp);
     while (_processedFrameTimes.length > config.stabilityWindowSize) {
@@ -333,7 +358,9 @@ final class CameraEngine {
             detectedMarkerIds: result.value.detectedMarkerIds,
             registrationPoints: result.value.registrationPoints,
             resolvedPageId: result.value.resolvedPageId,
-            pageResolutionErrorCode: result.value.pageResolutionErrorCode,
+            pageResolutionErrorCode: _wrongIdentityConfirmed
+                ? result.value.pageResolutionErrorCode
+                : null,
           ),
           quality: FrameQuality(
             brightness: result.value.brightness,
@@ -354,6 +381,7 @@ final class CameraEngine {
           document: result.value.document,
           documentFresh: result.value.documentFresh,
           documentTrackingPhase: result.value.documentTrackingPhase,
+          analysisMode: result.value.analysisMode,
           gateResult: result.value.gateResult,
           arucoConfirmationAge: _lastSuccessfulArucoConfirmationAt == null
               ? null
@@ -370,6 +398,13 @@ final class CameraEngine {
     CameraFrameObservation observation,
     DateTime timestamp,
   ) {
+    final isWrongIdentity =
+        observation.arucoRan &&
+        (observation.pageResolutionErrorCode == 'SCAN_UNKNOWN_PAGE_MARKERS' ||
+            observation.pageResolutionErrorCode ==
+                'SCAN_DUPLICATE_PAGE_MARKERS');
+    _wrongIdentityStreak = isWrongIdentity ? _wrongIdentityStreak + 1 : 0;
+    _wrongIdentityConfirmed = _wrongIdentityStreak >= 3;
     final expected = config.markerIds.values.toSet();
     final detected = observation.detectedMarkerIds.toSet();
     final validArucoConfirmation =
@@ -385,8 +420,6 @@ final class CameraEngine {
     failure = switch (observation.gateResult.reason) {
       LiveFrameGateReason.noDocument =>
         authoritativeFallback ? null : CaptureReadinessStatus.searching,
-      LiveFrameGateReason.tooSmall => CaptureReadinessStatus.tooSmall,
-      LiveFrameGateReason.tooSkewed => CaptureReadinessStatus.tooSkewed,
       LiveFrameGateReason.tooDark => CaptureReadinessStatus.tooDark,
       LiveFrameGateReason.tooBright => CaptureReadinessStatus.tooBright,
       LiveFrameGateReason.tooBlurry => CaptureReadinessStatus.tooBlurry,
@@ -423,10 +456,7 @@ final class CameraEngine {
     if (failure == null &&
         config.pageMarkerSignatures.isNotEmpty &&
         observation.resolvedPageId == null) {
-      failure =
-          observation.pageResolutionErrorCode == 'SCAN_UNKNOWN_PAGE_MARKERS' ||
-              observation.pageResolutionErrorCode ==
-                  'SCAN_DUPLICATE_PAGE_MARKERS'
+      failure = _wrongIdentityConfirmed
           ? CaptureReadinessStatus.unknownSheet
           : observation.gateResult.reason != LiveFrameGateReason.disabled
           ? CaptureReadinessStatus.verifyingMarkers
@@ -566,6 +596,8 @@ final class CameraEngine {
       documentDetectionFailureCount: _documentDetectionFailures,
       lastDocumentDetectionError: _lastDocumentDetectionError,
       documentTemporaryLossCount: _documentTemporaryLosses,
+      documentAcquisitionCount: _documentAcquisitions,
+      documentLossCount: _documentLosses,
       recoverableAnalysisFailureCount: _recoverableAnalysisFailures,
       lastRecoverableAnalysisError: _lastRecoverableAnalysisError,
       arucoAttemptedFrameCount: _arucoAttemptedFrames,
@@ -586,6 +618,12 @@ final class CameraEngine {
             ),
       firstDocumentToReadyDuration: _firstDocumentToReadyDuration,
       firstDocumentToIdentityDuration: _firstDocumentToIdentityDuration,
+      searchFrameCount: _searchFrames,
+      activeFrameCount: _activeFrames,
+      activeArucoAttemptedFrameCount: _activeArucoAttemptedFrames,
+      timeToFirstMarker: _timeToFirstMarker,
+      timeToFirstIdentity: _timeToFirstIdentity,
+      timeToReady: _timeToReady,
     );
   }
 
@@ -594,6 +632,16 @@ final class CameraEngine {
     CaptureReadinessStatus status,
     DateTime timestamp,
   ) {
+    _analysisStartedAt ??= timestamp;
+    final analysisStartedAt = _analysisStartedAt!;
+    Duration sinceStart() {
+      final elapsed = timestamp.difference(analysisStartedAt);
+      return elapsed.isNegative ? Duration.zero : elapsed;
+    }
+
+    if (observation.detectedMarkerIds.isNotEmpty) {
+      _timeToFirstMarker ??= sinceStart();
+    }
     final previousAt = _lastReadinessEvaluatedAt;
     final previousStatus = _lastReadinessStatus;
     if (previousAt != null && previousStatus != null) {
@@ -609,6 +657,7 @@ final class CameraEngine {
       _firstDocumentDetectedAt ??= timestamp;
     }
     if (observation.resolvedPageId != null) {
+      _timeToFirstIdentity ??= sinceStart();
       _firstPageRecognizedAt ??= timestamp;
       if (_firstDocumentDetectedAt != null &&
           _firstDocumentToIdentityDuration == null) {
@@ -626,6 +675,9 @@ final class CameraEngine {
           ? Duration.zero
           : elapsed;
     }
+    if (status == CaptureReadinessStatus.ready) {
+      _timeToReady ??= sinceStart();
+    }
     if (status == CaptureReadinessStatus.ready &&
         _firstDocumentToReadyDuration == null &&
         _firstDocumentDetectedAt != null) {
@@ -640,6 +692,9 @@ final class CameraEngine {
     if (_disposed) return;
     analyzer.resetTracking();
     _documentTemporarilyLost = false;
+    _documentPresent = false;
+    _wrongIdentityStreak = 0;
+    _wrongIdentityConfirmed = false;
     _resetStability(clearConfirmation: true);
   }
 

@@ -17,6 +17,9 @@ enum ScannerOverlayState {
 
 enum ScannerOverlayGeometrySource { none, document, markerRegistration }
 
+const scannerOverlayOuterStrokeWidth = 4.0;
+const scannerOverlayInnerStrokeWidth = 2.0;
+
 final class ScannerOverlayGeometry {
   const ScannerOverlayGeometry({required this.points, required this.source});
 
@@ -193,7 +196,11 @@ final class _ScannerDetectionPainter extends CustomPainter {
       ScannerOverlayState.ready ||
       ScannerOverlayState.success => Colors.greenAccent,
       ScannerOverlayState.failure => Colors.redAccent,
-      _ => Colors.amberAccent,
+      ScannerOverlayState.partial || ScannerOverlayState.unstable =>
+        geometrySource == ScannerOverlayGeometrySource.document
+            ? Colors.white
+            : Colors.amberAccent,
+      _ => Colors.white,
     };
     final path = Path()..moveTo(points.first.x, points.first.y);
     for (final point in points.skip(1)) {
@@ -203,23 +210,17 @@ final class _ScannerDetectionPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
+        ..color = Colors.black.withValues(alpha: 0.75)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = scannerOverlayOuterStrokeWidth,
+    );
+    canvas.drawPath(
+      path,
+      Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth =
-            geometrySource == ScannerOverlayGeometrySource.markerRegistration
-            ? 1.5
-            : 2,
+        ..strokeWidth = scannerOverlayInnerStrokeWidth,
     );
-    final cornerPaint = Paint()..color = color;
-    for (final point in points) {
-      canvas.drawCircle(
-        Offset(point.x, point.y),
-        geometrySource == ScannerOverlayGeometrySource.markerRegistration
-            ? 2
-            : 3,
-        cornerPaint,
-      );
-    }
   }
 
   @override

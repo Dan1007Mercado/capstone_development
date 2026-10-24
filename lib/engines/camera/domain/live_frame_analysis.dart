@@ -30,6 +30,8 @@ final class DetectedDocument {
 
 enum DocumentTrackingPhase { searching, acquired, tracking, temporarilyLost }
 
+enum LiveAnalysisMode { search, active }
+
 final class DocumentTrackingUpdate {
   const DocumentTrackingUpdate({
     required this.phase,
@@ -63,8 +65,6 @@ final class DocumentQuality {
 enum LiveFrameGateReason {
   disabled,
   noDocument,
-  tooSmall,
-  tooSkewed,
   tooDark,
   tooBright,
   tooBlurry,

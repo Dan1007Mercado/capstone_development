@@ -51,7 +51,7 @@ document-local quality edge cases are recorded as developer diagnostics and
 treated as a missing contour for that frame. They do not stop preview or move
 the camera lifecycle to `error`; the periodic ArUco fallback remains active.
 
-## Document gate
+## SEARCH/ACTIVE acquisition
 
 The persistent analysis isolate downsamples luma to the configured
 `documentGateMaxDimension`, smooths it, runs Canny edge detection, finds
@@ -60,11 +60,19 @@ four-corner candidate. Corners are always ordered top-left, top-right,
 bottom-right, bottom-left. Brightness and Laplacian variance are measured
 inside the detected paper polygon; whole-frame values are the fallback.
 
-The gate rejects dark, overexposed, blurred, too-small, overly skewed, and
-unstable frames before ArUco. A usable frame with no confident contour receives
-an ArUco fallback probe every configured number of frames. This avoids a
-white-paper-on-light-background deadlock. Setting `documentGateEnabled` to
-`false` restores the p14-style unconditional live ArUco path.
+SEARCH uses generic full-frame document detection and periodic ArUco probes.
+Any document candidate, any detected ArUco marker, or resolved identity enters
+ACTIVE. ACTIVE runs ArUco on every accepted analysis frame and tolerates three
+complete evidence misses before returning to SEARCH. A single marker is enough
+to wake ACTIVE; four markers are required only by authoritative geometry and
+readiness checks.
+
+The live gate skips only clearly unusable dark, overexposed, or severely
+blurred frames. Contour size, contour perspective, and ordinary capture-quality
+failures do not throttle ArUco. When markers exist but the generic contour is
+weak, their expanded bounds constrain a second physical-edge search. Marker
+geometry is only a search hint: the final outline is still the detected paper
+edge and no marker-derived crop or pre-warp is used.
 
 ## Stability and readiness
 
@@ -73,7 +81,7 @@ associates, and lightly smooths physical-paper geometry for immediate preview
 feedback. It retains that visual geometry for at most three missed analysis
 frames, but marks it stale so it cannot authorize capture.
 
-In parallel, every fresh plausible document frame runs ArUco immediately.
+In parallel, every active frame runs ArUco immediately.
 Document stability no longer has to complete before marker analysis begins;
 this removes the serial document-stability then marker-stability delay. Cheap
 document brightness, sharpness, size, and gross-skew checks only decide whether
@@ -90,7 +98,7 @@ authoritative probes, expires after a bounded probe gap, and resets on page or
 marker identity changes, failed probes, analysis stop/suspend, and scanner
 reset.
 
-The preview overlay maps contour corners through the same orientation and
+The high-contrast dual-stroke preview overlay maps contour corners through the same orientation and
 `BoxFit.cover` center-crop transform as the camera preview. When the contour is
 missing, four valid marker registration points provide a thinner fallback
 quadrilateral; this cue is not treated as a detected paper edge.
@@ -122,8 +130,9 @@ received, accepted, processed, dropped, document-detected, document-rejected,
 document-detector-failed, temporary-document-loss, recoverable-analysis-failed,
 ArUco-attempted, ArUco-skipped, fallback-probe, and ready frames. Derived output
 includes ArUco attempt/avoidance ratios, dropped-frame ratio,
-first-document-to-identity, first-document-to-ready, and
-first-identity-to-ready durations. These measurements show whether ArUco began
+first-document-to-identity, first-document-to-ready, first-marker,
+first-identity, and time-to-ready durations. SEARCH/ACTIVE frame counts and the
+ACTIVE ArUco attempt ratio show whether ArUco began
 with acquisition rather than after document stabilization. Device performance
 goals are measurements, not CI wall-clock assertions.
 
@@ -162,7 +171,6 @@ threshold is changed.
 ## Known limitations
 
 Contour detection can be weak when page and background contrast are similar;
-the periodic ArUco probe is the deliberate fallback. Thresholds require
-calibration on multiple Android devices and printers. Document contours are not
-used as final OMR coordinates, and the optional ArUco ROI crop is intentionally
-deferred until it can be benchmarked without correctness risk.
+periodic SEARCH probes and marker-assisted edge search are the deliberate
+fallbacks. Thresholds require calibration on multiple Android devices and
+printers. Document contours are not used as final OMR coordinates.
