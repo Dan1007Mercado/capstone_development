@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:capstone_development/core/errors/engine_error.dart';
+import 'package:capstone_development/core/ids/identifiers.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/camera/application/camera_engine.dart';
@@ -567,6 +568,169 @@ void main() {
       await fixture.dispose();
     },
   );
+
+  test('recoverable frame analysis failure keeps camera analyzing', () async {
+    final analyzer = _FakeAnalyzer()
+      ..result = _failure(
+        'CAMERA_FRAME_ANALYSIS_RECOVERABLE',
+        'bad frame skipped',
+      );
+    final fixture = _Fixture(analyzer: analyzer);
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+
+    expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
+    expect(fixture.engine.state.error, isNull);
+    expect(fixture.engine.state.readiness.isReady, isFalse);
+    expect(fixture.engine.diagnostics.recoverableAnalysisFailureCount, 1);
+    await fixture.dispose();
+  });
+
+  test('successful no-document fallback reaches ready', () async {
+    final fallback = _observation(
+      gateReason: LiveFrameGateReason.noDocument,
+      fallbackProbe: true,
+    );
+    final waiting = _observation(
+      ids: const [],
+      points: const [],
+      arucoRan: false,
+      gateReason: LiveFrameGateReason.noDocument,
+    );
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [
+          fallback,
+          waiting,
+          waiting,
+          waiting,
+          waiting,
+          fallback,
+          waiting,
+          waiting,
+          waiting,
+          waiting,
+          fallback,
+        ],
+      ),
+    );
+    await fixture.initializeAndStart();
+    for (var frame = 0; frame <= 10; frame++) {
+      await fixture.emitAndSettle(frame * 100);
+    }
+
+    expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
+    expect(fixture.engine.state.readiness.status, CaptureReadinessStatus.ready);
+    await fixture.dispose();
+  });
+
+  test('fallback stability expires across an excessive probe gap', () async {
+    final fallback = _observation(
+      gateReason: LiveFrameGateReason.noDocument,
+      fallbackProbe: true,
+    );
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(observations: [fallback, fallback]),
+      config: CameraEngineConfig(
+        minimumStableFrames: 2,
+        stabilityWindowSize: 2,
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(1200);
+
+    expect(
+      fixture.engine.state.readiness.status,
+      CaptureReadinessStatus.unstable,
+    );
+    expect(fixture.engine.state.readiness.stableFrameCount, 1);
+    await fixture.dispose();
+  });
+
+  test('no document and failed fallback stays searching but alive', () async {
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observation: _observation(
+          ids: const [],
+          points: const [],
+          gateReason: LiveFrameGateReason.noDocument,
+          fallbackProbe: true,
+        ),
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+
+    expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
+    expect(
+      fixture.engine.state.readiness.status,
+      CaptureReadinessStatus.searching,
+    );
+    await fixture.dispose();
+  });
+
+  test('fallback page identity change requires fresh stability', () async {
+    final sheet1 = _observation(
+      resolvedPageId: PageId('SH1'),
+      gateReason: LiveFrameGateReason.noDocument,
+      fallbackProbe: true,
+    );
+    final sheet2 = _observation(
+      resolvedPageId: PageId('SH2'),
+      gateReason: LiveFrameGateReason.noDocument,
+      fallbackProbe: true,
+    );
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(observations: [sheet1, sheet1, sheet2, sheet2]),
+      config: CameraEngineConfig(
+        minimumStableFrames: 2,
+        stabilityWindowSize: 2,
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    expect(fixture.engine.state.readiness.isReady, isTrue);
+
+    await fixture.emitAndSettle(400);
+    expect(
+      fixture.engine.state.readiness.status,
+      CaptureReadinessStatus.unstable,
+    );
+    expect(fixture.engine.state.readiness.stableFrameCount, 1);
+    await fixture.emitAndSettle(600);
+    expect(fixture.engine.state.readiness.isReady, isTrue);
+    await fixture.dispose();
+  });
+
+  test('document detector failure is diagnostic and non-fatal', () async {
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observation: _observation(
+          gateReason: LiveFrameGateReason.noDocument,
+          fallbackProbe: true,
+          documentDetectionFailed: true,
+          documentDetectionError: 'synthetic contour failure',
+        ),
+      ),
+      config: CameraEngineConfig(
+        minimumStableFrames: 1,
+        stabilityWindowSize: 1,
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+
+    expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
+    expect(fixture.engine.state.readiness.isReady, isTrue);
+    expect(fixture.engine.diagnostics.documentDetectionFailureCount, 1);
+    expect(
+      fixture.engine.diagnostics.lastDocumentDetectionError,
+      'synthetic contour failure',
+    );
+    await fixture.dispose();
+  });
 }
 
 final class _Fixture {
@@ -746,6 +910,9 @@ CameraFrameObservation _observation({
   bool arucoRan = true,
   LiveFrameGateReason gateReason = LiveFrameGateReason.disabled,
   bool fallbackProbe = false,
+  PageId? resolvedPageId,
+  bool documentDetectionFailed = false,
+  String? documentDetectionError,
 }) => CameraFrameObservation(
   detectedMarkerIds: ids,
   registrationPoints: points ?? _points(),
@@ -755,7 +922,10 @@ CameraFrameObservation _observation({
   brightness: brightness,
   sharpness: sharpness,
   frameSize: ImageSize(width: 1000, height: 1000),
+  resolvedPageId: resolvedPageId,
   arucoRan: arucoRan,
+  documentDetectionFailed: documentDetectionFailed,
+  documentDetectionError: documentDetectionError,
   gateResult: LiveFrameGateResult(
     reason: gateReason,
     shouldRunAruco: arucoRan,

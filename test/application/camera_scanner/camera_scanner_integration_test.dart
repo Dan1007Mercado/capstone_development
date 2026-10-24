@@ -160,6 +160,9 @@ final class _ReadyHighQualityCamera implements CameraScanCamera {
   }
 
   @override
+  void resetTracking() {}
+
+  @override
   Future<void> dispose() async {
     await _states.close();
   }

@@ -2,6 +2,7 @@ import 'package:capstone_development/application/camera_scanner/domain/camera_sc
 import 'package:capstone_development/debug/scanner_detection_overlay.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/camera/domain/camera_models.dart';
+import 'package:capstone_development/engines/camera/domain/live_frame_analysis.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,12 +72,58 @@ void main() {
     expect(find.byType(ScannerDetectionOverlay), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  test('document polygon is preferred over marker quadrilateral', () {
+    final state = _state(
+      markerIds: const [10, 11, 12, 13],
+      document: _document(),
+    );
+    final geometry = scannerOverlayGeometry(state.cameraState.analysis);
+
+    expect(geometry.source, ScannerOverlayGeometrySource.document);
+    expect(geometry.points, _document().geometry.corners);
+  });
+
+  testWidgets('valid marker quadrilateral provides safe overlay fallback', (
+    tester,
+  ) async {
+    final geometry = scannerOverlayGeometry(
+      _state(markerIds: const [10, 11, 12, 13]).cameraState.analysis,
+    );
+    expect(geometry.source, ScannerOverlayGeometrySource.markerRegistration);
+    expect(geometry.points, hasLength(4));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 300,
+          height: 400,
+          child: ScannerDetectionOverlay(
+            points: geometry.points,
+            state: ScannerOverlayState.unstable,
+            geometrySource: geometry.source,
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(
+      find.descendant(
+        of: find.byType(ScannerDetectionOverlay),
+        matching: find.byType(CustomPaint),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
 
 CameraScanState _state({
   required List<int> markerIds,
   CameraScanPhase phase = CameraScanPhase.tracking,
   CaptureReadinessStatus readiness = CaptureReadinessStatus.unstable,
+  DetectedDocument? document,
 }) => CameraScanState(
   phase: phase,
   cameraState: CameraEngineState(
@@ -117,6 +164,22 @@ CameraScanState _state({
       analysisScaleX: 1,
       analysisScaleY: 1,
       timings: CameraAnalysisTimings.zero,
+      document: document,
     ),
   ),
+);
+
+DetectedDocument _document() => DetectedDocument(
+  geometry: DocumentGeometry(
+    corners: [
+      ImagePoint(15, 10),
+      ImagePoint(85, 10),
+      ImagePoint(90, 90),
+      ImagePoint(10, 90),
+    ],
+    areaRatio: 0.6,
+    centroid: ImagePoint(50, 50),
+    perspectiveRatio: 1.2,
+  ),
+  confidence: 0.8,
 );

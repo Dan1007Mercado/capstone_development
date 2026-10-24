@@ -36,8 +36,10 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
     }
     final roundTripStopwatch = Stopwatch()..start();
     ReceivePort? response;
+    var workerReady = false;
     try {
       await _ensureStarted();
+      workerReady = true;
       response = ReceivePort();
       _commands!.send({
         'reply': response.sendPort,
@@ -146,12 +148,18 @@ final class IsolateCameraAnalysisWorker implements CameraFrameAnalyzer {
             fallbackProbe: message['fallbackProbe']! as bool,
           ),
           arucoRan: message['arucoRan']! as bool,
+          documentDetectionFailed: message['documentDetectionFailed']! as bool,
+          documentDetectionError: message['documentDetectionError'] as String?,
         ),
       );
     } on Object catch (error) {
       return _failure(
-        'CAMERA_ANALYSIS_FAILED',
-        'Background camera analysis failed.',
+        workerReady
+            ? 'CAMERA_FRAME_ANALYSIS_RECOVERABLE'
+            : 'CAMERA_ANALYSIS_BACKEND_UNAVAILABLE',
+        workerReady
+            ? 'One camera analysis frame was malformed and was skipped.'
+            : 'The background camera analysis worker could not start.',
         {'cause': error.toString()},
       );
     } finally {
@@ -210,8 +218,8 @@ void _cameraWorkerMain(SendPort ready) {
     } on Object catch (error) {
       reply.send({
         'ok': false,
-        'code': 'CAMERA_ANALYSIS_FAILED',
-        'message': 'Background camera analysis failed.',
+        'code': 'CAMERA_FRAME_ANALYSIS_RECOVERABLE',
+        'message': 'One camera analysis frame failed and was skipped.',
         'cause': error.toString(),
       });
     }
@@ -244,8 +252,9 @@ Map<Object?, Object?> _analyzeInWorker(
   );
   preparationStopwatch.stop();
   final documentStopwatch = Stopwatch()..start();
-  final detectedInAnalysis = documentGateEnabled
-      ? state.documentDetector.detect(
+  final documentAttempt = documentGateEnabled
+      ? detectDocumentBestEffort(
+          detector: state.documentDetector,
           pixels: gatePrepared.pixels,
           width: gatePrepared.analysisSize.width,
           height: gatePrepared.analysisSize.height,
@@ -253,11 +262,21 @@ Map<Object?, Object?> _analyzeInWorker(
           cannyHighThreshold: task['documentCannyHighThreshold']! as double,
           polygonEpsilonRatio: task['documentPolygonEpsilonRatio']! as double,
         )
-      : null;
+      : const DocumentDetectionAttempt();
   documentStopwatch.stop();
+  final detectedInAnalysis = documentAttempt.document;
 
   final qualityStopwatch = Stopwatch()..start();
-  final quality = _measureDocumentQuality(gatePrepared, detectedInAnalysis);
+  DocumentQuality quality;
+  String? documentDetectionError = documentAttempt.error;
+  try {
+    quality = _measureDocumentQuality(gatePrepared, detectedInAnalysis);
+  } on Object catch (error) {
+    // Document-local quality is optional. Whole-frame quality keeps the
+    // authoritative ArUco fallback available for this frame.
+    quality = _measureDocumentQuality(gatePrepared, null);
+    documentDetectionError ??= _shortWorkerDiagnostic(error);
+  }
   qualityStopwatch.stop();
   final sharpnessStopwatch = Stopwatch()
     ..start()
@@ -392,6 +411,8 @@ Map<Object?, Object?> _analyzeInWorker(
     'gateReason': gate.reason.name,
     'arucoRan': gate.shouldRunAruco,
     'fallbackProbe': gate.fallbackProbe,
+    'documentDetectionFailed': documentDetectionError != null,
+    'documentDetectionError': documentDetectionError,
     'preparationUs': preparationStopwatch.elapsedMicroseconds,
     'documentDetectionUs': documentStopwatch.elapsedMicroseconds,
     'qualityEvaluationUs': qualityStopwatch.elapsedMicroseconds,
@@ -682,4 +703,12 @@ double _laplacianVariance(Uint8List pixels, int width, int height) {
     }
   }
   return count > 1 ? squaredDifferenceSum / (count - 1) : 0;
+}
+
+String _shortWorkerDiagnostic(Object error) {
+  final normalized = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+  const maximumLength = 180;
+  return normalized.length <= maximumLength
+      ? normalized
+      : '${normalized.substring(0, maximumLength - 1)}…';
 }

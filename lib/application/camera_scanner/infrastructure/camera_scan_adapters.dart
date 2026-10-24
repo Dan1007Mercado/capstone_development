@@ -36,6 +36,9 @@ final class CameraEngineScanAdapter implements CameraScanCamera {
   Future<EngineResult<bool>> suspend() => engine.suspend();
 
   @override
+  void resetTracking() => engine.resetTracking();
+
+  @override
   Future<void> dispose() => engine.dispose();
 }
 

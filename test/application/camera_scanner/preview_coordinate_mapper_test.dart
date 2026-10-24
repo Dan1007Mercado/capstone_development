@@ -79,4 +79,47 @@ void main() {
 
     expect(mapped, isEmpty);
   });
+
+  test('portrait document polygon remains inside covered viewport', () {
+    final mapped = mapper.mapQuadrilateral(
+      sourcePoints: [
+        ImagePoint(300, 100),
+        ImagePoint(1620, 100),
+        ImagePoint(1620, 980),
+        ImagePoint(300, 980),
+      ],
+      sourceSize: ImageSize(width: 1920, height: 1080),
+      viewportSize: const PreviewSize(300, 400),
+      sensorOrientationDegrees: 90,
+      deviceOrientation: CameraDeviceOrientation.portraitUp,
+      mirrored: false,
+    );
+
+    expect(mapped, hasLength(4));
+    for (final point in mapped) {
+      expect(point.x, inInclusiveRange(0, 300));
+      expect(point.y, inInclusiveRange(0, 400));
+    }
+  });
+
+  test('sensor and device rotation share deterministic cover semantics', () {
+    final oriented = mapper.orientedSourceSize(
+      sourceSize: ImageSize(width: 1920, height: 1080),
+      sensorOrientationDegrees: 90,
+      deviceOrientation: CameraDeviceOrientation.landscapeLeft,
+      mirrored: false,
+    );
+    final center = mapper.mapPoint(
+      sourcePoint: ImagePoint(960, 540),
+      sourceSize: ImageSize(width: 1920, height: 1080),
+      viewportSize: const PreviewSize(400, 300),
+      sensorOrientationDegrees: 90,
+      deviceOrientation: CameraDeviceOrientation.landscapeLeft,
+      mirrored: false,
+    );
+
+    expect(oriented.width / oriented.height, closeTo(16 / 9, 1e-9));
+    expect(center.x, closeTo(200, 1e-9));
+    expect(center.y, closeTo(150, 1e-9));
+  });
 }

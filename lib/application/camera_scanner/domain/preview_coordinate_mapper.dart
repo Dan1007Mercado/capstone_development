@@ -55,12 +55,14 @@ final class PreviewCoordinateMapper {
       mirrored,
     );
     final rotated = _rotate(sourcePoint, sourceSize, rotation);
-    final orientedWidth = rotation == 90 || rotation == 270
-        ? sourceSize.height.toDouble()
-        : sourceSize.width.toDouble();
-    final orientedHeight = rotation == 90 || rotation == 270
-        ? sourceSize.width.toDouble()
-        : sourceSize.height.toDouble();
+    final orientedSize = orientedSourceSize(
+      sourceSize: sourceSize,
+      sensorOrientationDegrees: sensorOrientationDegrees,
+      deviceOrientation: deviceOrientation,
+      mirrored: mirrored,
+    );
+    final orientedWidth = orientedSize.width;
+    final orientedHeight = orientedSize.height;
     final orientedX = mirrored ? orientedWidth - rotated.x : rotated.x;
     final scale = math.max(
       viewportSize.width / orientedWidth,
@@ -69,6 +71,25 @@ final class PreviewCoordinateMapper {
     final cropX = (orientedWidth * scale - viewportSize.width) / 2;
     final cropY = (orientedHeight * scale - viewportSize.height) / 2;
     return ImagePoint(orientedX * scale - cropX, rotated.y * scale - cropY);
+  }
+
+  PreviewSize orientedSourceSize({
+    required ImageSize sourceSize,
+    required int sensorOrientationDegrees,
+    required CameraDeviceOrientation deviceOrientation,
+    required bool mirrored,
+  }) {
+    final rotation = _previewRotation(
+      sensorOrientationDegrees,
+      deviceOrientation,
+      mirrored,
+    );
+    return rotation == 90 || rotation == 270
+        ? PreviewSize(sourceSize.height.toDouble(), sourceSize.width.toDouble())
+        : PreviewSize(
+            sourceSize.width.toDouble(),
+            sourceSize.height.toDouble(),
+          );
   }
 
   int _previewRotation(

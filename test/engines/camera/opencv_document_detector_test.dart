@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/aruco/infrastructure/opencv_aruco_detector.dart';
+import 'package:capstone_development/engines/camera/domain/live_frame_analysis.dart';
 import 'package:capstone_development/engines/camera/infrastructure/opencv_document_detector.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -80,6 +81,46 @@ void main() {
       ImagePoint(10, 90),
     ]);
   });
+
+  test('malformed corners are rejected without a detector exception', () {
+    expect(
+      tryOrderDocumentCorners([
+        ImagePoint(10, 10),
+        ImagePoint(10, 10),
+        ImagePoint(90, 90),
+        ImagePoint(10, 90),
+      ]),
+      isNull,
+    );
+  });
+
+  test('best-effort detection converts native failure into diagnostics', () {
+    final attempt = detectDocumentBestEffort(
+      detector: _ThrowingDocumentDetector(),
+      pixels: Uint8List(100),
+      width: 10,
+      height: 10,
+      cannyLowThreshold: 40,
+      cannyHighThreshold: 120,
+      polygonEpsilonRatio: 0.02,
+    );
+
+    expect(attempt.document, isNull);
+    expect(attempt.failed, isTrue);
+    expect(attempt.error, contains('synthetic contour failure'));
+  });
+}
+
+final class _ThrowingDocumentDetector implements DocumentDetector {
+  @override
+  DetectedDocument? detect({
+    required Uint8List pixels,
+    required int width,
+    required int height,
+    required double cannyLowThreshold,
+    required double cannyHighThreshold,
+    required double polygonEpsilonRatio,
+  }) => throw StateError('synthetic contour failure');
 }
 
 Uint8List _imageWithRectangle(

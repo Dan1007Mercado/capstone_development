@@ -175,6 +175,18 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
           '${camera.diagnostics.documentRejectedFrameCount}',
         ),
         Text(
+          'Document detector failures: '
+          '${camera.diagnostics.documentDetectionFailureCount}',
+        ),
+        if (camera.diagnostics.lastDocumentDetectionError case final error?)
+          Text('Latest document detector diagnostic: $error'),
+        Text(
+          'Recoverable analysis failures: '
+          '${camera.diagnostics.recoverableAnalysisFailureCount}',
+        ),
+        if (camera.diagnostics.lastRecoverableAnalysisError case final error?)
+          Text('Latest recoverable analysis diagnostic: $error'),
+        Text(
           'ArUco attempted/skipped/fallback: '
           '${camera.diagnostics.arucoAttemptedFrameCount}/'
           '${camera.diagnostics.arucoSkippedFrameCount}/'

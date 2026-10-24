@@ -671,6 +671,9 @@ final class _FakeCamera implements CameraScanCamera {
   }
 
   @override
+  void resetTracking() {}
+
+  @override
   Future<void> dispose() async {
     if (disposed) return;
     disposed = true;

@@ -61,6 +61,7 @@ final class CameraScannerCoordinator {
     final error = value.validate();
     if (error != null) return EngineResult.failure(error);
     _context = value;
+    camera.resetTracking();
     _autoCaptureArmed = true;
     _requiresFreshReadiness = true;
     _readinessProcessedFrameBaseline =
@@ -356,6 +357,7 @@ final class CameraScannerCoordinator {
   EngineResult<bool> reset() {
     if (_disposed) return _disposedFailure();
     if (_operationInProgress) return _busyFailure();
+    camera.resetTracking();
     _autoCaptureArmed = true;
     _requiresFreshReadiness = true;
     _readinessProcessedFrameBaseline =

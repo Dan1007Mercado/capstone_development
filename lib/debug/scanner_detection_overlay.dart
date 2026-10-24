@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../application/camera_scanner/domain/camera_scan_state.dart';
 import '../engines/aruco/domain/image_geometry.dart';
 import '../engines/camera/domain/camera_models.dart';
-import '../engines/camera/domain/live_frame_analysis.dart';
 
 enum ScannerOverlayState {
   searching,
@@ -14,6 +13,37 @@ enum ScannerOverlayState {
   processing,
   success,
   failure,
+}
+
+enum ScannerOverlayGeometrySource { none, document, markerRegistration }
+
+final class ScannerOverlayGeometry {
+  const ScannerOverlayGeometry({required this.points, required this.source});
+
+  const ScannerOverlayGeometry.none()
+    : points = const [],
+      source = ScannerOverlayGeometrySource.none;
+
+  final List<ImagePoint> points;
+  final ScannerOverlayGeometrySource source;
+}
+
+ScannerOverlayGeometry scannerOverlayGeometry(CameraAnalysisState? analysis) {
+  final documentCorners = analysis?.document?.geometry.corners;
+  if (documentCorners?.length == 4) {
+    return ScannerOverlayGeometry(
+      points: documentCorners!,
+      source: ScannerOverlayGeometrySource.document,
+    );
+  }
+  final registrationPoints = analysis?.tracking.registrationPoints;
+  if (registrationPoints?.length == 4) {
+    return ScannerOverlayGeometry(
+      points: registrationPoints!,
+      source: ScannerOverlayGeometrySource.markerRegistration,
+    );
+  }
+  return const ScannerOverlayGeometry.none();
 }
 
 ScannerOverlayState scannerOverlayState(CameraScanState state) {
@@ -34,12 +64,6 @@ ScannerOverlayState scannerOverlayState(CameraScanState state) {
       return ScannerOverlayState.searching;
     case CameraScanPhase.tracking:
       final document = state.cameraState.analysis?.document;
-      final legacyTracking =
-          state.cameraState.analysis?.gateResult.reason ==
-          LiveFrameGateReason.disabled;
-      if (document == null && !legacyTracking) {
-        return ScannerOverlayState.searching;
-      }
       final count =
           state.cameraState.analysis?.tracking.detectedMarkerIds.length ?? 0;
       if (count == 0 && document == null) {
@@ -67,9 +91,18 @@ String scannerStatusText(
     return 'Sheet does not belong to selected template';
   }
   final readiness = state.cameraState.readiness.status;
+  final analysis = state.cameraState.analysis;
+  if (analysis?.gateResult.fallbackProbe == true &&
+      readiness != CaptureReadinessStatus.ready &&
+      analysis?.document == null) {
+    return 'Verifying sheet...';
+  }
   return switch (scannerOverlayState(state)) {
     ScannerOverlayState.searching => 'Searching for sheet...',
-    ScannerOverlayState.partial => 'Keep all 4 markers visible',
+    ScannerOverlayState.partial =>
+      analysis?.document != null
+          ? 'Hold the full sheet in view'
+          : 'Keep all 4 markers visible',
     ScannerOverlayState.unstable => switch (readiness) {
       CaptureReadinessStatus.tooSmall => 'Move closer',
       CaptureReadinessStatus.tooSkewed => 'Reduce page tilt',
@@ -101,11 +134,13 @@ class ScannerDetectionOverlay extends StatelessWidget {
   const ScannerDetectionOverlay({
     required this.points,
     required this.state,
+    this.geometrySource = ScannerOverlayGeometrySource.none,
     super.key,
   });
 
   final List<ImagePoint> points;
   final ScannerOverlayState state;
+  final ScannerOverlayGeometrySource geometrySource;
 
   @override
   Widget build(BuildContext context) => TweenAnimationBuilder<List<ImagePoint>>(
@@ -113,7 +148,11 @@ class ScannerDetectionOverlay extends StatelessWidget {
     duration: const Duration(milliseconds: 120),
     curve: Curves.easeOut,
     builder: (context, value, _) => CustomPaint(
-      painter: _ScannerDetectionPainter(points: value, state: state),
+      painter: _ScannerDetectionPainter(
+        points: value,
+        state: state,
+        geometrySource: geometrySource,
+      ),
     ),
   );
 }
@@ -137,10 +176,15 @@ final class _QuadrilateralTween extends Tween<List<ImagePoint>> {
 }
 
 final class _ScannerDetectionPainter extends CustomPainter {
-  const _ScannerDetectionPainter({required this.points, required this.state});
+  const _ScannerDetectionPainter({
+    required this.points,
+    required this.state,
+    required this.geometrySource,
+  });
 
   final List<ImagePoint> points;
   final ScannerOverlayState state;
+  final ScannerOverlayGeometrySource geometrySource;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -161,17 +205,28 @@ final class _ScannerDetectionPainter extends CustomPainter {
       Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ..strokeWidth =
+            geometrySource == ScannerOverlayGeometrySource.markerRegistration
+            ? 2
+            : 3,
     );
     final cornerPaint = Paint()..color = color;
     for (final point in points) {
-      canvas.drawCircle(Offset(point.x, point.y), 5, cornerPaint);
+      canvas.drawCircle(
+        Offset(point.x, point.y),
+        geometrySource == ScannerOverlayGeometrySource.markerRegistration
+            ? 3
+            : 5,
+        cornerPaint,
+      );
     }
   }
 
   @override
   bool shouldRepaint(_ScannerDetectionPainter oldDelegate) =>
-      oldDelegate.state != state || !_samePoints(oldDelegate.points, points);
+      oldDelegate.state != state ||
+      oldDelegate.geometrySource != geometrySource ||
+      !_samePoints(oldDelegate.points, points);
 
   bool _samePoints(List<ImagePoint> left, List<ImagePoint> right) {
     if (left.length != right.length) return false;

@@ -201,6 +201,8 @@ final class CameraFrameObservation {
       fallbackProbe: false,
     ),
     this.arucoRan = true,
+    this.documentDetectionFailed = false,
+    this.documentDetectionError,
   }) : analysisFrameSize = analysisFrameSize ?? frameSize,
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        registrationPoints = UnmodifiableListView(List.of(registrationPoints));
@@ -226,6 +228,8 @@ final class CameraFrameObservation {
   final DocumentStability documentStability;
   final LiveFrameGateResult gateResult;
   final bool arucoRan;
+  final bool documentDetectionFailed;
+  final String? documentDetectionError;
 }
 
 final class FrameQuality {
@@ -328,6 +332,10 @@ final class CameraDiagnostics {
     this.firstRecognitionToReadyDuration,
     this.documentDetectedFrameCount = 0,
     this.documentRejectedFrameCount = 0,
+    this.documentDetectionFailureCount = 0,
+    this.lastDocumentDetectionError,
+    this.recoverableAnalysisFailureCount = 0,
+    this.lastRecoverableAnalysisError,
     this.arucoAttemptedFrameCount = 0,
     this.arucoSkippedFrameCount = 0,
     this.arucoFallbackProbeFrameCount = 0,
@@ -347,6 +355,10 @@ final class CameraDiagnostics {
   final Duration? firstRecognitionToReadyDuration;
   final int documentDetectedFrameCount;
   final int documentRejectedFrameCount;
+  final int documentDetectionFailureCount;
+  final String? lastDocumentDetectionError;
+  final int recoverableAnalysisFailureCount;
+  final String? lastRecoverableAnalysisError;
   final int arucoAttemptedFrameCount;
   final int arucoSkippedFrameCount;
   final int arucoFallbackProbeFrameCount;

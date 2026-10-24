@@ -17,7 +17,6 @@ import '../application/answer_sheet_packets/packet_models.dart';
 import '../application/answer_sheet_packets/packet_response_repository.dart';
 import '../application/answer_sheet_packets/packet_response_service.dart';
 import '../core/errors/engine_error.dart';
-import '../engines/aruco/domain/image_geometry.dart';
 import '../engines/camera/domain/camera_engine_config.dart';
 import '../engines/recognition/domain/mark_classification.dart';
 import '../engines/scanner/domain/scan_result.dart';
@@ -399,8 +398,14 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
             child: controller != null && controller.value.isInitialized
                 ? LayoutBuilder(
                     builder: (context, constraints) {
-                      final points = _mappedPoints(constraints.biggest, state);
-                      final previewAspect = 1 / controller.value.aspectRatio;
+                      final overlay = _mappedOverlayGeometry(
+                        constraints.biggest,
+                        state,
+                      );
+                      final previewAspect = _previewContentAspect(
+                        state,
+                        controller.value.aspectRatio,
+                      );
                       return ClipRect(
                         child: Stack(
                           fit: StackFit.expand,
@@ -415,8 +420,9 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                             ),
                             IgnorePointer(
                               child: ScannerDetectionOverlay(
-                                points: points,
+                                points: overlay.points,
                                 state: scannerOverlayState(state),
+                                geometrySource: overlay.source,
                               ),
                             ),
                             Align(
@@ -540,21 +546,43 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     );
   }
 
-  List<ImagePoint> _mappedPoints(Size viewport, CameraScanState state) {
+  ScannerOverlayGeometry _mappedOverlayGeometry(
+    Size viewport,
+    CameraScanState state,
+  ) {
     final analysis = state.cameraState.analysis;
-    final documentCorners = analysis?.document?.geometry.corners;
-    if (analysis == null || documentCorners?.length != 4) {
-      return const [];
+    final overlay = scannerOverlayGeometry(analysis);
+    if (analysis == null || overlay.points.length != 4) {
+      return const ScannerOverlayGeometry.none();
     }
-    return _coordinateMapper.mapQuadrilateral(
-      sourcePoints: documentCorners!,
+    return ScannerOverlayGeometry(
+      points: _coordinateMapper.mapQuadrilateral(
+        sourcePoints: overlay.points,
+        sourceSize: analysis.sourceFrameSize,
+        viewportSize: PreviewSize(viewport.width, viewport.height),
+        sensorOrientationDegrees: analysis.sensorOrientationDegrees,
+        deviceOrientation: analysis.deviceOrientation,
+        mirrored:
+            state.cameraState.previewInfo?.lens == CameraLensPreference.front,
+      ),
+      source: overlay.source,
+    );
+  }
+
+  double _previewContentAspect(
+    CameraScanState state,
+    double controllerAspectRatio,
+  ) {
+    final analysis = state.cameraState.analysis;
+    if (analysis == null) return 1 / controllerAspectRatio;
+    final oriented = _coordinateMapper.orientedSourceSize(
       sourceSize: analysis.sourceFrameSize,
-      viewportSize: PreviewSize(viewport.width, viewport.height),
       sensorOrientationDegrees: analysis.sensorOrientationDegrees,
       deviceOrientation: analysis.deviceOrientation,
       mirrored:
           state.cameraState.previewInfo?.lens == CameraLensPreference.front,
     );
+    return oriented.width / oriented.height;
   }
 }
 
