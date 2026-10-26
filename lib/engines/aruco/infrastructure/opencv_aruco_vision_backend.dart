@@ -350,8 +350,12 @@ ArucoDetection remapDetectionToSource(
   if (detection.sourceSize == sourceSize) return detection;
   final scaleX = sourceSize.width / detection.sourceSize.width;
   final scaleY = sourceSize.height / detection.sourceSize.height;
-  ImagePoint point(ImagePoint value) =>
-      ImagePoint(value.x * scaleX, value.y * scaleY);
+  // OpenCV resize maps pixel centers, not pixel edges. Applying only a raw
+  // multiplication introduces a scale-dependent half-pixel translation.
+  ImagePoint point(ImagePoint value) => ImagePoint(
+    (value.x + 0.5) * scaleX - 0.5,
+    (value.y + 0.5) * scaleY - 0.5,
+  );
   return ArucoDetection(
     sourceSize: sourceSize,
     markers: detection.markers.map(

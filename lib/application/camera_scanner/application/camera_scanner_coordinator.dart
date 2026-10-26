@@ -17,6 +17,7 @@ final class CameraScannerCoordinator {
     required this.scanner,
     required CameraScanContext context,
     this.autoCaptureEnabled = true,
+    this.failedScanCaptureSink,
   }) : _context = context {
     _latestCameraState = camera.state;
     _state = CameraScanState(
@@ -30,6 +31,7 @@ final class CameraScannerCoordinator {
   final CapturedImageBytesLoader imageLoader;
   final OfflineScanRunner scanner;
   final bool autoCaptureEnabled;
+  final FailedScanCaptureSink? failedScanCaptureSink;
   CameraScanContext _context;
 
   final StreamController<CameraScanState> _states =
@@ -290,6 +292,7 @@ final class CameraScannerCoordinator {
         ),
       );
       final scannerStopwatch = Stopwatch()..start();
+      failedScanCaptureSink?.stage(encodedImage, _context);
       final scan = await scanner.scan(
         encodedImage: encodedImage,
         context: _context,
@@ -325,6 +328,7 @@ final class CameraScannerCoordinator {
                 'The offline scanner rejected the captured page.',
                 scan.error,
               );
+        failedScanCaptureSink?.commitFailure(error);
         _emitFailure(
           error,
           timings,
@@ -336,6 +340,7 @@ final class CameraScannerCoordinator {
       final sequencedDiagnostic = _sequenceDiagnostic(
         scan.value.diagnosticSnapshot,
       );
+      failedScanCaptureSink?.discard();
       _emit(
         CameraScanState(
           phase: CameraScanPhase.scanCompleted,
@@ -355,6 +360,7 @@ final class CameraScannerCoordinator {
         message: 'The capture-and-scan workflow failed unexpectedly.',
         details: {'cause': error.toString()},
       );
+      failedScanCaptureSink?.commitFailure(failure);
       final timings = FinalScanTimings(
         stopAnalysisDuration: stopAnalysisDuration,
         captureDuration: captureDuration,

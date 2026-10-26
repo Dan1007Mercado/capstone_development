@@ -277,6 +277,43 @@ final class ScannerDebugReportBuilder {
     _writeCandidate(buffer, 'Four-point', alignment?.fourPointCandidate);
     _writeCandidate(buffer, 'Multi-point', alignment?.multiPointCandidate);
     buffer
+      ..writeln('Failure source size: ${_failureSize(error, 'sourceSize')}')
+      ..writeln(
+        'Failure detection size: ${_failureSize(error, 'detectionSize')}',
+      )
+      ..writeln(
+        'Failure detection scale: '
+        '${_deepestDetail(error, 'detectionScaleX') ?? 'unavailable'} x '
+        '${_deepestDetail(error, 'detectionScaleY') ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Failure registration IDs: '
+        '${_compactDetail(_deepestDetail(error, 'detectedRegistrationIds'))}',
+      )
+      ..writeln(
+        'Failure marker sides: '
+        '${_compactDetail(_deepestDetail(error, 'sourceMarkerSideLengths'))}',
+      )
+      ..writeln(
+        'Failure detected corners: '
+        '${_compactDetail(_deepestDetail(error, 'detectedCorners'))}',
+      )
+      ..writeln(
+        'Failure expected corners: '
+        '${_compactDetail(_deepestDetail(error, 'expectedCorners'))}',
+      )
+      ..writeln(
+        'Failure four-point residuals/mask/per-marker: '
+        '${_compactDetail(_deepestDetail(error, 'fourPointResiduals'))} / '
+        '${_compactDetail(_deepestDetail(error, 'fourPointInlierMask'))} / '
+        '${_compactDetail(_deepestDetail(error, 'fourPointInliersPerMarker'))}',
+      )
+      ..writeln(
+        'Failure multi-point residuals/mask/per-marker: '
+        '${_compactDetail(_deepestDetail(error, 'multiPointResiduals'))} / '
+        '${_compactDetail(_deepestDetail(error, 'multiPointInlierMask'))} / '
+        '${_compactDetail(_deepestDetail(error, 'multiPointInliersPerMarker'))}',
+      )
       ..writeln(
         'Failure four-point rejection reason: '
         '${_deepestDetail(error, 'fourPointRejectionReason') ?? 'unavailable'}',
@@ -288,6 +325,27 @@ final class ScannerDebugReportBuilder {
       ..writeln(
         'Failure multi-point inlier ratio: '
         '${_deepestDetail(error, 'multiPointInlierRatio') ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Failure thresholds (RANSAC/four/tail/scale): '
+        '${_deepestDetail(error, 'effectiveRansacThreshold') ?? 'unavailable'} / '
+        '${_deepestDetail(error, 'effectiveFourPointConsistencyThreshold') ?? 'unavailable'} / '
+        '${_deepestDetail(error, 'effectiveRejectedCornerThreshold') ?? 'unavailable'} / '
+        '${_deepestDetail(error, 'reprojectionScaleFactor') ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Failure numerical validation (four/multi): '
+        '${_deepestDetail(error, 'fourPointNumericalValidation') ?? 'unavailable'} / '
+        '${_deepestDetail(error, 'multiPointNumericalValidation') ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Failure geometry validation (four/multi): '
+        '${_deepestDetail(error, 'fourPointGeometryValidation') ?? 'unavailable'} / '
+        '${_deepestDetail(error, 'multiPointGeometryValidation') ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Failure stage timings: '
+        '${_compactDetail(_deepestDetail(error, 'stageTimingsMs'))}',
       )
       ..writeln(
         'Reprojection mean/max: '
@@ -305,6 +363,10 @@ final class ScannerDebugReportBuilder {
       ..writeln(
         'Effective RANSAC threshold: '
         '${_pixels(alignment?.effectiveRansacReprojectionThresholdPixels)}',
+      )
+      ..writeln(
+        'Effective rejected-corner threshold: '
+        '${_pixels(alignment?.effectiveRejectedCornerErrorPixels)}',
       )
       ..writeln(
         'Geometry validation result: '
@@ -404,6 +466,11 @@ final class ScannerDebugReportBuilder {
       )
       ..writeln(
         '$label inliers per marker: ${_list(candidate?.inliersPerMarker)}',
+      )
+      ..writeln('$label inlier mask: ${_list(candidate?.inlierMask)}')
+      ..writeln(
+        '$label geometry validation: '
+        '${candidate == null ? 'unavailable' : candidate.geometryValidationFailure ?? 'passed'}',
       );
   }
 }
@@ -510,6 +577,24 @@ String _captureSize(FinalCaptureDiagnostics? capture) =>
     capture?.width == null || capture?.height == null
     ? 'unavailable'
     : '${capture!.width}x${capture.height}';
+
+String _failureSize(EngineError? error, String key) {
+  final value = _deepestDetail(error, key);
+  if (value is! Map) return 'unavailable';
+  return '${value['width'] ?? '?'}x${value['height'] ?? '?'}';
+}
+
+String _compactDetail(Object? value) {
+  if (value == null) return 'unavailable';
+  if (value is double) return _fixed(value);
+  if (value is Iterable) {
+    return '[${value.map(_compactDetail).join(', ')}]';
+  }
+  if (value is Map) {
+    return '{${value.entries.map((entry) => '${entry.key}:${_compactDetail(entry.value)}').join(', ')}}';
+  }
+  return value.toString();
+}
 
 String _previewSize(CameraPreviewInfo? preview) =>
     preview == null ? 'unavailable' : '${preview.width}x${preview.height}';

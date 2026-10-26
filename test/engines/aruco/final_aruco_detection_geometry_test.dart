@@ -26,7 +26,7 @@ void main() {
     },
   );
 
-  test('reduced marker corners remap exactly into full source coordinates', () {
+  test('reduced marker corners remap using OpenCV pixel-center geometry', () {
     final reduced = ArucoDetection(
       sourceSize: ImageSize(width: 1400, height: 1050),
       markers: [
@@ -49,11 +49,38 @@ void main() {
     expect(remapped.markers.single.id, 10);
     expect(
       remapped.markers.single.corner(MarkerCorner.topLeft),
-      ImagePoint(200, 100),
+      ImagePoint(200.92857142857144, 100.92857142857143),
     );
     expect(
       remapped.markers.single.corner(MarkerCorner.bottomRight),
-      ImagePoint(400, 300),
+      ImagePoint(400.92857142857144, 300.92857142857144),
+    );
+  });
+
+  test('pixel-center remap handles nonuniform detection scaling', () {
+    final remapped = remapDetectionToSource(
+      ArucoDetection(
+        sourceSize: ImageSize(width: 1000, height: 800),
+        markers: [
+          DetectedMarker(
+            id: 10,
+            topLeft: ImagePoint(9.5, 19.5),
+            topRight: ImagePoint(19.5, 19.5),
+            bottomRight: ImagePoint(19.5, 29.5),
+            bottomLeft: ImagePoint(9.5, 29.5),
+          ),
+        ],
+      ),
+      ImageSize(width: 2000, height: 2400),
+    );
+
+    expect(
+      remapped.markers.single.corner(MarkerCorner.topLeft),
+      ImagePoint(19.5, 59.5),
+    );
+    expect(
+      remapped.markers.single.corner(MarkerCorner.bottomRight),
+      ImagePoint(39.5, 89.5),
     );
   });
 

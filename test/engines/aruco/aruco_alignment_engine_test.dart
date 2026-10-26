@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/engines/aruco/application/aruco_alignment_engine.dart';
+import 'package:capstone_development/engines/aruco/application/aruco_capture_replay_harness.dart';
 import 'package:capstone_development/engines/aruco/application/marker_correspondence_service.dart';
 import 'package:capstone_development/engines/aruco/domain/aruco_alignment_config.dart';
 import 'package:capstone_development/engines/aruco/domain/aruco_vision_backend.dart';
@@ -415,7 +416,7 @@ void main() {
     );
   });
 
-  test('scale-aware tolerance retains absolute gross-outlier ceiling', () {
+  test('scale-aware tolerance retains bounded gross-outlier ceiling', () {
     final page = _page();
     final canonicalToSource = HomographyMatrix([
       0.62,
@@ -446,6 +447,109 @@ void main() {
     expect(backend.session!.warpCount, 0);
   });
 
+  test('downsampled detector scale participates in localization tolerance', () {
+    final page = _page();
+    final canonicalToSource = HomographyMatrix([2, 0, 0, 0, 2, 0, 0, 0, 1]);
+    final backend = _FakeBackend(
+      _transformedDetection(page, canonicalToSource),
+      homography: HomographyMatrix([0.5, 0, 1.2, 0, 0.5, 0, 0, 0, 1]),
+      openTimings: const ArucoBackendOpenTimings(
+        detectionScaleX: 3,
+        detectionScaleY: 3,
+      ),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(result.value.diagnostics.reprojectionScaleFactor, closeTo(1.5, 0.1));
+    expect(
+      result.value.diagnostics.effectiveRansacReprojectionThresholdPixels,
+      closeTo(2.25, 0.15),
+    );
+  });
+
+  test(
+    'four-point fallback tolerates one bounded independent corner outlier',
+    () {
+      final page = _page();
+      final detection = _detectionFor(page);
+      final marker = detection.markers.first;
+      final perturbed = ArucoDetection(
+        sourceSize: detection.sourceSize,
+        markers: [
+          DetectedMarker(
+            id: marker.id,
+            topLeft: marker.corner(MarkerCorner.topLeft),
+            topRight: marker.corner(MarkerCorner.topRight),
+            bottomRight: marker.corner(MarkerCorner.bottomRight),
+            bottomLeft: ImagePoint(
+              marker.corner(MarkerCorner.bottomLeft).x + 2,
+              marker.corner(MarkerCorner.bottomLeft).y,
+            ),
+          ),
+          ...detection.markers.skip(1),
+        ],
+      );
+
+      final result = ArucoAlignmentEngine(
+        backend: _FakeBackend(perturbed),
+        config: ArucoAlignmentConfig(enableMultipointHomography: false),
+      ).align(Uint8List.fromList([1]), page);
+
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      final candidate = result.value.diagnostics.fourPointCandidate!;
+      expect(candidate.inlierCount, 15);
+      expect(candidate.inliersPerMarker, contains(3));
+      expect(candidate.maxCommonReprojectionError, closeTo(2, 1e-9));
+    },
+  );
+
+  test(
+    'four-point fallback rejects insufficient support within one marker',
+    () {
+      final page = _page();
+      final detection = _detectionFor(page);
+      final marker = detection.markers.first;
+      final perturbed = ArucoDetection(
+        sourceSize: detection.sourceSize,
+        markers: [
+          DetectedMarker(
+            id: marker.id,
+            topLeft: marker.corner(MarkerCorner.topLeft),
+            topRight: marker.corner(MarkerCorner.topRight),
+            bottomRight: ImagePoint(
+              marker.corner(MarkerCorner.bottomRight).x + 2,
+              marker.corner(MarkerCorner.bottomRight).y,
+            ),
+            bottomLeft: ImagePoint(
+              marker.corner(MarkerCorner.bottomLeft).x + 2,
+              marker.corner(MarkerCorner.bottomLeft).y,
+            ),
+          ),
+          ...detection.markers.skip(1),
+        ],
+      );
+
+      final result = ArucoAlignmentEngine(
+        backend: _FakeBackend(perturbed),
+        config: ArucoAlignmentConfig(enableMultipointHomography: false),
+      ).align(Uint8List.fromList([1]), page);
+
+      expect(result.isFailure, isTrue);
+      expect(
+        result.error.details['fourPointRejectionReason'],
+        'FULL_CORNER_CONSISTENCY_EXCEEDED',
+      );
+      expect(result.error.details['detectedCorners'], hasLength(16));
+      expect(result.error.details['expectedCorners'], hasLength(16));
+      expect(result.error.details['fourPointResiduals'], hasLength(16));
+      expect(result.error.details['stageTimingsMs'], isA<Map>());
+    },
+  );
+
   test('four-point remains operational when multi-point is disabled', () {
     final page = _page();
     final backend = _FakeBackend(_detectionFor(page));
@@ -464,6 +568,37 @@ void main() {
       HomographyEstimationMethod.fourPoint,
     ]);
   });
+
+  test(
+    'capture replay compares legacy, current four, and current multi paths',
+    () {
+      final page = _page();
+      var disposedBackends = 0;
+      final replay = ArucoCaptureReplayHarness(
+        backendFactory: () => _FakeBackend(_detectionFor(page)),
+        disposeBackend: (_) => disposedBackends++,
+      ).run(Uint8List.fromList([1, 2, 3]), page);
+
+      expect(replay.legacyFourPoint.isSuccess, isTrue);
+      expect(
+        replay.legacyFourPoint.value.acceptedByPreMultipointFittingGate,
+        isTrue,
+      );
+      expect(replay.legacyFourPoint.value.fittingResiduals, hasLength(4));
+      expect(replay.legacyFourPoint.value.allCornerResiduals, hasLength(16));
+      expect(replay.currentFourPoint.isSuccess, isTrue);
+      expect(replay.currentMultiPoint.isSuccess, isTrue);
+      expect(
+        replay.currentMultiPoint.value.diagnostics.selectedHomographyMethod,
+        AlignmentHomographyMethod.multiPoint,
+      );
+      expect(
+        replay.canonicalBubbleCenters,
+        hasLength(page.bubbleRegions.length),
+      );
+      expect(disposedBackends, 3);
+    },
+  );
 
   test('near-degenerate candidates fail before warping', () {
     final page = _page();
@@ -681,6 +816,7 @@ final class _FakeBackend implements ArucoVisionBackend {
     HomographyMatrix? homography,
     HomographyMatrix? fourPointHomography,
     HomographyMatrix? multiPointHomography,
+    this.openTimings = const ArucoBackendOpenTimings(),
   }) : fourPointHomography =
            fourPointHomography ??
            homography ??
@@ -693,6 +829,7 @@ final class _FakeBackend implements ArucoVisionBackend {
   final ArucoDetection detection;
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
+  final ArucoBackendOpenTimings openTimings;
   bool opened = false;
   _FakeSession? session;
 
@@ -706,6 +843,7 @@ final class _FakeBackend implements ArucoVisionBackend {
       detection,
       fourPointHomography,
       multiPointHomography,
+      openTimings,
     );
     return EngineResult.success(session!);
   }
@@ -716,6 +854,7 @@ final class _FakeSession implements ArucoImageSession {
     this.detection,
     this.fourPointHomography,
     this.multiPointHomography,
+    this.openTimings,
   );
 
   @override
@@ -725,7 +864,7 @@ final class _FakeSession implements ArucoImageSession {
   ImageSize get sourceSize => detection.sourceSize;
 
   @override
-  ArucoBackendOpenTimings get openTimings => const ArucoBackendOpenTimings();
+  final ArucoBackendOpenTimings openTimings;
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
   bool disposed = false;

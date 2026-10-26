@@ -19,6 +19,7 @@ final class ArucoAlignmentConfig {
     double maximumExtremePerspectiveRatio = 12,
     double maximumReprojectionErrorPixels = 1,
     double maximumRejectedCornerErrorPixels = 4,
+    double maximumLocalizationScaleFactor = 4,
     double multipointRansacReprojectionThresholdPixels = 1.5,
     double minimumMultipointInlierRatio = 0.875,
     double maximumLocalScaleRatio = 20,
@@ -39,6 +40,7 @@ final class ArucoAlignmentConfig {
       maximumExtremePerspectiveRatio,
       maximumReprojectionErrorPixels,
       maximumRejectedCornerErrorPixels,
+      maximumLocalizationScaleFactor,
       multipointRansacReprojectionThresholdPixels,
       maximumLocalScaleRatio,
       maximumLocalAnisotropyRatio,
@@ -47,6 +49,7 @@ final class ArucoAlignmentConfig {
         minimumRegistrationAreaRatio >= 1 ||
         maximumExtremePerspectiveRatio < 1 ||
         maximumRejectedCornerErrorPixels < maximumReprojectionErrorPixels ||
+        maximumLocalizationScaleFactor < 1 ||
         !minimumMultipointInlierRatio.isFinite ||
         minimumMultipointInlierRatio <= 0 ||
         minimumMultipointInlierRatio > 1 ||
@@ -75,6 +78,7 @@ final class ArucoAlignmentConfig {
       maximumExtremePerspectiveRatio: maximumExtremePerspectiveRatio,
       maximumReprojectionErrorPixels: maximumReprojectionErrorPixels,
       maximumRejectedCornerErrorPixels: maximumRejectedCornerErrorPixels,
+      maximumLocalizationScaleFactor: maximumLocalizationScaleFactor,
       multipointRansacReprojectionThresholdPixels:
           multipointRansacReprojectionThresholdPixels,
       minimumMultipointInlierRatio: minimumMultipointInlierRatio,
@@ -98,6 +102,7 @@ final class ArucoAlignmentConfig {
     required this.maximumExtremePerspectiveRatio,
     required this.maximumReprojectionErrorPixels,
     required this.maximumRejectedCornerErrorPixels,
+    required this.maximumLocalizationScaleFactor,
     required this.multipointRansacReprojectionThresholdPixels,
     required this.minimumMultipointInlierRatio,
     required this.maximumLocalScaleRatio,
@@ -118,9 +123,16 @@ final class ArucoAlignmentConfig {
   final double maximumExtremePerspectiveRatio;
   final double maximumReprojectionErrorPixels;
 
-  /// Bound for a corner rejected by the robust estimator. This remains finite
-  /// so RANSAC cannot hide a badly mismatched marker corner.
+  /// Base bound for a corner rejected by the robust estimator at a
+  /// one-canonical-pixel-per-detector-pixel localization scale. The engine
+  /// scales it by the bounded localization conversion so RANSAC cannot hide a
+  /// badly mismatched marker corner merely because detection was resized.
   final double maximumRejectedCornerErrorPixels;
+
+  /// Maximum conversion from one detector-image pixel to canonical pixels.
+  /// This bounds uncertainty propagation when final-still detection is
+  /// performed on a reduced image.
+  final double maximumLocalizationScaleFactor;
   final double multipointRansacReprojectionThresholdPixels;
   final double minimumMultipointInlierRatio;
   final double maximumLocalScaleRatio;

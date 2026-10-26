@@ -143,11 +143,14 @@ final class HomographyCandidateDiagnostics {
     this.heldOutValidationResiduals,
     this.heldOutValidationMethod,
     Iterable<int> inliersPerMarker = const [],
+    Iterable<bool> inlierMask = const [],
+    this.geometryValidationFailure,
     this.rejectionReason,
   }) : commonReprojectionErrors = UnmodifiableListView(
          List.of(commonReprojectionErrors),
        ),
-       inliersPerMarker = UnmodifiableListView(List.of(inliersPerMarker));
+       inliersPerMarker = UnmodifiableListView(List.of(inliersPerMarker)),
+       inlierMask = UnmodifiableListView(List.of(inlierMask));
 
   final AlignmentHomographyMethod method;
   final List<double> commonReprojectionErrors;
@@ -167,6 +170,8 @@ final class HomographyCandidateDiagnostics {
   final ReprojectionStatistics? heldOutValidationResiduals;
   final HomographyValidationMethod? heldOutValidationMethod;
   final List<int> inliersPerMarker;
+  final List<bool> inlierMask;
+  final String? geometryValidationFailure;
   final String? rejectionReason;
 
   double get inlierRatio =>
@@ -219,6 +224,7 @@ final class PageAlignmentDiagnostics {
     this.reprojectionScaleFactor = 1,
     this.effectiveReprojectionErrorPixels,
     this.effectiveRansacReprojectionThresholdPixels,
+    this.effectiveRejectedCornerErrorPixels,
     this.selectionReason,
     this.fallbackReason,
   }) : expectedMarkerIds = UnmodifiableListView(List.of(expectedMarkerIds)),
@@ -267,6 +273,7 @@ final class PageAlignmentDiagnostics {
   final double reprojectionScaleFactor;
   final double? effectiveReprojectionErrorPixels;
   final double? effectiveRansacReprojectionThresholdPixels;
+  final double? effectiveRejectedCornerErrorPixels;
   final String? selectionReason;
   final String? fallbackReason;
 }

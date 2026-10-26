@@ -7,12 +7,18 @@ import '../camera_scanner/application/camera_scanner_coordinator.dart';
 import '../camera_scanner/infrastructure/camera_scan_adapters.dart';
 import '../camera_scanner/infrastructure/isolate_offline_scanner_runner.dart';
 import 'scanner_validation_session.dart';
+import 'failed_scan_capture.dart';
 
 final class RealScannerRuntime {
-  const RealScannerRuntime({required this.backend, required this.coordinator});
+  const RealScannerRuntime({
+    required this.backend,
+    required this.coordinator,
+    this.failedScanCaptureRecorder,
+  });
 
   final FlutterCameraBackend backend;
   final CameraScannerCoordinator coordinator;
+  final FailedScanCaptureRecorder? failedScanCaptureRecorder;
 }
 
 RealScannerRuntime createRealScannerRuntime(
@@ -29,14 +35,19 @@ RealScannerRuntime createRealScannerRuntime(
           .toList(growable: false),
     ),
   );
+  final failedCaptureRecorder = failedScanCaptureExportEnabled
+      ? FailedScanCaptureRecorder()
+      : null;
   return RealScannerRuntime(
     backend: backend,
+    failedScanCaptureRecorder: failedCaptureRecorder,
     coordinator: CameraScannerCoordinator(
       camera: CameraEngineScanAdapter(cameraEngine),
       imageLoader: const InMemoryCapturedImageBytesLoader(),
       scanner: IsolateOfflineScannerRunner(),
       context: session.currentContext,
       autoCaptureEnabled: autoCaptureEnabled,
+      failedScanCaptureSink: failedCaptureRecorder,
     ),
   );
 }

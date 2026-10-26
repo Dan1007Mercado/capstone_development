@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../../../engines/camera/domain/camera_models.dart';
 import '../../../engines/scanner/domain/scan_result.dart';
@@ -32,6 +33,15 @@ abstract interface class OfflineScanRunner {
   });
 
   Future<void> dispose();
+}
+
+/// Opt-in development hook for retaining the exact final still only when a
+/// scanner failure occurs. Implementations must not upload or copy image bytes
+/// into textual diagnostics.
+abstract interface class FailedScanCaptureSink {
+  void stage(Uint8List encodedImage, CameraScanContext context);
+  void commitFailure(EngineError error);
+  void discard();
 }
 
 final class FinalScannerRun {

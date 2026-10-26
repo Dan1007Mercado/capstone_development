@@ -59,6 +59,23 @@ void main() {
           'causeCode': 'ARUCO_REPROJECTION_FAILED',
           'causeMessage': 'Neither homography candidate passed.',
           'causeDetails': {
+            'sourceSize': {'width': 3000, 'height': 4000},
+            'detectionSize': {'width': 1050, 'height': 1400},
+            'detectionScaleX': 2.857,
+            'detectionScaleY': 2.857,
+            'detectedRegistrationIds': [10, 11, 12, 13],
+            'multiPointResiduals': [0.5, 1.2, 5.9],
+            'multiPointInlierMask': [true, true, false],
+            'multiPointInliersPerMarker': [4, 3, 3, 2],
+            'effectiveRansacThreshold': 3.2,
+            'effectiveFourPointConsistencyThreshold': 2.1,
+            'effectiveRejectedCornerThreshold': 8.4,
+            'reprojectionScaleFactor': 2.1,
+            'fourPointNumericalValidation': 'passed',
+            'multiPointNumericalValidation': 'passed',
+            'fourPointGeometryValidation': 'passed',
+            'multiPointGeometryValidation': 'passed',
+            'stageTimingsMs': {'detection': 120.0, 'alignmentElapsed': 180.0},
             'fourPointRejectionReason': 'FULL_CORNER_CONSISTENCY_EXCEEDED',
             'multiPointRejectionReason': 'INSUFFICIENT_INLIERS',
             'multiPointInlierRatio': 0.75,
@@ -104,6 +121,12 @@ void main() {
       report,
       contains('Failure multi-point rejection reason: INSUFFICIENT_INLIERS'),
     );
+    expect(report, contains('Failure source size: 3000x4000'));
+    expect(report, contains('Failure detection size: 1050x1400'));
+    expect(report, contains('Failure registration IDs: [10, 11, 12, 13]'));
+    expect(report, contains('Failure multi-point residuals/mask/per-marker:'));
+    expect(report, contains('Failure thresholds (RANSAC/four/tail/scale):'));
+    expect(report, contains('Failure stage timings:'));
     expect(report, isNot(contains('must-not-copy')));
     expect(report, isNot(contains(r'C:\private')));
   });

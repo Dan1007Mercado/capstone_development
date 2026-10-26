@@ -118,6 +118,8 @@ final class ScannerDiagnosticSnapshot {
             .diagnostics
             .alignment
             .effectiveRansacReprojectionThresholdPixels,
+        'effectiveRejectedCornerErrorPixels':
+            result.diagnostics.alignment.effectiveRejectedCornerErrorPixels,
         'meanReprojectionError':
             result.diagnostics.alignment.meanReprojectionError,
         'maxReprojectionError':
@@ -265,6 +267,8 @@ final class ScannerDiagnosticSnapshot {
           ),
           'heldOutValidationMethod': candidate.heldOutValidationMethod?.name,
           'inliersPerMarker': candidate.inliersPerMarker,
+          'inlierMask': candidate.inlierMask,
+          'geometryValidationFailure': candidate.geometryValidationFailure,
           'rejectionReason': candidate.rejectionReason,
         };
 

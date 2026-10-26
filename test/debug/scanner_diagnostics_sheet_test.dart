@@ -48,6 +48,34 @@ void main() {
     expect(find.text('Could not copy debug results.'), findsOneWidget);
   });
 
+  testWidgets('opt-in failed still export is explicit and reports location', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScannerDiagnosticsSheet(
+            report: 'report',
+            failedCaptureExporter: () async {
+              calls++;
+              return 'content://failed-capture.zip';
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('export-failed-scanner-capture')));
+    await tester.pump();
+
+    expect(calls, 1);
+    expect(
+      find.text('Failed still exported to content://failed-capture.zip'),
+      findsOneWidget,
+    );
+  });
+
   test('opening diagnostics does not invoke camera lifecycle operations', () {
     final source = File(
       'lib/debug/real_scanner_validation_screen.dart',
