@@ -116,7 +116,6 @@ final class ArucoAlignmentEngine {
 
       EngineResult<BackendHomographyEstimate>? multiPointEstimate;
       HomographyCandidateDiagnostics? multiPointCandidate;
-      _CrossValidationResult? multiPointCrossValidation;
       if (effectiveConfig.enableMultipointHomography) {
         multiPointEstimate = session.estimateHomography(
           sourcePoints: correspondenceSet.allSourcePoints,
@@ -128,20 +127,13 @@ final class ArucoAlignmentEngine {
           confidence: effectiveConfig.multipointConfidence,
         );
         if (multiPointEstimate.isSuccess) {
-          multiPointCrossValidation = _crossValidateMultipoint(
-            session: session,
-            correspondences: correspondenceSet.allCornerCorrespondences,
-            page: page,
-            config: effectiveConfig,
-          );
           multiPointCandidate = _evaluateCandidate(
             estimate: multiPointEstimate.value,
             method: AlignmentHomographyMethod.multiPoint,
             fittingCorrespondences: correspondenceSet.allCornerCorrespondences,
             fullCorrespondences: correspondenceSet.allCornerCorrespondences,
-            heldOutValidationResiduals: multiPointCrossValidation.statistics,
-            heldOutValidationUnavailableReason:
-                multiPointCrossValidation.unavailableReason,
+            heldOutValidationResiduals: null,
+            heldOutValidationMethod: null,
             page: page,
             sourceSize: session.sourceSize,
             config: effectiveConfig,
@@ -150,11 +142,7 @@ final class ArucoAlignmentEngine {
       }
       validationStopwatch.stop();
 
-      final selection = _selectMethod(
-        fourPointCandidate,
-        multiPointCandidate,
-        effectiveConfig,
-      );
+      final selection = _selectMethod(fourPointCandidate, multiPointCandidate);
       final selectedMethod = selection.method;
       if (selectedMethod == null) {
         return _failure(
@@ -225,9 +213,7 @@ final class ArucoAlignmentEngine {
             correspondenceDuration: correspondenceStopwatch.elapsed,
             homographyDuration:
                 (fourPointEstimate.valueOrNull?.duration ?? Duration.zero) +
-                (multiPointEstimate?.valueOrNull?.duration ?? Duration.zero) +
-                (multiPointCrossValidation?.estimationDuration ??
-                    Duration.zero),
+                (multiPointEstimate?.valueOrNull?.duration ?? Duration.zero),
             warpDuration: warp.value.duration,
             detectionSize: session.openTimings.detectionSize,
             detectionScaleX: session.openTimings.detectionScaleX,
@@ -257,7 +243,8 @@ final class ArucoAlignmentEngine {
     required List<MarkerCorrespondence> fittingCorrespondences,
     required List<MarkerCorrespondence> fullCorrespondences,
     required ReprojectionStatistics? heldOutValidationResiduals,
-    String? heldOutValidationUnavailableReason,
+    HomographyValidationMethod? heldOutValidationMethod =
+        HomographyValidationMethod.unusedFittingCorners,
     required PageLayout page,
     required ImageSize sourceSize,
     required ArucoAlignmentConfig config,
@@ -310,13 +297,10 @@ final class ArucoAlignmentEngine {
     } else if (method == AlignmentHomographyMethod.multiPoint &&
         full.maximum > config.maximumRejectedCornerErrorPixels) {
       rejectionReason = 'REJECTED_CORNER_ERROR_EXCEEDED';
-    } else if (heldOutValidationResiduals == null) {
-      rejectionReason =
-          'HELD_OUT_VALIDATION_UNAVAILABLE${heldOutValidationUnavailableReason == null ? '' : ':$heldOutValidationUnavailableReason'}';
-    } else if (heldOutValidationResiduals.maximum >
-        (method == AlignmentHomographyMethod.fourPoint
-            ? config.maximumReprojectionErrorPixels
-            : config.maximumHeldOutReprojectionErrorPixels)) {
+    } else if (method == AlignmentHomographyMethod.fourPoint &&
+        heldOutValidationResiduals != null &&
+        heldOutValidationResiduals.maximum >
+            config.maximumReprojectionErrorPixels) {
       rejectionReason = 'HELD_OUT_REPROJECTION_EXCEEDED';
     }
     final inliersPerMarker = method == AlignmentHomographyMethod.fourPoint
@@ -341,9 +325,7 @@ final class ArucoAlignmentEngine {
       duration: estimate.duration,
       fittingResiduals: fitting,
       heldOutValidationResiduals: heldOutValidationResiduals,
-      heldOutValidationMethod: method == AlignmentHomographyMethod.fourPoint
-          ? HomographyValidationMethod.unusedFittingCorners
-          : HomographyValidationMethod.leaveOneMarkerOut,
+      heldOutValidationMethod: heldOutValidationMethod,
       inliersPerMarker: inliersPerMarker,
       rejectionReason: rejectionReason,
     );
@@ -352,38 +334,21 @@ final class ArucoAlignmentEngine {
   _SelectionDecision _selectMethod(
     HomographyCandidateDiagnostics? fourPoint,
     HomographyCandidateDiagnostics? multiPoint,
-    ArucoAlignmentConfig config,
   ) {
-    if (multiPoint?.accepted == true && fourPoint?.accepted != true) {
-      return const _SelectionDecision(
-        method: AlignmentHomographyMethod.multiPoint,
-        selectionReason: 'FOUR_POINT_REJECTED_MULTIPOINT_VALIDATED',
-        fallbackReason: 'FOUR_POINT_REJECTED',
-      );
-    }
-    if (multiPoint?.accepted == true && fourPoint?.accepted == true) {
-      final multiScore = multiPoint!.heldOutValidationScore;
-      final fourScore = fourPoint!.heldOutValidationScore;
-      if (multiScore != null &&
-          fourScore != null &&
-          multiScore + config.minimumMultipointScoreImprovementPixels <
-              fourScore) {
-        return const _SelectionDecision(
-          method: AlignmentHomographyMethod.multiPoint,
-          selectionReason: 'MULTIPOINT_HELD_OUT_IMPROVEMENT',
-        );
-      }
-      return const _SelectionDecision(
-        method: AlignmentHomographyMethod.fourPoint,
-        selectionReason: 'BASELINE_PRESERVED_WITHOUT_HELD_OUT_BENEFIT',
-        fallbackReason: 'MULTIPOINT_NO_VALIDATED_BENEFIT',
-      );
-    }
     if (fourPoint?.accepted == true) {
       return _SelectionDecision(
         method: AlignmentHomographyMethod.fourPoint,
-        selectionReason: 'FOUR_POINT_ONLY_TRUSTWORTHY_CANDIDATE',
-        fallbackReason: multiPoint?.rejectionReason ?? 'MULTIPOINT_UNAVAILABLE',
+        selectionReason: 'FOUR_POINT_VALIDATED_BASELINE',
+        fallbackReason: multiPoint?.accepted == true
+            ? 'MULTIPOINT_RESERVED_FOR_UNSAFE_BASELINE'
+            : multiPoint?.rejectionReason ?? 'MULTIPOINT_UNAVAILABLE',
+      );
+    }
+    if (multiPoint?.accepted == true) {
+      return _SelectionDecision(
+        method: AlignmentHomographyMethod.multiPoint,
+        selectionReason: 'FOUR_POINT_REJECTED_MULTIPOINT_VALIDATED',
+        fallbackReason: fourPoint?.rejectionReason ?? 'FOUR_POINT_UNAVAILABLE',
       );
     }
     return const _SelectionDecision(
@@ -421,73 +386,6 @@ final class ArucoAlignmentEngine {
     }
   }
 
-  _CrossValidationResult _crossValidateMultipoint({
-    required ArucoImageSession session,
-    required List<MarkerCorrespondence> correspondences,
-    required PageLayout page,
-    required ArucoAlignmentConfig config,
-  }) {
-    final errors = <double>[];
-    var estimationDuration = Duration.zero;
-    final markerIds = correspondences.map((item) => item.markerId).toSet();
-    if (markerIds.length != 4) {
-      return const _CrossValidationResult(
-        unavailableReason: 'EXPECTED_FOUR_MARKERS',
-      );
-    }
-    for (final heldOutMarkerId in markerIds) {
-      final training = correspondences
-          .where((item) => item.markerId != heldOutMarkerId)
-          .toList(growable: false);
-      final heldOut = correspondences
-          .where((item) => item.markerId == heldOutMarkerId)
-          .toList(growable: false);
-      if (training.length != 12 || heldOut.length != 4) {
-        return const _CrossValidationResult(
-          unavailableReason: 'INVALID_MARKER_PARTITION',
-        );
-      }
-      final estimate = session.estimateHomography(
-        sourcePoints: training.map((item) => item.sourcePoint).toList(),
-        destinationPoints: training
-            .map((item) => item.destinationPoint)
-            .toList(),
-        method: HomographyEstimationMethod.multiPointRansac,
-        ransacReprojectionThresholdPixels:
-            config.multipointRansacReprojectionThresholdPixels,
-        maximumIterations: config.multipointMaximumIterations,
-        confidence: config.multipointConfidence,
-      );
-      if (estimate.isFailure) {
-        return _CrossValidationResult(
-          unavailableReason: 'ESTIMATION_FAILED_${estimate.error.code}',
-          estimationDuration: estimationDuration,
-        );
-      }
-      estimationDuration += estimate.value.duration;
-      final stabilityFailure = geometryValidator.validationFailure(
-        matrix: estimate.value.homography,
-        page: page,
-        sourceSize: session.sourceSize,
-        config: config,
-      );
-      if (stabilityFailure != null) {
-        return _CrossValidationResult(
-          unavailableReason: 'VALIDATION_MODEL_$stabilityFailure',
-          estimationDuration: estimationDuration,
-        );
-      }
-      errors.addAll([
-        for (final correspondence in heldOut)
-          _reprojectionError(estimate.value.homography, correspondence),
-      ]);
-    }
-    return _CrossValidationResult(
-      statistics: ReprojectionStatistics(errors),
-      estimationDuration: estimationDuration,
-    );
-  }
-
   bool _eachMarkerHasThreeInliers(List<bool> inliers) {
     if (inliers.length != 16) return false;
     for (var marker = 0; marker < 4; marker++) {
@@ -507,18 +405,6 @@ final class ArucoAlignmentEngine {
   ]) => EngineResult.failure(
     EngineError(code: code, message: message, details: details),
   );
-}
-
-final class _CrossValidationResult {
-  const _CrossValidationResult({
-    this.statistics,
-    this.unavailableReason,
-    this.estimationDuration = Duration.zero,
-  });
-
-  final ReprojectionStatistics? statistics;
-  final String? unavailableReason;
-  final Duration estimationDuration;
 }
 
 final class _SelectionDecision {

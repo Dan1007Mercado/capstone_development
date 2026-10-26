@@ -123,23 +123,14 @@ void main() {
     );
     expect(
       result.value.diagnostics.multiPointCandidate!.heldOutValidationMethod,
-      HomographyValidationMethod.leaveOneMarkerOut,
+      isNull,
     );
     expect(
-      result
-          .value
-          .diagnostics
-          .multiPointCandidate!
-          .heldOutValidationResiduals!
-          .errors,
-      hasLength(16),
+      result.value.diagnostics.multiPointCandidate!.heldOutValidationResiduals,
+      isNull,
     );
     expect(backend.session!.estimationMethods, [
       HomographyEstimationMethod.fourPoint,
-      HomographyEstimationMethod.multiPointRansac,
-      HomographyEstimationMethod.multiPointRansac,
-      HomographyEstimationMethod.multiPointRansac,
-      HomographyEstimationMethod.multiPointRansac,
       HomographyEstimationMethod.multiPointRansac,
     ]);
     expect(backend.session!.warpCount, 1);
@@ -190,11 +181,42 @@ void main() {
     expect(backend.session!.disposed, isTrue);
   });
 
-  test('multi-point is selected only for a material held-out gain', () {
+  test(
+    'validated four-point remains baseline despite lower multi residual',
+    () {
+      final page = _page();
+      final backend = _FakeBackend(
+        _detectionFor(page),
+        fourPointHomography: HomographyMatrix([1, 0, 0.8, 0, 1, 0, 0, 0, 1]),
+        multiPointHomography: HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+      );
+
+      final result = ArucoAlignmentEngine(
+        backend: backend,
+      ).align(Uint8List.fromList([1]), page);
+
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      expect(
+        result.value.diagnostics.selectedHomographyMethod,
+        AlignmentHomographyMethod.fourPoint,
+      );
+      expect(
+        result.value.diagnostics.multiPointCandidate!.commonScore,
+        lessThan(result.value.diagnostics.fourPointCandidate!.commonScore),
+      );
+      expect(
+        result.value.diagnostics.selectionReason,
+        'FOUR_POINT_VALIDATED_BASELINE',
+      );
+      expect(backend.session!.warpCount, 1);
+    },
+  );
+
+  test('multi-point is selected as fallback when four-point is unsafe', () {
     final page = _page();
     final backend = _FakeBackend(
       _detectionFor(page),
-      fourPointHomography: HomographyMatrix([1, 0, 0.8, 0, 1, 0, 0, 0, 1]),
+      fourPointHomography: HomographyMatrix([1, 0, 2, 0, 1, 0, 0, 0, 1]),
       multiPointHomography: HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]),
     );
 
@@ -208,11 +230,10 @@ void main() {
       AlignmentHomographyMethod.multiPoint,
     );
     expect(
-      result.value.diagnostics.multiPointCandidate!.heldOutValidationScore,
-      lessThan(
-        result.value.diagnostics.fourPointCandidate!.heldOutValidationScore!,
-      ),
+      result.value.diagnostics.fallbackReason,
+      'FULL_CORNER_CONSISTENCY_EXCEEDED',
     );
+    expect(backend.session!.estimationMethods, hasLength(2));
     expect(backend.session!.warpCount, 1);
   });
 
@@ -237,10 +258,7 @@ void main() {
 
   test('multi-point fitting residual is not reported as held-out evidence', () {
     final page = _page();
-    final backend = _FakeBackend(
-      _detectionFor(page),
-      crossValidationHomography: HomographyMatrix([1, 0, 5, 0, 1, 0, 0, 0, 1]),
-    );
+    final backend = _FakeBackend(_detectionFor(page));
 
     final result = ArucoAlignmentEngine(
       backend: backend,
@@ -249,16 +267,17 @@ void main() {
     expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
     final multi = result.value.diagnostics.multiPointCandidate!;
     expect(multi.fittingResiduals!.maximum, 0);
-    expect(multi.heldOutValidationResiduals!.maximum, closeTo(5, 1e-9));
-    expect(multi.accepted, isFalse);
-    expect(multi.rejectionReason, 'HELD_OUT_REPROJECTION_EXCEEDED');
+    expect(multi.heldOutValidationResiduals, isNull);
+    expect(multi.heldOutValidationMethod, isNull);
+    expect(multi.accepted, isTrue);
+    expect(multi.rejectionReason, isNull);
     expect(
       result.value.diagnostics.selectedHomographyMethod,
       AlignmentHomographyMethod.fourPoint,
     );
     expect(
       result.value.diagnostics.fallbackReason,
-      'HELD_OUT_REPROJECTION_EXCEEDED',
+      'MULTIPOINT_RESERVED_FOR_UNSAFE_BASELINE',
     );
   });
 
@@ -484,7 +503,6 @@ final class _FakeBackend implements ArucoVisionBackend {
     HomographyMatrix? homography,
     HomographyMatrix? fourPointHomography,
     HomographyMatrix? multiPointHomography,
-    this.crossValidationHomography,
   }) : fourPointHomography =
            fourPointHomography ??
            homography ??
@@ -497,7 +515,6 @@ final class _FakeBackend implements ArucoVisionBackend {
   final ArucoDetection detection;
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
-  final HomographyMatrix? crossValidationHomography;
   bool opened = false;
   _FakeSession? session;
 
@@ -511,7 +528,6 @@ final class _FakeBackend implements ArucoVisionBackend {
       detection,
       fourPointHomography,
       multiPointHomography,
-      crossValidationHomography,
     );
     return EngineResult.success(session!);
   }
@@ -522,7 +538,6 @@ final class _FakeSession implements ArucoImageSession {
     this.detection,
     this.fourPointHomography,
     this.multiPointHomography,
-    this.crossValidationHomography,
   );
 
   @override
@@ -535,11 +550,9 @@ final class _FakeSession implements ArucoImageSession {
   ArucoBackendOpenTimings get openTimings => const ArucoBackendOpenTimings();
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
-  final HomographyMatrix? crossValidationHomography;
   bool disposed = false;
   int warpCount = 0;
   final List<HomographyEstimationMethod> estimationMethods = [];
-  int _multiPointEstimateCount = 0;
 
   @override
   void dispose() => disposed = true;
@@ -556,10 +569,7 @@ final class _FakeSession implements ArucoImageSession {
     estimationMethods.add(method);
     final selectedHomography = switch (method) {
       HomographyEstimationMethod.fourPoint => fourPointHomography,
-      HomographyEstimationMethod.multiPointRansac =>
-        _multiPointEstimateCount++ == 0
-            ? multiPointHomography
-            : crossValidationHomography ?? multiPointHomography,
+      HomographyEstimationMethod.multiPointRansac => multiPointHomography,
     };
     return EngineResult.success(
       BackendHomographyEstimate(

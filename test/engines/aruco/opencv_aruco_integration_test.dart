@@ -4,11 +4,13 @@ import 'dart:typed_data';
 import 'package:capstone_development/core/geometry/physical_geometry.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/engines/aruco/application/aruco_alignment_engine.dart';
+import 'package:capstone_development/engines/aruco/application/homography_geometry_validator.dart';
 import 'package:capstone_development/engines/aruco/application/marker_correspondence_service.dart';
 import 'package:capstone_development/engines/aruco/domain/aruco_alignment_config.dart';
 import 'package:capstone_development/engines/aruco/domain/aruco_vision_backend.dart';
 import 'package:capstone_development/engines/aruco/domain/detected_marker.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
+import 'package:capstone_development/engines/aruco/domain/marker_correspondence.dart';
 import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
 import 'package:capstone_development/engines/aruco/infrastructure/opencv_aruco_vision_backend.dart';
 import 'package:capstone_development/engines/layout/domain/page_layout.dart';
@@ -26,6 +28,8 @@ import 'package:image/image.dart' as image;
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 import '../layout/layout_test_fixtures.dart';
+
+const _requireNativeOpenCv = bool.fromEnvironment('REQUIRE_NATIVE_OPENCV');
 
 void main() {
   late PageLayout page;
@@ -50,6 +54,20 @@ void main() {
       unavailableReason = '${probe.error.code}: ${probe.error.message}';
     }
     backend.dispose();
+  });
+
+  test('native OpenCV runtime availability gate', () {
+    if (!backendAvailable && _requireNativeOpenCv) {
+      fail(
+        'Native OpenCV is required but unavailable: '
+        '${unavailableReason ?? 'unknown native loading failure'}',
+      );
+    }
+    if (!backendAvailable) {
+      markTestSkipped(unavailableReason ?? 'Native OpenCV unavailable.');
+      return;
+    }
+    expect(backendAvailable, isTrue);
   });
 
   test('clean frontal page detects and aligns all four markers', () {
@@ -198,84 +216,118 @@ void main() {
     },
   );
 
-  test(
-    'four-point and multi-point accuracy use identical ground truth landmarks',
-    () {
-      if (!backendAvailable) {
-        markTestSkipped(unavailableReason ?? 'Native OpenCV unavailable.');
-        return;
-      }
-      final fixture = _perspectiveFixture(frontal, [
-        ImagePoint(45, 70),
-        ImagePoint(frontal.width - 75, 25),
-        ImagePoint(frontal.width - 25, frontal.height - 65),
-        ImagePoint(70, frontal.height - 20),
-      ]);
-      final config = ArucoAlignmentConfig(
-        finalMarkerDetectionMaxDimension: null,
+  test('four-point and multi-point accuracy use identical ground truth landmarks', () {
+    if (!backendAvailable) {
+      markTestSkipped(unavailableReason ?? 'Native OpenCV unavailable.');
+      return;
+    }
+    final fixture = _perspectiveFixture(frontal, [
+      ImagePoint(45, 70),
+      ImagePoint(frontal.width - 75, 25),
+      ImagePoint(frontal.width - 25, frontal.height - 65),
+      ImagePoint(70, frontal.height - 20),
+    ]);
+    final config = ArucoAlignmentConfig(finalMarkerDetectionMaxDimension: null);
+    final production = _align(fixture.raster, page);
+    expect(
+      production.isSuccess,
+      isTrue,
+      reason: production.errorOrNull?.toString(),
+    );
+    final backend = OpenCvArucoVisionBackend();
+    final opened = backend.open(
+      Uint8List.fromList(image.encodePng(fixture.raster)),
+      config,
+    );
+    expect(opened.isSuccess, isTrue, reason: opened.errorOrNull?.toString());
+    final session = opened.value;
+    try {
+      final correspondences = const MarkerCorrespondenceService().build(
+        detection: session.detection,
+        page: page,
+        config: config,
       );
-      final backend = OpenCvArucoVisionBackend();
-      final opened = backend.open(
-        Uint8List.fromList(image.encodePng(fixture.raster)),
-        config,
+      expect(
+        correspondences.isSuccess,
+        isTrue,
+        reason: correspondences.errorOrNull?.toString(),
       );
-      expect(opened.isSuccess, isTrue, reason: opened.errorOrNull?.toString());
-      final session = opened.value;
-      try {
-        final correspondences = const MarkerCorrespondenceService().build(
-          detection: session.detection,
-          page: page,
-          config: config,
-        );
-        expect(
-          correspondences.isSuccess,
-          isTrue,
-          reason: correspondences.errorOrNull?.toString(),
-        );
-        final set = correspondences.value;
-        final four = session.estimateHomography(
-          sourcePoints: set.baselineSourcePoints,
-          destinationPoints: set.baselineDestinationPoints,
-          method: HomographyEstimationMethod.fourPoint,
-          ransacReprojectionThresholdPixels:
-              config.multipointRansacReprojectionThresholdPixels,
-          maximumIterations: config.multipointMaximumIterations,
-          confidence: config.multipointConfidence,
-        );
-        final multi = session.estimateHomography(
-          sourcePoints: set.allSourcePoints,
-          destinationPoints: set.allDestinationPoints,
-          method: HomographyEstimationMethod.multiPointRansac,
-          ransacReprojectionThresholdPixels:
-              config.multipointRansacReprojectionThresholdPixels,
-          maximumIterations: config.multipointMaximumIterations,
-          confidence: config.multipointConfidence,
-        );
-        expect(four.isSuccess, isTrue, reason: four.errorOrNull?.toString());
-        expect(multi.isSuccess, isTrue, reason: multi.errorOrNull?.toString());
-        final fourAccuracy = ReprojectionStatistics(
-          _landmarkErrors(
-            page,
-            fixture.canonicalToSource,
-            four.value.homography,
-          ),
-        );
-        final multiAccuracy = ReprojectionStatistics(
-          _landmarkErrors(
-            page,
-            fixture.canonicalToSource,
-            multi.value.homography,
-          ),
-        );
-        expect(fourAccuracy.maximum, lessThan(5));
-        expect(multiAccuracy.maximum, lessThan(5));
-        expect(multiAccuracy.mean, lessThanOrEqualTo(fourAccuracy.mean + 1));
-      } finally {
-        session.dispose();
-        backend.dispose();
-      }
-    },
-  );
+      final set = correspondences.value;
+      final four = session.estimateHomography(
+        sourcePoints: set.baselineSourcePoints,
+        destinationPoints: set.baselineDestinationPoints,
+        method: HomographyEstimationMethod.fourPoint,
+        ransacReprojectionThresholdPixels:
+            config.multipointRansacReprojectionThresholdPixels,
+        maximumIterations: config.multipointMaximumIterations,
+        confidence: config.multipointConfidence,
+      );
+      final multi = session.estimateHomography(
+        sourcePoints: set.allSourcePoints,
+        destinationPoints: set.allDestinationPoints,
+        method: HomographyEstimationMethod.multiPointRansac,
+        ransacReprojectionThresholdPixels:
+            config.multipointRansacReprojectionThresholdPixels,
+        maximumIterations: config.multipointMaximumIterations,
+        confidence: config.multipointConfidence,
+      );
+      expect(four.isSuccess, isTrue, reason: four.errorOrNull?.toString());
+      expect(multi.isSuccess, isTrue, reason: multi.errorOrNull?.toString());
+      final fourAccuracy = ReprojectionStatistics(
+        _landmarkErrors(page, fixture.canonicalToSource, four.value.homography),
+      );
+      final multiAccuracy = ReprojectionStatistics(
+        _landmarkErrors(
+          page,
+          fixture.canonicalToSource,
+          multi.value.homography,
+        ),
+      );
+      final crossValidation = _leaveOneMarkerOut(
+        session: session,
+        correspondences: set.allCornerCorrespondences,
+        page: page,
+        config: config,
+      );
+      expect(fourAccuracy.maximum, lessThan(5));
+      expect(multiAccuracy.maximum, lessThan(5));
+      expect(multiAccuracy.mean, lessThanOrEqualTo(fourAccuracy.mean + 1));
+      expect(crossValidation.statistics.maximum, lessThan(4));
+
+      final diagnostics = production.value.diagnostics;
+      final p1521EstimatedHomographyCost =
+          four.value.duration +
+          multi.value.duration +
+          crossValidation.estimationDuration;
+      // These metrics are emitted only when the native gate executes. They
+      // compare both production candidates against identical independent
+      // bubble landmarks and isolate the removed P15.2.1 CV estimate cost.
+      // ignore: avoid_print
+      print(
+        'P15_2_2_NATIVE_METRICS '
+        'fourMean=${fourAccuracy.mean} '
+        'fourP95=${fourAccuracy.percentile95} '
+        'fourMax=${fourAccuracy.maximum} '
+        'multiMean=${multiAccuracy.mean} '
+        'multiP95=${multiAccuracy.percentile95} '
+        'multiMax=${multiAccuracy.maximum} '
+        'meanDifference=${multiAccuracy.mean - fourAccuracy.mean} '
+        'crossValidationMean=${crossValidation.statistics.mean} '
+        'crossValidationP95=${crossValidation.statistics.percentile95} '
+        'crossValidationMax=${crossValidation.statistics.maximum} '
+        'crossValidationWallUs=${crossValidation.wallDuration.inMicroseconds} '
+        'p15_2_1EstimatedHomographyUs=${p1521EstimatedHomographyCost.inMicroseconds} '
+        'p15_2_2FourPointUs=${diagnostics.fourPointHomographyDuration.inMicroseconds} '
+        'p15_2_2MultiPointUs=${diagnostics.multiPointHomographyDuration.inMicroseconds} '
+        'p15_2_2CandidateValidationUs=${diagnostics.candidateValidationDuration.inMicroseconds} '
+        'p15_2_2WarpUs=${diagnostics.warpDuration.inMicroseconds} '
+        'p15_2_2TotalAlignmentUs=${diagnostics.processingDuration.inMicroseconds}',
+      );
+    } finally {
+      session.dispose();
+      backend.dispose();
+    }
+  });
 
   test('rotated detector corners retain marker-local published ordering', () {
     if (!backendAvailable) {
@@ -775,6 +827,80 @@ List<double> _landmarkErrors(
       ),
     ),
 ];
+
+_CrossValidationMetrics _leaveOneMarkerOut({
+  required ArucoImageSession session,
+  required List<MarkerCorrespondence> correspondences,
+  required PageLayout page,
+  required ArucoAlignmentConfig config,
+}) {
+  final wallStopwatch = Stopwatch()..start();
+  final errors = <double>[];
+  var estimationDuration = Duration.zero;
+  const geometryValidator = HomographyGeometryValidator();
+  for (final marker in page.markerRegions) {
+    final training = correspondences
+        .where((item) => item.markerId != marker.markerId)
+        .toList(growable: false);
+    final heldOut = correspondences
+        .where((item) => item.markerId == marker.markerId)
+        .toList(growable: false);
+    if (training.length != 12 || heldOut.length != 4) {
+      throw StateError('Invalid leave-one-marker-out partition.');
+    }
+    final estimate = session.estimateHomography(
+      sourcePoints: training.map((item) => item.sourcePoint).toList(),
+      destinationPoints: training.map((item) => item.destinationPoint).toList(),
+      method: HomographyEstimationMethod.multiPointRansac,
+      ransacReprojectionThresholdPixels:
+          config.multipointRansacReprojectionThresholdPixels,
+      maximumIterations: config.multipointMaximumIterations,
+      confidence: config.multipointConfidence,
+    );
+    if (estimate.isFailure) {
+      throw StateError(
+        'Leave-one-marker-out estimate failed: ${estimate.error.code}',
+      );
+    }
+    estimationDuration += estimate.value.duration;
+    final stabilityFailure = geometryValidator.validationFailure(
+      matrix: estimate.value.homography,
+      page: page,
+      sourceSize: session.sourceSize,
+      config: config,
+    );
+    if (stabilityFailure != null) {
+      throw StateError(
+        'Leave-one-marker-out estimate is unstable: $stabilityFailure',
+      );
+    }
+    for (final correspondence in heldOut) {
+      errors.add(
+        estimate.value.homography
+            .project(correspondence.sourcePoint)
+            .distanceTo(correspondence.destinationPoint),
+      );
+    }
+  }
+  wallStopwatch.stop();
+  return _CrossValidationMetrics(
+    statistics: ReprojectionStatistics(errors),
+    estimationDuration: estimationDuration,
+    wallDuration: wallStopwatch.elapsed,
+  );
+}
+
+final class _CrossValidationMetrics {
+  const _CrossValidationMetrics({
+    required this.statistics,
+    required this.estimationDuration,
+    required this.wallDuration,
+  });
+
+  final ReprojectionStatistics statistics;
+  final Duration estimationDuration;
+  final Duration wallDuration;
+}
 
 final class _PerspectiveFixture {
   const _PerspectiveFixture({

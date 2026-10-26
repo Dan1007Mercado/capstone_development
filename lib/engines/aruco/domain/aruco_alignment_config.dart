@@ -12,8 +12,6 @@ final class ArucoAlignmentConfig {
     double maximumRejectedCornerErrorPixels = 4,
     double multipointRansacReprojectionThresholdPixels = 1.5,
     double minimumMultipointInlierRatio = 0.875,
-    double minimumMultipointScoreImprovementPixels = 0.05,
-    double maximumHeldOutReprojectionErrorPixels = 4,
     double maximumLocalScaleRatio = 20,
     double maximumLocalAnisotropyRatio = 12,
     double maximumPageBoundaryOvershootRatio = 0.15,
@@ -31,7 +29,6 @@ final class ArucoAlignmentConfig {
       maximumReprojectionErrorPixels,
       maximumRejectedCornerErrorPixels,
       multipointRansacReprojectionThresholdPixels,
-      maximumHeldOutReprojectionErrorPixels,
       maximumLocalScaleRatio,
       maximumLocalAnisotropyRatio,
     ];
@@ -42,8 +39,6 @@ final class ArucoAlignmentConfig {
         !minimumMultipointInlierRatio.isFinite ||
         minimumMultipointInlierRatio <= 0 ||
         minimumMultipointInlierRatio > 1 ||
-        !minimumMultipointScoreImprovementPixels.isFinite ||
-        minimumMultipointScoreImprovementPixels < 0 ||
         maximumLocalScaleRatio < 1 ||
         maximumLocalAnisotropyRatio < 1 ||
         !maximumPageBoundaryOvershootRatio.isFinite ||
@@ -72,10 +67,6 @@ final class ArucoAlignmentConfig {
       multipointRansacReprojectionThresholdPixels:
           multipointRansacReprojectionThresholdPixels,
       minimumMultipointInlierRatio: minimumMultipointInlierRatio,
-      minimumMultipointScoreImprovementPixels:
-          minimumMultipointScoreImprovementPixels,
-      maximumHeldOutReprojectionErrorPixels:
-          maximumHeldOutReprojectionErrorPixels,
       maximumLocalScaleRatio: maximumLocalScaleRatio,
       maximumLocalAnisotropyRatio: maximumLocalAnisotropyRatio,
       maximumPageBoundaryOvershootRatio: maximumPageBoundaryOvershootRatio,
@@ -97,8 +88,6 @@ final class ArucoAlignmentConfig {
     required this.maximumRejectedCornerErrorPixels,
     required this.multipointRansacReprojectionThresholdPixels,
     required this.minimumMultipointInlierRatio,
-    required this.minimumMultipointScoreImprovementPixels,
-    required this.maximumHeldOutReprojectionErrorPixels,
     required this.maximumLocalScaleRatio,
     required this.maximumLocalAnisotropyRatio,
     required this.maximumPageBoundaryOvershootRatio,
@@ -121,8 +110,6 @@ final class ArucoAlignmentConfig {
   final double maximumRejectedCornerErrorPixels;
   final double multipointRansacReprojectionThresholdPixels;
   final double minimumMultipointInlierRatio;
-  final double minimumMultipointScoreImprovementPixels;
-  final double maximumHeldOutReprojectionErrorPixels;
   final double maximumLocalScaleRatio;
   final double maximumLocalAnisotropyRatio;
   final double maximumPageBoundaryOvershootRatio;

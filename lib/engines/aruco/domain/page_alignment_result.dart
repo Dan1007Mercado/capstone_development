@@ -159,8 +159,10 @@ final class HomographyCandidateDiagnostics {
   final Duration duration;
   final ReprojectionStatistics? fittingResiduals;
 
-  /// Out-of-sample geometric consistency. For multi-point this is produced by
-  /// leave-one-marker-out estimates, never by the production fit itself.
+  /// Out-of-sample geometric consistency when it was actually evaluated.
+  /// Production four-point alignment uses unused corners; production
+  /// multi-point alignment leaves this null because cross-validation runs only
+  /// in the native diagnostic harness.
   final ReprojectionStatistics? heldOutValidationResiduals;
   final HomographyValidationMethod? heldOutValidationMethod;
   final List<int> inliersPerMarker;
@@ -169,8 +171,9 @@ final class HomographyCandidateDiagnostics {
   double get inlierRatio =>
       totalPointCount == 0 ? 0 : inlierCount / totalPointCount;
 
-  /// Shared score used only between candidates evaluated on the same 16
-  /// published marker corners. It intentionally includes tail error.
+  /// Full-correspondence diagnostic that intentionally includes tail error.
+  /// It must not be used as proof that multi-point is more accurate because
+  /// those same correspondences are its fitting observations.
   double get commonScore =>
       medianCommonReprojectionError +
       meanCommonReprojectionError * 0.25 +
