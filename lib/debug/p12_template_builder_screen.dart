@@ -12,6 +12,7 @@ import '../application/template_builder/user_accessible_template_pdf_exporter.da
 import '../application/published_templates/in_memory_published_template_artifact_repository.dart';
 import '../application/published_templates/published_template_artifact.dart';
 import '../application/published_templates/published_template_artifact_service.dart';
+import '../application/published_templates/published_questionnaire_service.dart';
 import '../core/errors/engine_error.dart';
 import '../core/ids/identifiers.dart';
 import '../core/result/engine_result.dart';
@@ -19,6 +20,7 @@ import '../core/result/validation.dart';
 import '../engines/layout/domain/layout_config.dart';
 import '../engines/layout/domain/page_layout.dart';
 import '../engines/pdf/application/pdf_engine.dart';
+import '../engines/pdf/domain/questionnaire_pdf_plan.dart';
 import '../engines/template/application/template_publication_service.dart';
 import '../engines/template/application/template_validator.dart';
 import '../engines/template/domain/question_type.dart';
@@ -52,6 +54,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
     this.publicationService,
     this.densePublicationService,
     this.answerSheetPublicationService,
+    this.questionnaireRenderer,
     this.packetGenerationService,
     this.packetPreviewer,
     this.templateIdGenerator,
@@ -66,6 +69,7 @@ class P12TemplateBuilderScreen extends StatefulWidget {
   final TemplatePublicationService? publicationService;
   final PublishedTemplateArtifactService? densePublicationService;
   final PublishedTemplateArtifactService? answerSheetPublicationService;
+  final QuestionnaireRenderer? questionnaireRenderer;
   final PacketGenerationService? packetGenerationService;
   final PacketPdfPreviewer? packetPreviewer;
   final TemplateIdGenerator? templateIdGenerator;
@@ -85,6 +89,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   late TemplatePublicationService _publicationService;
   late PublishedTemplateArtifactService _densePublicationService;
   late PublishedTemplateArtifactService _answerSheetPublicationService;
+  late QuestionnaireRenderer _questionnaireRenderer;
   late PacketGenerationService _packetGenerationService;
   late PacketPdfPreviewer _packetPreviewer;
   final TextEditingController _packetCountController = TextEditingController(
@@ -111,6 +116,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   List<PacketArtifact> _generatedPackets = const [];
   PacketBatchArtifact? _generatedBatch;
   PdfExportOutcome? _batchExportOutcome;
+  QuestionnairePdfArtifact? _questionnaire;
+  PdfExportOutcome? _questionnaireExportOutcome;
   int _responseCount = 0;
   bool _generatingPackets = false;
   bool _loadingPublishedArtifacts = true;
@@ -119,6 +126,7 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
   final Set<PacketId> _busyPacketIds = {};
   final Map<PacketId, PdfExportOutcome> _packetExportOutcomes = {};
   bool _batchBusy = false;
+  bool _questionnaireBusy = false;
 
   @override
   void initState() {
@@ -143,6 +151,9 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         );
     _answerSheetPublicationService =
         widget.answerSheetPublicationService ?? _densePublicationService;
+    _questionnaireRenderer =
+        widget.questionnaireRenderer ??
+        PublishedQuestionnaireService().generate;
     _packetGenerationService =
         widget.packetGenerationService ??
         PacketGenerationService(repository: InMemoryPacketResponseRepository());
@@ -261,6 +272,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _packetExportOutcomes.clear();
       _generatedBatch = null;
       _batchExportOutcome = null;
+      _questionnaire = null;
+      _questionnaireExportOutcome = null;
     });
   }
 
@@ -275,6 +288,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _generatedPackets = const [];
       _generatedBatch = null;
       _batchExportOutcome = null;
+      _questionnaire = null;
+      _questionnaireExportOutcome = null;
       _packetExportOutcomes.clear();
       _lifecycleMessage = 'Created a new independent template.';
       _answerSheetPublicationMessage = null;
@@ -703,6 +718,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
         _generatedPackets = const [];
         _generatedBatch = null;
         _batchExportOutcome = null;
+        _questionnaire = null;
+        _questionnaireExportOutcome = null;
         _packetGenerationMessage = null;
         _packetGenerationError = null;
         _packetExportOutcomes.clear();
@@ -860,6 +877,63 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
     });
   }
 
+  Future<void> _generateQuestionnaire() async {
+    final published = _selectedArtifactFromCurrentList;
+    if (published == null) return;
+    setState(() {
+      _questionnaireBusy = true;
+      _questionnaire = null;
+      _questionnaireExportOutcome = null;
+      _error = null;
+    });
+    final result = await _questionnaireRenderer(published);
+    if (!mounted) return;
+    setState(() {
+      _questionnaireBusy = false;
+      _questionnaire = result.valueOrNull;
+      _error = result.errorOrNull;
+    });
+  }
+
+  Future<void> _previewQuestionnaire() async {
+    final questionnaire = _questionnaire;
+    final published = _selectedArtifactFromCurrentList;
+    if (questionnaire == null || published == null) return;
+    await _packetPreviewer.preview(
+      context,
+      bytes: questionnaire.bytes,
+      fileName: questionnairePdfFileName(
+        published.template.name,
+        questionnaire.templateVersion,
+      ),
+      title: 'Questionnaire Preview',
+    );
+  }
+
+  Future<void> _saveQuestionnaire() async {
+    final questionnaire = _questionnaire;
+    final published = _selectedArtifactFromCurrentList;
+    if (questionnaire == null || published == null) return;
+    setState(() {
+      _questionnaireBusy = true;
+      _questionnaireExportOutcome = null;
+      _error = null;
+    });
+    final result = await _exporter.export(
+      bytes: questionnaire.bytes,
+      suggestedFileName: questionnairePdfFileName(
+        published.template.name,
+        questionnaire.templateVersion,
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _questionnaireBusy = false;
+      _questionnaireExportOutcome = result.valueOrNull;
+      _error = result.errorOrNull;
+    });
+  }
+
   void _loadDemo() {
     setState(() {
       _controller = buildP12MixedTemplateDemo();
@@ -869,6 +943,8 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
       _generatedPackets = const [];
       _generatedBatch = null;
       _batchExportOutcome = null;
+      _questionnaire = null;
+      _questionnaireExportOutcome = null;
       _lifecycleMessage = null;
       _answerSheetPublicationMessage = null;
       _validation = null;
@@ -1334,6 +1410,74 @@ class _P12TemplateBuilderScreenState extends State<P12TemplateBuilderScreen> {
                             : 'PDF saved successfully.\n'
                                   'URI: ${outcome.locationUri}',
                         key: const Key('pdf-save-outcome'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          if (_selectedArtifactFromCurrentList != null)
+            Card(
+              key: const Key('questionnaire-pdf-controls'),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Published Questionnaire',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonal(
+                          key: const Key('generate-questionnaire'),
+                          onPressed: _questionnaireBusy
+                              ? null
+                              : _generateQuestionnaire,
+                          child: Text(
+                            _questionnaireBusy
+                                ? 'Generating...'
+                                : 'Generate Questionnaire',
+                          ),
+                        ),
+                        if (_questionnaire != null)
+                          OutlinedButton(
+                            key: const Key('preview-questionnaire'),
+                            onPressed: _questionnaireBusy
+                                ? null
+                                : _previewQuestionnaire,
+                            child: const Text('Preview Questionnaire'),
+                          ),
+                        if (_questionnaire != null)
+                          OutlinedButton(
+                            key: const Key('save-questionnaire'),
+                            onPressed: _questionnaireBusy
+                                ? null
+                                : _saveQuestionnaire,
+                            child: const Text('Save Questionnaire PDF'),
+                          ),
+                      ],
+                    ),
+                    if (_questionnaire case final questionnaire?) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Questionnaire: ${questionnaire.plan.pages.length} '
+                        'page(s) • ${questionnaire.bytes.length} bytes',
+                        key: const Key('questionnaire-generation-result'),
+                      ),
+                    ],
+                    if (_questionnaireExportOutcome case final outcome?) ...[
+                      const SizedBox(height: 8),
+                      SelectableText(
+                        outcome.userCancelled
+                            ? 'Questionnaire save cancelled.'
+                            : 'Questionnaire PDF saved successfully.\n'
+                                  'URI: ${outcome.locationUri}',
+                        key: const Key('questionnaire-save-outcome'),
                       ),
                     ],
                   ],

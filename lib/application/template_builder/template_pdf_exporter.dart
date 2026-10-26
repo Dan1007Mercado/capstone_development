@@ -123,6 +123,9 @@ final class IoTemplatePdfExporter implements TemplatePdfExporter {
 String templatePdfFileName(String templateName, TemplateVersion version) =>
     '${_safeStem(templateName)}-v${version.value}.pdf';
 
+String questionnairePdfFileName(String templateName, TemplateVersion version) =>
+    '${_safeStem(templateName)}-questionnaire-v${version.value}.pdf';
+
 String packetPdfFileName(
   String templateName,
   PacketId packetId,
