@@ -75,8 +75,10 @@ The detector keeps a short visual grace polygon and lightly smooths new paper
 corners. Detector exceptions are captured as paper-edge diagnostics and treated
 as a missing visual result, not a camera-session failure.
 
-The overlay draws only detected physical-paper geometry. Marker registration
-points are not presented as a paper outline. Its production styling uses a
+The overlay first projects the authoritative `PageLayout` boundary from four
+valid ArUco registration points. The resolved page identity must match the
+layout used for projection. Physical-paper geometry is a visual fallback only;
+the two polygons are not drawn together. Its production styling uses a
 semi-transparent dark 4 px outer stroke plus a 2 px inner stroke: white while
 tracking, amber when framing guidance is needed, and green when READY. The
 existing `PreviewCoordinateMapper` remains responsible for sensor orientation,
@@ -84,11 +86,13 @@ device orientation, mirroring, `BoxFit.cover`, and center cropping.
 
 ## Recoverable frame failures
 
-Malformed or noisy individual frames return
+Malformed materialization is recorded as
+`CAMERA_FRAME_MATERIALIZATION_FAILED`; malformed worker input returns
 `CAMERA_FRAME_ANALYSIS_RECOVERABLE`. The bad frame is skipped, marker stability
 is reset, and camera analysis continues with the next accepted frame. Camera
 initialization, stream startup, native backend availability, and other session
-failures remain fatal.
+failures remain fatal. Reset generation guards prevent in-flight observations
+from restoring stale marker geometry.
 
 ## Acceptance and persistence ordering
 
@@ -114,7 +118,9 @@ Developer diagnostics report received, accepted, processed, and dropped frames;
 analysis FPS; average total and ArUco duration; ArUco opportunities; time to
 first marker, identity, and READY; recoverable analysis failures; paper-edge
 detections, failures, acquisitions, losses, temporary loss, and average visual
-detection duration. Obsolete document-rejected, ArUco-skipped/fallback,
+detection duration. They also retain lifecycle transition counts and the latest
+camera error code, stage, and root cause. Obsolete document-rejected,
+ArUco-skipped/fallback,
 SEARCH/ACTIVE, and document-to-readiness metrics were removed.
 
 ## Manual physical test matrix

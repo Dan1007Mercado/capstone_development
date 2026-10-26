@@ -21,7 +21,7 @@ final class CameraEngineConfig {
     int analysisMaxDimension = defaultAnalysisMaxDimension,
     bool paperEdgeVisualizationEnabled = true,
     int paperEdgeMaxDimension = 640,
-    int paperEdgeDetectionIntervalFrames = 2,
+    int paperEdgeDetectionIntervalFrames = 3,
     double paperEdgeCannyLowThreshold = 40,
     double paperEdgeCannyHighThreshold = 120,
     double paperEdgePolygonEpsilonRatio = 0.02,

@@ -62,6 +62,7 @@ final class CameraScannerCoordinator {
     if (error != null) return EngineResult.failure(error);
     _context = value;
     camera.resetTracking();
+    _latestCameraState = camera.state;
     _autoCaptureArmed = true;
     _requiresFreshReadiness = true;
     _readinessProcessedFrameBaseline =
@@ -358,6 +359,7 @@ final class CameraScannerCoordinator {
     if (_disposed) return _disposedFailure();
     if (_operationInProgress) return _busyFailure();
     camera.resetTracking();
+    _latestCameraState = camera.state;
     _autoCaptureArmed = true;
     _requiresFreshReadiness = true;
     _readinessProcessedFrameBaseline =
@@ -401,11 +403,32 @@ final class CameraScannerCoordinator {
     return result;
   }
 
-  Future<EngineResult<bool>> resume() {
+  Future<EngineResult<bool>> resume() async {
     if (_disposed) return Future.value(_disposedFailure());
     _cameraSessionRequested = true;
     if (_operationInProgress) return Future.value(EngineResult.success(true));
-    return initialize();
+    switch (_latestCameraState.lifecycle) {
+      case CameraLifecycleState.analyzing:
+      case CameraLifecycleState.initializing:
+      case CameraLifecycleState.capturing:
+        return EngineResult.success(true);
+      case CameraLifecycleState.ready:
+        final started = await camera.startAnalysis();
+        if (started.isFailure) {
+          return _cameraFailure(
+            'CAPTURE_SCAN_CAMERA_STREAM_FAILED',
+            'The capture-and-scan analysis stream could not resume.',
+            started.error,
+          );
+        }
+        _publishCameraPhase();
+        return started;
+      case CameraLifecycleState.uninitialized:
+      case CameraLifecycleState.error:
+        return initialize();
+      case CameraLifecycleState.disposed:
+        return _disposedFailure();
+    }
   }
 
   Future<EngineResult<ScanResult>> _finishFailure({

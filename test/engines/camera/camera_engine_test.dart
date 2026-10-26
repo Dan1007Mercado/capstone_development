@@ -145,6 +145,7 @@ void main() {
       throwsArgumentError,
     );
     expect(CameraEngineConfig().analysisMaxDimension, 800);
+    expect(CameraEngineConfig().paperEdgeDetectionIntervalFrames, 3);
   });
 
   test('detected marker IDs are preserved in engine state', () async {
@@ -501,6 +502,30 @@ void main() {
       fixture.engine.state.error!.details['causeCode'],
       'ARUCO_BACKEND_UNAVAILABLE',
     );
+    expect(fixture.engine.state.analysis, isNull);
+    expect(fixture.engine.diagnostics.lastErrorCode, 'CAMERA_ANALYSIS_FAILED');
+    expect(
+      fixture.engine.diagnostics.lastErrorRootCause,
+      contains('ARUCO_BACKEND_UNAVAILABLE'),
+    );
+    await fixture.dispose();
+  });
+
+  test('unexpected analyzer exception releases busy state for retry', () async {
+    final analyzer = _FakeAnalyzer()
+      ..errorToThrow = StateError('synthetic analyzer exception');
+    final fixture = _Fixture(analyzer: analyzer);
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+
+    expect(fixture.engine.state.lifecycle, CameraLifecycleState.error);
+    expect(fixture.engine.diagnostics.lastErrorStage, 'frameAnalysis');
+
+    expect((await fixture.engine.initialize()).isSuccess, isTrue);
+    expect((await fixture.engine.startAnalysis()).isSuccess, isTrue);
+    await fixture.emitAndSettle(200);
+    expect(analyzer.calls, 2);
+    expect(fixture.engine.diagnostics.processedFrameCount, 1);
     await fixture.dispose();
   });
 
@@ -560,6 +585,15 @@ void main() {
     expect(fixture.engine.state.error, isNull);
     expect(fixture.engine.state.readiness.isReady, isFalse);
     expect(fixture.engine.diagnostics.recoverableAnalysisFailureCount, 1);
+    expect(
+      fixture.engine.diagnostics.lastErrorCode,
+      'CAMERA_FRAME_ANALYSIS_RECOVERABLE',
+    );
+
+    analyzer.result = null;
+    await fixture.emitAndSettle(200);
+    expect(analyzer.calls, 2);
+    expect(fixture.engine.diagnostics.processedFrameCount, 1);
     await fixture.dispose();
   });
 
@@ -575,8 +609,37 @@ void main() {
     expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
     expect(fixture.engine.state.error, isNull);
     expect(fixture.engine.diagnostics.recoverableAnalysisFailureCount, 1);
+    expect(
+      fixture.engine.diagnostics.lastErrorCode,
+      'CAMERA_FRAME_MATERIALIZATION_FAILED',
+    );
+    expect(fixture.engine.diagnostics.lastErrorStage, 'frameMaterialization');
     await fixture.emitAndSettle(200);
     expect(fixture.analyzer.calls, 1);
+    await fixture.dispose();
+  });
+
+  test('reset clears geometry and rejects an in-flight stale result', () async {
+    final analyzer = _FakeAnalyzer()..gate = Completer<void>();
+    final fixture = _Fixture(analyzer: analyzer);
+    await fixture.initializeAndStart();
+    fixture.emitAt(0);
+    await _settle();
+
+    fixture.engine.resetTracking();
+    expect(fixture.engine.state.analysis, isNull);
+    expect(
+      fixture.engine.state.readiness.status,
+      CaptureReadinessStatus.searching,
+    );
+
+    analyzer.gate!.complete();
+    await _settle();
+    expect(fixture.engine.state.analysis, isNull);
+
+    analyzer.gate = null;
+    await fixture.emitAndSettle(200);
+    expect(fixture.engine.state.analysis, isNotNull);
     await fixture.dispose();
   });
 
@@ -1012,6 +1075,7 @@ final class _FakeAnalyzer implements CameraFrameAnalyzer {
   EngineResult<CameraFrameObservation>? result;
   Completer<void>? gate;
   Duration delay = Duration.zero;
+  Object? errorToThrow;
   int calls = 0;
   int activeCalls = 0;
   int maximumActiveCalls = 0;
@@ -1028,6 +1092,9 @@ final class _FakeAnalyzer implements CameraFrameAnalyzer {
     if (gate != null) await gate!.future;
     if (delay > Duration.zero) await Future<void>.delayed(delay);
     activeCalls--;
+    final configuredError = errorToThrow;
+    errorToThrow = null;
+    if (configuredError != null) throw configuredError;
     final configuredResult = result;
     if (configuredResult != null) return configuredResult;
     final queue = observations;

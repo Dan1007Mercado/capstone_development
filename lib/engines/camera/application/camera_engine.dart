@@ -50,6 +50,13 @@ final class CameraEngine {
   int _paperEdgeLosses = 0;
   int _recoverableAnalysisFailures = 0;
   String? _lastRecoverableAnalysisError;
+  String? _lastErrorCode;
+  String? _lastErrorStage;
+  String? _lastErrorRootCause;
+  int _lifecycleTransitionCount = 0;
+  CameraLifecycleState? _previousLifecycle;
+  CameraLifecycleState _currentLifecycle = CameraLifecycleState.uninitialized;
+  int _trackingGeneration = 0;
   int _arucoAttemptedFrames = 0;
   int _readyFrames = 0;
   final Queue<DateTime> _processedFrameTimes = Queue<DateTime>();
@@ -82,6 +89,7 @@ final class CameraEngine {
     final result = await backend.initialize(config);
     if (_disposed) return _disposedFailure();
     if (result.isFailure) {
+      _recordError(result.error, stage: 'initialization');
       _emit(
         _copyState(lifecycle: CameraLifecycleState.error, error: result.error),
       );
@@ -108,6 +116,7 @@ final class CameraEngine {
     }
     final result = await backend.startAnalysis(_onFrame);
     if (result.isFailure) {
+      _recordError(result.error, stage: 'streamStart');
       _emit(
         _copyState(lifecycle: CameraLifecycleState.error, error: result.error),
       );
@@ -124,6 +133,7 @@ final class CameraEngine {
     }
     final result = await backend.stopAnalysis();
     if (result.isFailure) {
+      _recordError(result.error, stage: 'streamStop');
       _emit(
         _copyState(lifecycle: CameraLifecycleState.error, error: result.error),
       );
@@ -148,6 +158,7 @@ final class CameraEngine {
     if (wasAnalyzing) {
       final stopped = await backend.stopAnalysis();
       if (stopped.isFailure) {
+        _recordError(stopped.error, stage: 'captureStreamStop');
         return EngineResult.failure(stopped.error);
       }
     }
@@ -158,6 +169,7 @@ final class CameraEngine {
     if (wasAnalyzing) {
       final restarted = await backend.startAnalysis(_onFrame);
       if (restarted.isFailure) {
+        _recordError(restarted.error, stage: 'captureStreamRestart');
         _emit(
           _copyState(
             lifecycle: CameraLifecycleState.error,
@@ -168,6 +180,7 @@ final class CameraEngine {
       }
     }
     if (capture.isFailure) {
+      _recordError(capture.error, stage: 'stillCapture');
       _emit(
         _copyState(
           lifecycle: wasAnalyzing
@@ -191,7 +204,20 @@ final class CameraEngine {
   Future<EngineResult<bool>> suspend() async {
     if (_disposed) return _disposedFailure();
     if (_state.lifecycle == CameraLifecycleState.analyzing) {
-      await backend.stopAnalysis();
+      final stopped = await backend.stopAnalysis();
+      if (stopped.isFailure) {
+        _recordError(stopped.error, stage: 'suspendStreamStop');
+        _emit(
+          CameraEngineState(
+            lifecycle: CameraLifecycleState.error,
+            previewInfo: _state.previewInfo,
+            diagnostics: _diagnostics,
+            readiness: const CaptureReadiness.notReady(),
+            error: stopped.error,
+          ),
+        );
+        return stopped;
+      }
     }
     await backend.dispose();
     resetTracking();
@@ -228,6 +254,11 @@ final class CameraEngine {
       _analysisBusy = false;
       _recoverableAnalysisFailures++;
       _lastRecoverableAnalysisError = error.toString();
+      _recordErrorValues(
+        code: 'CAMERA_FRAME_MATERIALIZATION_FAILED',
+        stage: 'frameMaterialization',
+        rootCause: error.toString(),
+      );
       _resetStability();
       final readiness = CaptureReadiness(
         status: CaptureReadinessStatus.searching,
@@ -245,7 +276,12 @@ final class CameraEngine {
       return;
     }
     unawaited(
-      _analyze(frame, materializationStopwatch.elapsed, totalStopwatch),
+      _analyze(
+        frame,
+        materializationStopwatch.elapsed,
+        totalStopwatch,
+        _trackingGeneration,
+      ),
     );
   }
 
@@ -253,15 +289,50 @@ final class CameraEngine {
     CameraAnalysisFrame frame,
     Duration materializationDuration,
     Stopwatch totalStopwatch,
+    int trackingGeneration,
   ) async {
-    final result = await analyzer.analyze(frame, config);
-    totalStopwatch.stop();
-    _analysisBusy = false;
+    late final EngineResult<CameraFrameObservation> result;
+    try {
+      result = await analyzer.analyze(frame, config);
+    } on Object catch (error) {
+      _recordErrorValues(
+        code: 'CAMERA_ANALYSIS_FAILED',
+        stage: 'frameAnalysis',
+        rootCause: error.toString(),
+      );
+      if (_disposed || _state.lifecycle != CameraLifecycleState.analyzing) {
+        return;
+      }
+      _resetStability();
+      _emit(
+        CameraEngineState(
+          lifecycle: CameraLifecycleState.error,
+          previewInfo: _state.previewInfo,
+          diagnostics: _diagnostics,
+          readiness: const CaptureReadiness.notReady(),
+          error: EngineError(
+            code: 'CAMERA_ANALYSIS_FAILED',
+            message: 'Camera preview analysis failed unexpectedly.',
+            details: {'stage': 'frameAnalysis', 'cause': error.toString()},
+          ),
+        ),
+      );
+      return;
+    } finally {
+      if (totalStopwatch.isRunning) totalStopwatch.stop();
+      _analysisBusy = false;
+    }
     if (_disposed || _state.lifecycle != CameraLifecycleState.analyzing) return;
     if (result.isFailure) {
       if (result.error.code == 'CAMERA_FRAME_ANALYSIS_RECOVERABLE') {
         _recoverableAnalysisFailures++;
         _lastRecoverableAnalysisError = result.error.message;
+        _recordErrorValues(
+          code: result.error.code,
+          stage: 'frameAnalysis',
+          rootCause:
+              result.error.details['cause']?.toString() ?? result.error.message,
+        );
         _resetStability();
         final readiness = CaptureReadiness(
           status: CaptureReadinessStatus.searching,
@@ -278,9 +349,18 @@ final class CameraEngine {
         );
         return;
       }
+      _recordErrorValues(
+        code: 'CAMERA_ANALYSIS_FAILED',
+        stage: 'analysisBackend',
+        rootCause: '${result.error.code}: ${result.error.message}',
+      );
+      _resetStability();
       _emit(
-        _copyState(
+        CameraEngineState(
           lifecycle: CameraLifecycleState.error,
+          previewInfo: _state.previewInfo,
+          diagnostics: _diagnostics,
+          readiness: const CaptureReadiness.notReady(),
           error: EngineError(
             code: 'CAMERA_ANALYSIS_FAILED',
             message: 'Camera preview analysis failed.',
@@ -294,6 +374,7 @@ final class CameraEngine {
       );
       return;
     }
+    if (trackingGeneration != _trackingGeneration) return;
 
     final timings = result.value.timings.withEngineDurations(
       materializationDuration: materializationDuration,
@@ -507,6 +588,12 @@ final class CameraEngine {
       paperEdgeLossCount: _paperEdgeLosses,
       recoverableAnalysisFailureCount: _recoverableAnalysisFailures,
       lastRecoverableAnalysisError: _lastRecoverableAnalysisError,
+      lastErrorCode: _lastErrorCode,
+      lastErrorStage: _lastErrorStage,
+      lastErrorRootCause: _lastErrorRootCause,
+      lifecycleTransitionCount: _lifecycleTransitionCount,
+      previousLifecycle: _previousLifecycle,
+      currentLifecycle: _currentLifecycle,
       arucoAttemptedFrameCount: _arucoAttemptedFrames,
       readyFrameCount: _readyFrames,
       averagePaperEdgeDetectionDuration: _processedFrames == 0
@@ -573,12 +660,51 @@ final class CameraEngine {
 
   void resetTracking() {
     if (_disposed) return;
+    _trackingGeneration++;
     analyzer.resetTracking();
     _documentTemporarilyLost = false;
     _documentPresent = false;
     _wrongIdentityStreak = 0;
     _wrongIdentityConfirmed = false;
+    _lastAcceptedFrameAt = null;
+    _lastAutoCaptureRequestAt = null;
     _resetStability();
+    _emit(
+      CameraEngineState(
+        lifecycle: _state.lifecycle,
+        previewInfo: _state.previewInfo,
+        diagnostics: _diagnostics,
+        readiness: _state.lifecycle == CameraLifecycleState.analyzing
+            ? CaptureReadiness(
+                status: CaptureReadinessStatus.searching,
+                stableFrameCount: 0,
+                requiredStableFrameCount: config.minimumStableFrames,
+              )
+            : const CaptureReadiness.notReady(),
+        error: _state.error,
+      ),
+    );
+  }
+
+  void _recordError(EngineError error, {required String stage}) {
+    _recordErrorValues(
+      code: error.code,
+      stage: stage,
+      rootCause:
+          error.details['cause']?.toString() ??
+          error.details['pluginCode']?.toString() ??
+          error.message,
+    );
+  }
+
+  void _recordErrorValues({
+    required String code,
+    required String stage,
+    required String rootCause,
+  }) {
+    _lastErrorCode = code;
+    _lastErrorStage = stage;
+    _lastErrorRootCause = rootCause;
   }
 
   void _resetStability() {
@@ -608,8 +734,24 @@ final class CameraEngine {
 
   void _emit(CameraEngineState state) {
     if (_disposed && state.lifecycle != CameraLifecycleState.disposed) return;
-    _state = state;
-    if (!_states.isClosed) _states.add(state);
+    if (_currentLifecycle != state.lifecycle) {
+      _previousLifecycle = _currentLifecycle;
+      _currentLifecycle = state.lifecycle;
+      _lifecycleTransitionCount++;
+    }
+    final emitted = CameraEngineState(
+      lifecycle: state.lifecycle,
+      previewInfo: state.previewInfo,
+      analysis: state.lifecycle == CameraLifecycleState.error
+          ? null
+          : state.analysis,
+      diagnostics: _diagnostics,
+      readiness: state.readiness,
+      error: state.error,
+      autoCaptureRequested: state.autoCaptureRequested,
+    );
+    _state = emitted;
+    if (!_states.isClosed) _states.add(emitted);
   }
 
   Future<void> dispose() async {
@@ -619,13 +761,14 @@ final class CameraEngine {
     if (wasAnalyzing) await backend.stopAnalysis();
     await analyzer.dispose();
     await backend.dispose();
-    _state = CameraEngineState(
-      lifecycle: CameraLifecycleState.disposed,
-      diagnostics: _diagnostics,
-      readiness: const CaptureReadiness.notReady(),
+    _emit(
+      CameraEngineState(
+        lifecycle: CameraLifecycleState.disposed,
+        diagnostics: _diagnostics,
+        readiness: const CaptureReadiness.notReady(),
+      ),
     );
     if (!_states.isClosed) {
-      _states.add(_state);
       await _states.close();
     }
   }

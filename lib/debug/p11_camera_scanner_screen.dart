@@ -194,6 +194,18 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
         ),
         if (camera.diagnostics.lastRecoverableAnalysisError case final error?)
           Text('Latest recoverable analysis diagnostic: $error'),
+        if (camera.diagnostics.lastErrorCode case final code?)
+          Text(
+            'Latest camera error: $code '
+            '[${camera.diagnostics.lastErrorStage}] '
+            '${camera.diagnostics.lastErrorRootCause}',
+          ),
+        Text(
+          'Lifecycle transitions: '
+          '${camera.diagnostics.lifecycleTransitionCount} '
+          '(${camera.diagnostics.previousLifecycle?.name ?? 'none'} -> '
+          '${camera.diagnostics.currentLifecycle.name})',
+        ),
         Text(
           'ArUco opportunities: '
           '${camera.diagnostics.arucoAttemptedFrameCount}',

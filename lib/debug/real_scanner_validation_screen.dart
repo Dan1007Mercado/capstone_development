@@ -18,6 +18,7 @@ import '../application/answer_sheet_packets/packet_response_repository.dart';
 import '../application/answer_sheet_packets/packet_response_service.dart';
 import '../core/errors/engine_error.dart';
 import '../engines/camera/domain/camera_engine_config.dart';
+import '../engines/camera/domain/camera_models.dart';
 import '../engines/recognition/domain/mark_classification.dart';
 import '../engines/scanner/domain/scan_result.dart';
 import '../engines/template/application/template_publication_service.dart';
@@ -340,6 +341,12 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     unawaited(_runtime.coordinator.captureAndScan(force: true));
   }
 
+  Future<void> _retryCamera() async {
+    _flow.clearSessionError();
+    await _runtime.coordinator.resume();
+    if (mounted && !_disposing) setState(() {});
+  }
+
   @override
   void dispose() {
     _disposing = true;
@@ -464,14 +471,21 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                   ),
                   if (state.phase == CameraScanPhase.scanFailed)
                     TextButton(
-                      onPressed: () {
-                        _runtime.coordinator.reset();
-                        _flow.clearSessionError();
-                        setState(() {});
-                      },
-                      child: const Text(
-                        'Retry',
-                        style: TextStyle(color: Colors.white),
+                      onPressed:
+                          state.cameraState.lifecycle ==
+                              CameraLifecycleState.error
+                          ? () => unawaited(_retryCamera())
+                          : () {
+                              _runtime.coordinator.reset();
+                              _flow.clearSessionError();
+                              setState(() {});
+                            },
+                      child: Text(
+                        state.cameraState.lifecycle ==
+                                CameraLifecycleState.error
+                            ? 'Retry Camera'
+                            : 'Retry',
+                        style: const TextStyle(color: Colors.white),
                       ),
                     ),
                 ],
@@ -551,7 +565,13 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     CameraScanState state,
   ) {
     final analysis = state.cameraState.analysis;
-    final overlay = scannerOverlayGeometry(analysis);
+    final activePage = _runtime.coordinator.activeContext.pageLayout;
+    final resolvedPageId = analysis?.tracking.resolvedPageId;
+    final applicablePage =
+        resolvedPageId == null || activePage.pageId == resolvedPageId
+        ? activePage
+        : null;
+    final overlay = scannerOverlayGeometry(analysis, page: applicablePage);
     if (analysis == null || overlay.points.length != 4) {
       return const ScannerOverlayGeometry.none();
     }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../application/camera_scanner/domain/detected_page_geometry.dart';
 import '../application/camera_scanner/domain/camera_scan_state.dart';
 import '../engines/aruco/domain/image_geometry.dart';
 import '../engines/camera/domain/camera_models.dart';
+import '../engines/layout/domain/page_layout.dart';
 
 enum ScannerOverlayState {
   searching,
@@ -15,7 +17,7 @@ enum ScannerOverlayState {
   failure,
 }
 
-enum ScannerOverlayGeometrySource { none, document }
+enum ScannerOverlayGeometrySource { none, markerProjection, paperEdge }
 
 const scannerOverlayOuterStrokeWidth = 4.0;
 const scannerOverlayInnerStrokeWidth = 2.0;
@@ -31,12 +33,31 @@ final class ScannerOverlayGeometry {
   final ScannerOverlayGeometrySource source;
 }
 
-ScannerOverlayGeometry scannerOverlayGeometry(CameraAnalysisState? analysis) {
-  final documentCorners = analysis?.document?.geometry.corners;
+ScannerOverlayGeometry scannerOverlayGeometry(
+  CameraAnalysisState? analysis, {
+  PageLayout? page,
+}) {
+  if (analysis == null) return const ScannerOverlayGeometry.none();
+  final resolvedPageId = analysis.tracking.resolvedPageId;
+  final pageIsApplicable =
+      page != null && (resolvedPageId == null || page.pageId == resolvedPageId);
+  if (pageIsApplicable && analysis.tracking.registrationPoints.length == 4) {
+    final markerOutline = projectDetectedPageOutline(
+      page: page,
+      sourceRegistrationPoints: analysis.tracking.registrationPoints,
+    );
+    if (markerOutline.length == 4) {
+      return ScannerOverlayGeometry(
+        points: markerOutline,
+        source: ScannerOverlayGeometrySource.markerProjection,
+      );
+    }
+  }
+  final documentCorners = analysis.document?.geometry.corners;
   if (documentCorners?.length == 4) {
     return ScannerOverlayGeometry(
       points: documentCorners!,
-      source: ScannerOverlayGeometrySource.document,
+      source: ScannerOverlayGeometrySource.paperEdge,
     );
   }
   return const ScannerOverlayGeometry.none();
@@ -119,7 +140,7 @@ String scannerStatusText(
   };
 }
 
-/// Draws only the visual physical-paper quadrilateral supplied by CameraEngine.
+/// Draws marker-projected page geometry, with paper edges as a visual fallback.
 class ScannerDetectionOverlay extends StatelessWidget {
   const ScannerDetectionOverlay({
     required this.points,

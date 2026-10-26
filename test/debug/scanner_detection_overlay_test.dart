@@ -1,13 +1,16 @@
 import 'package:capstone_development/application/camera_scanner/domain/camera_scan_state.dart';
+import 'package:capstone_development/application/camera_scanner/domain/detected_page_geometry.dart';
 import 'package:capstone_development/debug/scanner_detection_overlay.dart';
+import 'package:capstone_development/debug/p5_native_validation_fixture.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/camera/domain/camera_models.dart';
 import 'package:capstone_development/engines/camera/domain/live_frame_analysis.dart';
+import 'package:capstone_development/core/ids/identifiers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('paper outline uses a high-contrast dual stroke', () {
+  test('page outline uses a high-contrast dual stroke', () {
     expect(scannerOverlayOuterStrokeWidth, 4);
     expect(scannerOverlayInnerStrokeWidth, 2);
   });
@@ -78,23 +81,72 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('document polygon is preferred over marker quadrilateral', () {
+  test('four valid markers project the authoritative page outline', () {
     final state = _state(
       markerIds: const [10, 11, 12, 13],
       document: _document(),
     );
-    final geometry = scannerOverlayGeometry(state.cameraState.analysis);
+    final page = buildP5NativeValidationPage();
+    final analysis = state.cameraState.analysis!;
+    final geometry = scannerOverlayGeometry(analysis, page: page);
 
-    expect(geometry.source, ScannerOverlayGeometrySource.document);
-    expect(geometry.points, _document().geometry.corners);
+    expect(geometry.source, ScannerOverlayGeometrySource.markerProjection);
+    expect(
+      geometry.points,
+      projectDetectedPageOutline(
+        page: page,
+        sourceRegistrationPoints: analysis.tracking.registrationPoints,
+      ),
+    );
   });
 
-  test('marker registration does not impersonate physical paper geometry', () {
+  test('marker polygon remains available without a paper detection', () {
     final geometry = scannerOverlayGeometry(
       _state(markerIds: const [10, 11, 12, 13]).cameraState.analysis,
+      page: buildP5NativeValidationPage(),
     );
+    expect(geometry.source, ScannerOverlayGeometrySource.markerProjection);
+    expect(geometry.points, hasLength(4));
+  });
+
+  test(
+    'paper edge is only a fallback when marker projection is unavailable',
+    () {
+      final geometry = scannerOverlayGeometry(
+        _state(markerIds: const [], document: _document()).cameraState.analysis,
+        page: buildP5NativeValidationPage(),
+      );
+      expect(geometry.source, ScannerOverlayGeometrySource.paperEdge);
+      expect(geometry.points, _document().geometry.corners);
+    },
+  );
+
+  test('missing markers do not retain a prior marker outline', () {
+    final page = buildP5NativeValidationPage();
+    final detected = scannerOverlayGeometry(
+      _state(markerIds: const [10, 11, 12, 13]).cameraState.analysis,
+      page: page,
+    );
+    final missing = scannerOverlayGeometry(
+      _state(markerIds: const []).cameraState.analysis,
+      page: page,
+    );
+
+    expect(detected.points, hasLength(4));
+    expect(missing.source, ScannerOverlayGeometrySource.none);
+    expect(missing.points, isEmpty);
+  });
+
+  test('resolved page identity rejects a mismatched page layout', () {
+    final geometry = scannerOverlayGeometry(
+      _state(
+        markerIds: const [10, 11, 12, 13],
+        resolvedPageId: PageId('another-page'),
+      ).cameraState.analysis,
+      page: buildP5NativeValidationPage(),
+    );
+
     expect(geometry.source, ScannerOverlayGeometrySource.none);
-    expect(geometry.points, isEmpty);
   });
 }
 
@@ -103,6 +155,7 @@ CameraScanState _state({
   CameraScanPhase phase = CameraScanPhase.tracking,
   CaptureReadinessStatus readiness = CaptureReadinessStatus.unstable,
   DetectedDocument? document,
+  PageId? resolvedPageId,
 }) => CameraScanState(
   phase: phase,
   cameraState: CameraEngineState(
@@ -116,6 +169,7 @@ CameraScanState _state({
     analysis: CameraAnalysisState(
       tracking: MarkerTrackingState(
         detectedMarkerIds: markerIds,
+        resolvedPageId: resolvedPageId,
         registrationPoints: markerIds.length == 4
             ? [
                 ImagePoint(10, 10),

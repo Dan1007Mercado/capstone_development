@@ -371,6 +371,21 @@ void main() {
     await fixture.dispose();
   });
 
+  test('fatal camera retry restarts once without duplicate streams', () async {
+    final fixture = _Fixture();
+    await fixture.initialize();
+    fixture.camera.emitError();
+    await Future<void>.delayed(Duration.zero);
+    expect(fixture.coordinator.state.phase, CameraScanPhase.scanFailed);
+
+    expect((await fixture.coordinator.resume()).isSuccess, isTrue);
+    expect((await fixture.coordinator.resume()).isSuccess, isTrue);
+
+    expect(fixture.camera.initializeCalls, 2);
+    expect(fixture.camera.startCalls, 2);
+    await fixture.dispose();
+  });
+
   test(
     'dispose during pending scan publishes no state after disposed',
     () async {
@@ -594,6 +609,7 @@ final class _FakeCamera implements CameraScanCamera {
       StreamController<CameraEngineState>.broadcast();
   CameraEngineState _state = const CameraEngineState.uninitialized();
   int startCalls = 0;
+  int initializeCalls = 0;
   int stopCalls = 0;
   int captureCalls = 0;
   int processedFrames = 0;
@@ -609,6 +625,7 @@ final class _FakeCamera implements CameraScanCamera {
 
   @override
   Future<EngineResult<bool>> initialize() async {
+    initializeCalls++;
     _publish(_cameraState(lifecycle: CameraLifecycleState.ready));
     return EngineResult.success(true);
   }
@@ -643,6 +660,20 @@ final class _FakeCamera implements CameraScanCamera {
   void emitAnalyzing({required bool ready, bool autoCaptureRequested = false}) {
     processedFrames++;
     _publishAnalyzing(ready: ready, autoCaptureRequested: autoCaptureRequested);
+  }
+
+  void emitError() {
+    _publish(
+      CameraEngineState(
+        lifecycle: CameraLifecycleState.error,
+        diagnostics: const CameraDiagnostics(),
+        readiness: const CaptureReadiness.notReady(),
+        error: EngineError(
+          code: 'CAMERA_ANALYSIS_FAILED',
+          message: 'Synthetic camera failure.',
+        ),
+      ),
+    );
   }
 
   void _publishAnalyzing({

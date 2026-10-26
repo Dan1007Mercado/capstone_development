@@ -322,6 +322,12 @@ final class CameraDiagnostics {
     this.paperEdgeLossCount = 0,
     this.recoverableAnalysisFailureCount = 0,
     this.lastRecoverableAnalysisError,
+    this.lastErrorCode,
+    this.lastErrorStage,
+    this.lastErrorRootCause,
+    this.lifecycleTransitionCount = 0,
+    this.previousLifecycle,
+    this.currentLifecycle = CameraLifecycleState.uninitialized,
     this.arucoAttemptedFrameCount = 0,
     this.readyFrameCount = 0,
     this.averagePaperEdgeDetectionDuration = Duration.zero,
@@ -347,6 +353,12 @@ final class CameraDiagnostics {
   final int paperEdgeLossCount;
   final int recoverableAnalysisFailureCount;
   final String? lastRecoverableAnalysisError;
+  final String? lastErrorCode;
+  final String? lastErrorStage;
+  final String? lastErrorRootCause;
+  final int lifecycleTransitionCount;
+  final CameraLifecycleState? previousLifecycle;
+  final CameraLifecycleState currentLifecycle;
   final int arucoAttemptedFrameCount;
   final int readyFrameCount;
   final Duration averagePaperEdgeDetectionDuration;
