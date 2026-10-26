@@ -504,72 +504,47 @@ void main() {
     await fixture.dispose();
   });
 
-  test(
-    'recent ArUco confirmation is required and stale confirmation blocks ready',
-    () async {
-      final analyzer = _FakeAnalyzer(
-        observations: [
-          _observation(gateReason: LiveFrameGateReason.pass),
-          _observation(
-            ids: const [],
-            points: const [],
-            arucoRan: false,
-            gateReason: LiveFrameGateReason.pass,
-          ),
-        ],
-      );
-      final fixture = _Fixture(
-        analyzer: analyzer,
-        config: CameraEngineConfig(
-          minimumStableFrames: 1,
-          stabilityWindowSize: 1,
-          arucoConfirmationMaxAge: const Duration(milliseconds: 300),
-        ),
-      );
-      await fixture.initializeAndStart();
-      await fixture.emitAndSettle(0);
-      expect(
-        fixture.engine.state.readiness.status,
-        CaptureReadinessStatus.ready,
-      );
-      await fixture.emitAndSettle(500);
-      expect(
-        fixture.engine.state.readiness.status,
-        CaptureReadinessStatus.verifyingMarkers,
-      );
-      await fixture.dispose();
-    },
-  );
+  test('a missing-marker observation resets marker readiness', () async {
+    final analyzer = _FakeAnalyzer(
+      observations: [
+        _observation(),
+        _observation(ids: const [], points: const []),
+      ],
+    );
+    final fixture = _Fixture(
+      analyzer: analyzer,
+      config: CameraEngineConfig(
+        minimumStableFrames: 1,
+        stabilityWindowSize: 1,
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    expect(fixture.engine.state.readiness.status, CaptureReadinessStatus.ready);
+    await fixture.emitAndSettle(500);
+    expect(
+      fixture.engine.state.readiness.status,
+      CaptureReadinessStatus.markersMissing,
+    );
+    await fixture.dispose();
+  });
 
-  test(
-    'frame diagnostics count ArUco attempted, skipped, and fallback frames',
-    () async {
-      final analyzer = _FakeAnalyzer(
-        observations: [
-          _observation(
-            ids: const [],
-            points: const [],
-            arucoRan: false,
-            gateReason: LiveFrameGateReason.tooDark,
-          ),
-          _observation(
-            gateReason: LiveFrameGateReason.noDocument,
-            fallbackProbe: true,
-          ),
-        ],
-      );
-      final fixture = _Fixture(analyzer: analyzer);
-      await fixture.initializeAndStart();
-      await fixture.emitAndSettle(0);
-      await fixture.emitAndSettle(200);
-      final diagnostics = fixture.engine.diagnostics;
-      expect(diagnostics.arucoSkippedFrameCount, 1);
-      expect(diagnostics.arucoAttemptedFrameCount, 1);
-      expect(diagnostics.arucoFallbackProbeFrameCount, 1);
-      expect(diagnostics.arucoAvoidanceRatio, 0.5);
-      await fixture.dispose();
-    },
-  );
+  test('every processed frame records an ArUco opportunity', () async {
+    final analyzer = _FakeAnalyzer(
+      observations: [
+        _observation(ids: const [], points: const []),
+        _observation(),
+      ],
+    );
+    final fixture = _Fixture(analyzer: analyzer);
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    final diagnostics = fixture.engine.diagnostics;
+    expect(diagnostics.arucoAttemptedFrameCount, 2);
+    expect(diagnostics.arucoAttemptRatio, 1);
+    await fixture.dispose();
+  });
 
   test('recoverable frame analysis failure keeps camera analyzing', () async {
     final analyzer = _FakeAnalyzer()
@@ -588,31 +563,40 @@ void main() {
     await fixture.dispose();
   });
 
-  test('successful no-document fallback reaches ready', () async {
-    final fallback = _observation(
-      gateReason: LiveFrameGateReason.noDocument,
-      fallbackProbe: true,
+  test('malformed materialized frame is recoverable', () async {
+    final fixture = _Fixture();
+    await fixture.initializeAndStart();
+    fixture.backend.emit(
+      DateTime.utc(2026),
+      () => throw StateError('synthetic malformed frame'),
     );
-    final waiting = _observation(
-      ids: const [],
-      points: const [],
-      arucoRan: false,
-      gateReason: LiveFrameGateReason.noDocument,
-    );
+    await _settle();
+
+    expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
+    expect(fixture.engine.state.error, isNull);
+    expect(fixture.engine.diagnostics.recoverableAnalysisFailureCount, 1);
+    await fixture.emitAndSettle(200);
+    expect(fixture.analyzer.calls, 1);
+    await fixture.dispose();
+  });
+
+  test('paper edge absent forever still reaches ready', () async {
+    final validMarkersWithoutPaper = _observation();
+    final waiting = _observation();
     final fixture = _Fixture(
       analyzer: _FakeAnalyzer(
         observations: [
-          fallback,
+          validMarkersWithoutPaper,
           waiting,
           waiting,
           waiting,
           waiting,
-          fallback,
+          validMarkersWithoutPaper,
           waiting,
           waiting,
           waiting,
           waiting,
-          fallback,
+          validMarkersWithoutPaper,
         ],
       ),
     );
@@ -626,13 +610,45 @@ void main() {
     await fixture.dispose();
   });
 
-  test('fallback stability expires across an excessive probe gap', () async {
-    final fallback = _observation(
-      gateReason: LiveFrameGateReason.noDocument,
-      fallbackProbe: true,
+  test('paper edge presence does not change readiness progression', () async {
+    final paper = _testDocument();
+    final withPaper = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [
+          for (var index = 0; index < 3; index++)
+            _observation(document: paper, documentFresh: true),
+        ],
+      ),
     );
+    final withoutPaper = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [for (var index = 0; index < 3; index++) _observation()],
+      ),
+    );
+    await withPaper.initializeAndStart();
+    await withoutPaper.initializeAndStart();
+    final withPaperStatuses = <CaptureReadinessStatus>[];
+    final withoutPaperStatuses = <CaptureReadinessStatus>[];
+
+    for (var frame = 0; frame < 3; frame++) {
+      await withPaper.emitAndSettle(frame * 200);
+      await withoutPaper.emitAndSettle(frame * 200);
+      withPaperStatuses.add(withPaper.engine.state.readiness.status);
+      withoutPaperStatuses.add(withoutPaper.engine.state.readiness.status);
+    }
+
+    expect(withPaperStatuses, withoutPaperStatuses);
+    expect(withPaperStatuses.last, CaptureReadinessStatus.ready);
+    await withPaper.dispose();
+    await withoutPaper.dispose();
+  });
+
+  test('marker stability is independent of paper timing', () async {
+    final validMarkersWithoutPaper = _observation();
     final fixture = _Fixture(
-      analyzer: _FakeAnalyzer(observations: [fallback, fallback]),
+      analyzer: _FakeAnalyzer(
+        observations: [validMarkersWithoutPaper, validMarkersWithoutPaper],
+      ),
       config: CameraEngineConfig(
         minimumStableFrames: 2,
         stabilityWindowSize: 2,
@@ -642,23 +658,15 @@ void main() {
     await fixture.emitAndSettle(0);
     await fixture.emitAndSettle(1200);
 
-    expect(
-      fixture.engine.state.readiness.status,
-      CaptureReadinessStatus.unstable,
-    );
-    expect(fixture.engine.state.readiness.stableFrameCount, 1);
+    expect(fixture.engine.state.readiness.status, CaptureReadinessStatus.ready);
+    expect(fixture.engine.state.readiness.stableFrameCount, 2);
     await fixture.dispose();
   });
 
-  test('no document and failed fallback stays searching but alive', () async {
+  test('missing markers stay not ready while camera remains alive', () async {
     final fixture = _Fixture(
       analyzer: _FakeAnalyzer(
-        observation: _observation(
-          ids: const [],
-          points: const [],
-          gateReason: LiveFrameGateReason.noDocument,
-          fallbackProbe: true,
-        ),
+        observation: _observation(ids: const [], points: const []),
       ),
     );
     await fixture.initializeAndStart();
@@ -667,22 +675,14 @@ void main() {
     expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
     expect(
       fixture.engine.state.readiness.status,
-      CaptureReadinessStatus.searching,
+      CaptureReadinessStatus.markersMissing,
     );
     await fixture.dispose();
   });
 
-  test('fallback page identity change requires fresh stability', () async {
-    final sheet1 = _observation(
-      resolvedPageId: PageId('SH1'),
-      gateReason: LiveFrameGateReason.noDocument,
-      fallbackProbe: true,
-    );
-    final sheet2 = _observation(
-      resolvedPageId: PageId('SH2'),
-      gateReason: LiveFrameGateReason.noDocument,
-      fallbackProbe: true,
-    );
+  test('page identity change requires fresh marker stability', () async {
+    final sheet1 = _observation(resolvedPageId: PageId('SH1'));
+    final sheet2 = _observation(resolvedPageId: PageId('SH2'));
     final fixture = _Fixture(
       analyzer: _FakeAnalyzer(observations: [sheet1, sheet1, sheet2, sheet2]),
       config: CameraEngineConfig(
@@ -710,8 +710,6 @@ void main() {
     final fixture = _Fixture(
       analyzer: _FakeAnalyzer(
         observation: _observation(
-          gateReason: LiveFrameGateReason.noDocument,
-          fallbackProbe: true,
           documentDetectionFailed: true,
           documentDetectionError: 'synthetic contour failure',
         ),
@@ -726,28 +724,22 @@ void main() {
 
     expect(fixture.engine.state.lifecycle, CameraLifecycleState.analyzing);
     expect(fixture.engine.state.readiness.isReady, isTrue);
-    expect(fixture.engine.diagnostics.documentDetectionFailureCount, 1);
+    expect(fixture.engine.diagnostics.paperEdgeDetectionFailureCount, 1);
     expect(
-      fixture.engine.diagnostics.lastDocumentDetectionError,
+      fixture.engine.diagnostics.lastPaperEdgeDetectionError,
       'synthetic contour failure',
     );
     await fixture.dispose();
   });
 
-  test('document motion does not add a second readiness window', () async {
-    final movingDocument = _testDocument();
+  test('bad paper perspective does not control marker readiness', () async {
+    final movingDocument = _testDocument(perspectiveRatio: 99);
     final observations = [
       for (var index = 0; index < 3; index++)
         _observation(
           document: movingDocument,
           documentFresh: true,
-          documentStability: DocumentStability(
-            isStable: false,
-            stableFrameCount: 1,
-            motion: 0.03 + index * 0.01,
-          ),
           resolvedPageId: PageId('SH1'),
-          gateReason: LiveFrameGateReason.pass,
         ),
     ];
     final fixture = _Fixture(
@@ -760,10 +752,6 @@ void main() {
 
     expect(fixture.engine.state.readiness.status, CaptureReadinessStatus.ready);
     expect(fixture.engine.diagnostics.arucoAttemptedFrameCount, 3);
-    expect(
-      fixture.engine.diagnostics.firstDocumentToIdentityDuration,
-      Duration.zero,
-    );
     await fixture.dispose();
   });
 
@@ -773,11 +761,9 @@ void main() {
         observation: _observation(
           ids: const [],
           points: const [],
-          arucoRan: false,
           document: _testDocument(),
           documentFresh: false,
           documentTrackingPhase: DocumentTrackingPhase.temporarilyLost,
-          gateReason: LiveFrameGateReason.noDocument,
         ),
       ),
     );
@@ -788,7 +774,7 @@ void main() {
     expect(fixture.engine.state.analysis!.documentFresh, isFalse);
     expect(
       fixture.engine.state.readiness.status,
-      CaptureReadinessStatus.searching,
+      CaptureReadinessStatus.markersMissing,
     );
     expect(fixture.engine.state.autoCaptureRequested, isFalse);
     await fixture.dispose();
@@ -798,23 +784,16 @@ void main() {
     final retained = _observation(
       ids: const [],
       points: const [],
-      arucoRan: false,
       document: _testDocument(),
       documentFresh: false,
       documentTrackingPhase: DocumentTrackingPhase.temporarilyLost,
-      gateReason: LiveFrameGateReason.noDocument,
     );
     final fixture = _Fixture(
       analyzer: _FakeAnalyzer(
         observations: [
           retained,
           retained,
-          _observation(
-            ids: const [],
-            points: const [],
-            arucoRan: false,
-            gateReason: LiveFrameGateReason.noDocument,
-          ),
+          _observation(ids: const [], points: const []),
           retained,
         ],
       ),
@@ -825,8 +804,8 @@ void main() {
     await fixture.emitAndSettle(400);
     await fixture.emitAndSettle(600);
 
-    expect(fixture.engine.diagnostics.documentTemporaryLossCount, 2);
-    expect(fixture.engine.diagnostics.documentLossCount, 1);
+    expect(fixture.engine.diagnostics.paperEdgeTemporaryLossCount, 2);
+    expect(fixture.engine.diagnostics.paperEdgeLossCount, 1);
     await fixture.dispose();
   });
 
@@ -837,8 +816,6 @@ void main() {
         ids: const [20, 21, 22, 23],
         resolvedPageId: null,
         pageResolutionErrorCode: 'SCAN_UNKNOWN_PAGE_MARKERS',
-        gateReason: LiveFrameGateReason.pass,
-        analysisMode: LiveAnalysisMode.active,
       );
       final fixture = _Fixture(
         config: CameraEngineConfig(
@@ -856,11 +833,7 @@ void main() {
             wrong,
             wrong,
             wrong,
-            _observation(
-              resolvedPageId: PageId('SH1'),
-              gateReason: LiveFrameGateReason.pass,
-              analysisMode: LiveAnalysisMode.active,
-            ),
+            _observation(resolvedPageId: PageId('SH1')),
           ],
         ),
       );
@@ -899,32 +872,25 @@ void main() {
     },
   );
 
-  test(
-    'active acquisition attempts ArUco every frame through weak contour',
-    () async {
-      final fixture = _Fixture(
-        analyzer: _FakeAnalyzer(
-          observations: [
-            for (var index = 0; index < 3; index++)
-              _observation(
-                resolvedPageId: PageId('SH1'),
-                gateReason: LiveFrameGateReason.pass,
-                analysisMode: LiveAnalysisMode.active,
-              ),
-          ],
-        ),
-      );
-      await fixture.initializeAndStart();
-      await fixture.emitAndSettle(0);
-      await fixture.emitAndSettle(200);
-      await fixture.emitAndSettle(400);
+  test('each accepted frame gets an ArUco opportunity', () async {
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [
+          for (var index = 0; index < 3; index++)
+            _observation(resolvedPageId: PageId('SH1')),
+        ],
+      ),
+    );
+    await fixture.initializeAndStart();
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    await fixture.emitAndSettle(400);
 
-      expect(fixture.engine.state.readiness.isReady, isTrue);
-      expect(fixture.engine.diagnostics.activeFrameCount, 3);
-      expect(fixture.engine.diagnostics.activeArucoAttemptRatio, 1);
-      await fixture.dispose();
-    },
-  );
+    expect(fixture.engine.state.readiness.isReady, isTrue);
+    expect(fixture.engine.diagnostics.arucoAttemptedFrameCount, 3);
+    expect(fixture.engine.diagnostics.arucoAttemptRatio, 1);
+    await fixture.dispose();
+  });
 }
 
 final class _Fixture {
@@ -1104,18 +1070,13 @@ CameraFrameObservation _observation({
   double markerSide = 30,
   double brightness = 128,
   double sharpness = 200,
-  bool arucoRan = true,
-  LiveFrameGateReason gateReason = LiveFrameGateReason.disabled,
-  bool fallbackProbe = false,
   PageId? resolvedPageId,
   String? pageResolutionErrorCode,
-  LiveAnalysisMode analysisMode = LiveAnalysisMode.search,
   bool documentDetectionFailed = false,
   String? documentDetectionError,
   DetectedDocument? document,
   bool documentFresh = false,
   DocumentTrackingPhase documentTrackingPhase = DocumentTrackingPhase.searching,
-  DocumentStability documentStability = DocumentStability.unavailable,
 }) => CameraFrameObservation(
   detectedMarkerIds: ids,
   registrationPoints: points ?? _points(),
@@ -1127,19 +1088,11 @@ CameraFrameObservation _observation({
   frameSize: ImageSize(width: 1000, height: 1000),
   resolvedPageId: resolvedPageId,
   pageResolutionErrorCode: pageResolutionErrorCode,
-  analysisMode: analysisMode,
   document: document,
   documentFresh: documentFresh,
   documentTrackingPhase: documentTrackingPhase,
-  documentStability: documentStability,
-  arucoRan: arucoRan,
   documentDetectionFailed: documentDetectionFailed,
   documentDetectionError: documentDetectionError,
-  gateResult: LiveFrameGateResult(
-    reason: gateReason,
-    shouldRunAruco: arucoRan,
-    fallbackProbe: fallbackProbe,
-  ),
 );
 
 List<ImagePoint> _points({double offset = 0}) => [
@@ -1149,15 +1102,16 @@ List<ImagePoint> _points({double offset = 0}) => [
   ImagePoint(100 + offset, 900),
 ];
 
-DetectedDocument _testDocument() => DetectedDocument(
-  geometry: DocumentGeometry(
-    corners: _points(),
-    areaRatio: 0.4,
-    centroid: ImagePoint(500, 500),
-    perspectiveRatio: 1.5,
-  ),
-  confidence: 0.9,
-);
+DetectedDocument _testDocument({double perspectiveRatio = 1.5}) =>
+    DetectedDocument(
+      geometry: DocumentGeometry(
+        corners: _points(),
+        areaRatio: 0.4,
+        centroid: ImagePoint(500, 500),
+        perspectiveRatio: perspectiveRatio,
+      ),
+      confidence: 0.9,
+    );
 
 EngineResult<T> _failure<T>(String code, String message) =>
     EngineResult.failure(EngineError(code: code, message: message));

@@ -1,176 +1,144 @@
 # P15 Production Scanner Workflow
 
-## Problem
+## Corrected live architecture
 
-The p14 live analyzer ran ArUco on every accepted analysis frame, including
-frames that were plainly dark, bright, blurred, too distant, or moving. Final
-recognition results could also reach session and packet persistence before a
-workflow-level rescan decision.
+Physical testing showed that the original p15 document gate degraded marker
+acquisition and time to READY. The gate, SEARCH/ACTIVE state machine, fallback
+probe cadence, and confirmation-age dependency have therefore been removed.
 
-## Two-stage live pipeline
+ArUco is authoritative and unconditional on every camera frame accepted by the
+existing target-analysis-FPS and drop-while-busy scheduler:
 
 ```text
 camera preview (independent platform texture)
   |
-  +-- throttled Y/luma frames -- drop while busy
-                                |
-                         480-640 px preparation
-                                |
-                    document contour + local quality
-                         /                  \
-          persistent visual tracker     usable candidate
-                      |                       |
-               immediate outline       640-800 px ArUco
-                                              |
-                                page identity + registration
-                                              |
-                                recent confirmation required
-                                              |
-                                            READY
-                                              |
-                                         auto capture
-                                              |
-                                  original high-resolution still
-                                              |
-                         full ArUco -> PageLayout -> OMR
-                                              |
-                                  ScanAcceptancePolicy
-                                     /              \
-                                  rescan           accept
-                                                    |
-                                      record page, then claim packet
+  +-- accepted Y/luma frame
+        |
+        +-- prepare grayscale analysis image
+        +-- measure whole-frame brightness and sharpness
+        +-- ArUco detectGray()
+        +-- resolve page marker signature
+        +-- calculate marker geometry
+        +-- evaluate marker readiness and stability
+        +-- READY -> auto capture
+        |
+        +-- optional, lower-cadence paper-edge detector
+              +-- best-effort contour extraction
+              +-- short smoothing/persistence
+              +-- preview coordinate mapping
+              +-- high-contrast visual outline
 ```
 
-The document polygon is guidance geometry only. ArUco remains authoritative for
-page identity, registration, homography, and the final scan. The final scanner
-still detects ArUco directly on the original captured image; there is no
-contour-derived pre-warp.
+There is no arrow from paper-edge detection to ArUco execution, page identity,
+readiness, marker stability, capture authorization, perspective correction, or
+OMR. If the paper detector returns null forever or throws on every attempt,
+ArUco still receives every accepted frame and READY remains reachable.
 
-Document contour detection is best-effort. Native contour failures and
-document-local quality edge cases are recorded as developer diagnostics and
-treated as a missing contour for that frame. They do not stop preview or move
-the camera lifecycle to `error`; the periodic ArUco fallback remains active.
+## Registration and perspective
 
-## SEARCH/ACTIVE acquisition
+The responsibilities are deliberately separate:
 
-The persistent analysis isolate downsamples luma to the configured
-`documentGateMaxDimension`, smooths it, runs Canny edge detection, finds
-external contours, approximates polygons, and retains the largest convex
-four-corner candidate. Corners are always ordered top-left, top-right,
-bottom-right, bottom-left. Brightness and Laplacian variance are measured
-inside the detected paper polygon; whole-frame values are the fallback.
+```text
+paper edge                  = physical-sheet visualization only
+live ArUco marker geometry = identity, size, tilt, and stability guidance
+high-resolution ArUco      = final homography and canonical OMR alignment
+```
 
-SEARCH uses generic full-frame document detection and periodic ArUco probes.
-Any document candidate, any detected ArUco marker, or resolved identity enters
-ACTIVE. ACTIVE runs ArUco on every accepted analysis frame and tolerates three
-complete evidence misses before returning to SEARCH. A single marker is enough
-to wake ACTIVE; four markers are required only by authoritative geometry and
-readiness checks.
+Paper corners never become registration points and never pre-warp the captured
+answer sheet. The final scanner continues to use the existing high-resolution
+`OpenCvArucoVisionBackend`, `ArucoAlignmentEngine`, `PageLayout`, homography,
+and OMR pipeline unchanged.
 
-The live gate skips only clearly unusable dark, overexposed, or severely
-blurred frames. Contour size, contour perspective, and ordinary capture-quality
-failures do not throttle ArUco. When markers exist but the generic contour is
-weak, their expanded bounds constrain a second physical-edge search. Marker
-geometry is only a search hint: the final outline is still the detected paper
-edge and no marker-derived crop or pre-warp is used.
+## Marker readiness
 
-## Stability and readiness
+The marker-based readiness order is:
 
-P15.0.2 separates two concurrent live phases. `DocumentTracker` acquires,
-associates, and lightly smooths physical-paper geometry for immediate preview
-feedback. It retains that visual geometry for at most three missed analysis
-frames, but marks it stale so it cannot authorize capture.
+1. Resolve the selected template's page-marker signature.
+2. Require the configured markers and four registration points.
+3. Check marker-derived page area and minimum marker side length.
+4. Check marker-derived perspective ratio.
+5. Check whole-frame brightness and sharpness.
+6. Accumulate marker displacement stability for the configured frame count.
+7. Report READY and request auto capture.
 
-In parallel, every active frame runs ArUco immediately.
-Document stability no longer has to complete before marker analysis begins;
-this removes the serial document-stability then marker-stability delay. Cheap
-document brightness, sharpness, size, and gross-skew checks only decide whether
-heavy live ArUco work is worthwhile. Resolved page identity, registration
-geometry, and marker stability remain the single authoritative READY path.
+A page identity change resets marker stability and starts a fresh window. A
+single unknown signature reports “Verifying sheet”; three consecutive unknown
+signatures confirm the wrong-sheet state. A valid page resets that streak
+immediately. SH1/SH2 page-signature resolution remains authoritative.
 
-READY requires acceptable frame quality, resolved page identity, usable
-registration geometry, marker stability, and an ArUco confirmation no older
-than `arucoConfirmationMaxAge` (450 ms by default).
+## Paper-edge visualization
 
-When no contour is available, a successful fallback probe may instead use the
-p14 marker-based readiness path. Stability is accumulated only from successful
-authoritative probes, expires after a bounded probe gap, and resets on page or
-marker identity changes, failed probes, analysis stop/suspend, and scanner
-reset.
+The contour detector consumes grayscale pixels and runs after the authoritative
+ArUco pass. It may run at a lower cadence through
+`paperEdgeDetectionIntervalFrames`; this cadence never changes ArUco cadence.
+The detector keeps a short visual grace polygon and lightly smooths new paper
+corners. Detector exceptions are captured as paper-edge diagnostics and treated
+as a missing visual result, not a camera-session failure.
 
-The high-contrast dual-stroke preview overlay maps contour corners through the same orientation and
-`BoxFit.cover` center-crop transform as the camera preview. When the contour is
-missing, four valid marker registration points provide a thinner fallback
-quadrilateral; this cue is not treated as a detected paper edge.
+The overlay draws only detected physical-paper geometry. Marker registration
+points are not presented as a paper outline. Its production styling uses a
+semi-transparent dark 4 px outer stroke plus a 2 px inner stroke: white while
+tracking, amber when framing guidance is needed, and green when READY. The
+existing `PreviewCoordinateMapper` remains responsible for sensor orientation,
+device orientation, mirroring, `BoxFit.cover`, and center cropping.
+
+## Recoverable frame failures
+
+Malformed or noisy individual frames return
+`CAMERA_FRAME_ANALYSIS_RECOVERABLE`. The bad frame is skipped, marker stability
+is reset, and camera analysis continues with the next accepted frame. Camera
+initialization, stream startup, native backend availability, and other session
+failures remain fatal.
 
 ## Acceptance and persistence ordering
 
-`ScanAcceptancePolicy` is evaluated after the high-resolution scanner returns
-and before `ScannerValidationSession.recordResult()` or
+`ScanAcceptancePolicy` still runs after the high-resolution scanner result and
+before `ScannerValidationSession.recordResult()` or
 `PacketResponseService.claim()`.
 
-- A wholly blank page requires rescan; an optional blank among valid answers is
-  allowed.
-- Ambiguous or invalid questions require rescan.
-- Multiple marks in exclusive types require rescan.
-- A valid `multipleChoice` result remains `marked` with several option IDs and
-  is accepted.
-- Incomplete or uncertain numeric grids require rescan.
-- Existing required-question review outcomes require rescan.
+- Wholly blank, ambiguous, invalid, and exclusive-multiple results require a
+  rescan.
+- Valid multi-selection for `multipleChoice` remains accepted.
+- Rejected results do not record a page, claim a packet page, or increment the
+  response count.
+- `PacketResponseService.claim()` re-evaluates the acceptance policy as
+  defense-in-depth.
 
-Rejected results never enter completed page IDs and never claim a packet page,
-so a corrected retry remains eligible. In a multi-page packet an accepted page
-can remain partial while another page is rejected and later rescanned.
+Packet identity, duplicate protection, partial/complete lifecycle, page-2-first
+support, batch PDF output, and response creation after successful scanning are
+unchanged.
 
 ## Diagnostics
 
-Developer diagnostics retain existing timings and add document detection,
-quality, stability, ArUco, and total live-analysis timing. Counters include
-received, accepted, processed, dropped, document-detected, document-rejected,
-document-detector-failed, temporary-document-loss, recoverable-analysis-failed,
-ArUco-attempted, ArUco-skipped, fallback-probe, and ready frames. Derived output
-includes ArUco attempt/avoidance ratios, dropped-frame ratio,
-first-document-to-identity, first-document-to-ready, first-marker,
-first-identity, and time-to-ready durations. SEARCH/ACTIVE frame counts and the
-ACTIVE ArUco attempt ratio show whether ArUco began
-with acquisition rather than after document stabilization. Device performance
-goals are measurements, not CI wall-clock assertions.
+Developer diagnostics report received, accepted, processed, and dropped frames;
+analysis FPS; average total and ArUco duration; ArUco opportunities; time to
+first marker, identity, and READY; recoverable analysis failures; paper-edge
+detections, failures, acquisitions, losses, temporary loss, and average visual
+detection duration. Obsolete document-rejected, ArUco-skipped/fallback,
+SEARCH/ACTIVE, and document-to-readiness metrics were removed.
 
 ## Manual physical test matrix
 
-Record time to first document, time to READY, auto-capture success, ArUco
-attempts, final scan duration, and answer correctness for each case:
+Measure analysis FPS, time to first marker, time to identity, time to READY,
+average ArUco duration, dropped frames, paper-outline acquisition, paper visual
+failures, final scan duration, and answer correctness for:
 
 | Case | Sheet/condition |
 |---|---|
-| A | Good straight sheet |
-| B | Moderately tilted |
-| C | Too far |
-| D | Very close |
-| E | Motion blur |
-| F | Dim indoor light |
-| G | Strong glare |
-| H | Dark background |
-| I | White paper on white/light background |
-| J | Partially occluded paper |
+| A | Correct sheet on dark table |
+| B | Correct sheet on light patterned cloth |
+| C | Correct sheet with no detectable paper contour |
+| D | Paper visualization disabled |
+| E | SH1 |
+| F | SH2 |
+| G | Phone moving |
+| H | Moderate marker perspective |
+| I | Sheet too far away |
+| J | Partial marker occlusion |
 | K | Wrong sheet |
-| L | SH1 and SH2 identity |
-| M | Multi-page same packet, including out-of-order retry |
-| N | Dense sheet |
-| O | All bubbles filled |
-| P | Blank page |
-| Q | Faint marks |
-| R | Erased marks |
-| S | Two marks in single-choice |
-| T | Valid multiple-choice marks |
+| L | Blank scan |
+| M | Ambiguous double mark |
+| N | Dense filled sheet |
 
-Dense/all-filled anomalies must be diagnosed for ROI cross-talk, baseline
-contamination, neighbor interference, and duration before any classification
-threshold is changed.
-
-## Known limitations
-
-Contour detection can be weak when page and background contrast are similar;
-periodic SEARCH probes and marker-assisted edge search are the deliberate
-fallbacks. Thresholds require calibration on multiple Android devices and
-printers. Document contours are not used as final OMR coordinates.
+Synthetic tests complement this matrix but do not replace printed-sheet tests
+across multiple printers and Android devices.

@@ -89,38 +89,12 @@ void main() {
     expect(geometry.points, _document().geometry.corners);
   });
 
-  testWidgets('valid marker quadrilateral provides safe overlay fallback', (
-    tester,
-  ) async {
+  test('marker registration does not impersonate physical paper geometry', () {
     final geometry = scannerOverlayGeometry(
       _state(markerIds: const [10, 11, 12, 13]).cameraState.analysis,
     );
-    expect(geometry.source, ScannerOverlayGeometrySource.markerRegistration);
-    expect(geometry.points, hasLength(4));
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SizedBox(
-          width: 300,
-          height: 400,
-          child: ScannerDetectionOverlay(
-            points: geometry.points,
-            state: ScannerOverlayState.unstable,
-            geometrySource: geometry.source,
-          ),
-        ),
-      ),
-    );
-    await tester.pump(const Duration(milliseconds: 120));
-
-    expect(
-      find.descendant(
-        of: find.byType(ScannerDetectionOverlay),
-        matching: find.byType(CustomPaint),
-      ),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
+    expect(geometry.source, ScannerOverlayGeometrySource.none);
+    expect(geometry.points, isEmpty);
   });
 }
 

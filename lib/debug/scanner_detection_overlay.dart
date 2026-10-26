@@ -15,7 +15,7 @@ enum ScannerOverlayState {
   failure,
 }
 
-enum ScannerOverlayGeometrySource { none, document, markerRegistration }
+enum ScannerOverlayGeometrySource { none, document }
 
 const scannerOverlayOuterStrokeWidth = 4.0;
 const scannerOverlayInnerStrokeWidth = 2.0;
@@ -37,13 +37,6 @@ ScannerOverlayGeometry scannerOverlayGeometry(CameraAnalysisState? analysis) {
     return ScannerOverlayGeometry(
       points: documentCorners!,
       source: ScannerOverlayGeometrySource.document,
-    );
-  }
-  final registrationPoints = analysis?.tracking.registrationPoints;
-  if (registrationPoints?.length == 4) {
-    return ScannerOverlayGeometry(
-      points: registrationPoints!,
-      source: ScannerOverlayGeometrySource.markerRegistration,
     );
   }
   return const ScannerOverlayGeometry.none();
@@ -95,11 +88,6 @@ String scannerStatusText(
   }
   final readiness = state.cameraState.readiness.status;
   final analysis = state.cameraState.analysis;
-  if (analysis?.gateResult.fallbackProbe == true &&
-      readiness != CaptureReadinessStatus.ready &&
-      analysis?.document == null) {
-    return 'Verifying sheet...';
-  }
   return switch (scannerOverlayState(state)) {
     ScannerOverlayState.searching => 'Searching for sheet...',
     ScannerOverlayState.partial =>
@@ -112,8 +100,7 @@ String scannerStatusText(
       CaptureReadinessStatus.tooBlurry => 'Hold steady',
       CaptureReadinessStatus.tooDark => 'Find brighter light',
       CaptureReadinessStatus.tooBright => 'Reduce glare',
-      CaptureReadinessStatus.verifyingMarkers ||
-      CaptureReadinessStatus.documentFound => 'Verifying sheet...',
+      CaptureReadinessStatus.verifyingMarkers => 'Verifying sheet...',
       CaptureReadinessStatus.unknownSheet =>
         'Sheet does not belong to selected template',
       CaptureReadinessStatus.searching => 'Searching for sheet...',
@@ -132,7 +119,7 @@ String scannerStatusText(
   };
 }
 
-/// Draws only the real tracked page quadrilateral supplied by CameraEngine.
+/// Draws only the visual physical-paper quadrilateral supplied by CameraEngine.
 class ScannerDetectionOverlay extends StatelessWidget {
   const ScannerDetectionOverlay({
     required this.points,
@@ -196,10 +183,8 @@ final class _ScannerDetectionPainter extends CustomPainter {
       ScannerOverlayState.ready ||
       ScannerOverlayState.success => Colors.greenAccent,
       ScannerOverlayState.failure => Colors.redAccent,
-      ScannerOverlayState.partial || ScannerOverlayState.unstable =>
-        geometrySource == ScannerOverlayGeometrySource.document
-            ? Colors.white
-            : Colors.amberAccent,
+      ScannerOverlayState.partial ||
+      ScannerOverlayState.unstable => Colors.amberAccent,
       _ => Colors.white,
     };
     final path = Path()..moveTo(points.first.x, points.first.y);

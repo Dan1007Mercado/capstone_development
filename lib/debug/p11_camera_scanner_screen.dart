@@ -170,25 +170,24 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
           '${camera.diagnostics.droppedFrameCount}',
         ),
         Text(
-          'Document detected/rejected: '
-          '${camera.diagnostics.documentDetectedFrameCount}/'
-          '${camera.diagnostics.documentRejectedFrameCount}',
+          'Paper-edge detections: '
+          '${camera.diagnostics.paperEdgeDetectionCount}',
         ),
         Text(
-          'Document detector failures: '
-          '${camera.diagnostics.documentDetectionFailureCount}',
+          'Paper-edge detector failures: '
+          '${camera.diagnostics.paperEdgeDetectionFailureCount}',
         ),
         Text(
-          'Document temporary losses: '
-          '${camera.diagnostics.documentTemporaryLossCount}',
+          'Paper-edge temporary losses: '
+          '${camera.diagnostics.paperEdgeTemporaryLossCount}',
         ),
         Text(
-          'Document acquisitions/losses: '
-          '${camera.diagnostics.documentAcquisitionCount}/'
-          '${camera.diagnostics.documentLossCount}',
+          'Paper-edge acquisitions/losses: '
+          '${camera.diagnostics.paperEdgeAcquisitionCount}/'
+          '${camera.diagnostics.paperEdgeLossCount}',
         ),
-        if (camera.diagnostics.lastDocumentDetectionError case final error?)
-          Text('Latest document detector diagnostic: $error'),
+        if (camera.diagnostics.lastPaperEdgeDetectionError case final error?)
+          Text('Latest paper-edge detector diagnostic: $error'),
         Text(
           'Recoverable analysis failures: '
           '${camera.diagnostics.recoverableAnalysisFailureCount}',
@@ -196,42 +195,22 @@ class P11CameraScannerDiagnosticsPanel extends StatelessWidget {
         if (camera.diagnostics.lastRecoverableAnalysisError case final error?)
           Text('Latest recoverable analysis diagnostic: $error'),
         Text(
-          'ArUco attempted/skipped/fallback: '
-          '${camera.diagnostics.arucoAttemptedFrameCount}/'
-          '${camera.diagnostics.arucoSkippedFrameCount}/'
-          '${camera.diagnostics.arucoFallbackProbeFrameCount}',
+          'ArUco opportunities: '
+          '${camera.diagnostics.arucoAttemptedFrameCount}',
         ),
         Text(
-          'ArUco attempted/avoided: '
-          '${(camera.diagnostics.arucoAttemptRatio * 100).toStringAsFixed(1)}%/'
-          '${(camera.diagnostics.arucoAvoidanceRatio * 100).toStringAsFixed(1)}%',
+          'ArUco opportunity ratio: '
+          '${(camera.diagnostics.arucoAttemptRatio * 100).toStringAsFixed(1)}%',
         ),
         Text(
-          'SEARCH/ACTIVE frames: '
-          '${camera.diagnostics.searchFrameCount}/'
-          '${camera.diagnostics.activeFrameCount}',
-        ),
-        Text(
-          'ACTIVE ArUco ratio: '
-          '${(camera.diagnostics.activeArucoAttemptRatio * 100).toStringAsFixed(1)}%',
-        ),
-        Text(
-          'Average live/document gate/ArUco: '
+          'Average live/paper edge/ArUco: '
           '${_milliseconds(camera.diagnostics.averageAnalysisDuration)}/'
-          '${_milliseconds(camera.diagnostics.averageDocumentGateDuration)}/'
+          '${_milliseconds(camera.diagnostics.averagePaperEdgeDetectionDuration)}/'
           '${_milliseconds(camera.diagnostics.averageArucoDuration)} ms',
         ),
         Text(
           'First recognition to ready: '
           '${_milliseconds(camera.diagnostics.firstRecognitionToReadyDuration)} ms',
-        ),
-        Text(
-          'First document to ready: '
-          '${_milliseconds(camera.diagnostics.firstDocumentToReadyDuration)} ms',
-        ),
-        Text(
-          'First document to identity: '
-          '${_milliseconds(camera.diagnostics.firstDocumentToIdentityDuration)} ms',
         ),
         Text(
           'First marker/identity/ready: '

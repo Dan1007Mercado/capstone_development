@@ -28,7 +28,6 @@ enum CameraDeviceOrientation {
 enum CaptureReadinessStatus {
   notReady,
   searching,
-  documentFound,
   markersMissing,
   verifyingMarkers,
   unknownSheet,
@@ -103,9 +102,8 @@ final class CameraAnalysisTimings {
     this.materializationDuration = Duration.zero,
     this.isolateOverheadDuration = Duration.zero,
     this.preparationDuration = Duration.zero,
-    this.documentDetectionDuration = Duration.zero,
-    this.qualityEvaluationDuration = Duration.zero,
-    this.stabilityEvaluationDuration = Duration.zero,
+    this.paperEdgeDetectionDuration = Duration.zero,
+    this.paperEdgeTrackingDuration = Duration.zero,
     this.sharpnessDuration = Duration.zero,
     this.arucoDetectionDuration = Duration.zero,
     this.geometryDuration = Duration.zero,
@@ -118,9 +116,8 @@ final class CameraAnalysisTimings {
   final Duration materializationDuration;
   final Duration isolateOverheadDuration;
   final Duration preparationDuration;
-  final Duration documentDetectionDuration;
-  final Duration qualityEvaluationDuration;
-  final Duration stabilityEvaluationDuration;
+  final Duration paperEdgeDetectionDuration;
+  final Duration paperEdgeTrackingDuration;
   final Duration sharpnessDuration;
   final Duration arucoDetectionDuration;
   final Duration geometryDuration;
@@ -129,9 +126,8 @@ final class CameraAnalysisTimings {
 
   Duration get measuredWorkerStages =>
       preparationDuration +
-      documentDetectionDuration +
-      qualityEvaluationDuration +
-      stabilityEvaluationDuration +
+      paperEdgeDetectionDuration +
+      paperEdgeTrackingDuration +
       sharpnessDuration +
       arucoDetectionDuration +
       geometryDuration;
@@ -141,9 +137,8 @@ final class CameraAnalysisTimings {
       materializationDuration,
       isolateOverheadDuration,
       preparationDuration,
-      documentDetectionDuration,
-      qualityEvaluationDuration,
-      stabilityEvaluationDuration,
+      paperEdgeDetectionDuration,
+      paperEdgeTrackingDuration,
       sharpnessDuration,
       arucoDetectionDuration,
       geometryDuration,
@@ -163,9 +158,8 @@ final class CameraAnalysisTimings {
     materializationDuration: materializationDuration,
     isolateOverheadDuration: isolateOverheadDuration,
     preparationDuration: preparationDuration,
-    documentDetectionDuration: documentDetectionDuration,
-    qualityEvaluationDuration: qualityEvaluationDuration,
-    stabilityEvaluationDuration: stabilityEvaluationDuration,
+    paperEdgeDetectionDuration: paperEdgeDetectionDuration,
+    paperEdgeTrackingDuration: paperEdgeTrackingDuration,
     sharpnessDuration: sharpnessDuration,
     arucoDetectionDuration: arucoDetectionDuration,
     geometryDuration: geometryDuration,
@@ -192,19 +186,10 @@ final class CameraFrameObservation {
     this.deviceOrientation = CameraDeviceOrientation.unknown,
     this.resolvedPageId,
     this.pageResolutionErrorCode,
-    this.analysisMode = LiveAnalysisMode.search,
     this.document,
     this.documentFresh = false,
     this.documentTrackingPhase = DocumentTrackingPhase.searching,
     this.documentTemporaryMissCount = 0,
-    this.documentQuality,
-    this.documentStability = DocumentStability.unavailable,
-    this.gateResult = const LiveFrameGateResult(
-      reason: LiveFrameGateReason.disabled,
-      shouldRunAruco: true,
-      fallbackProbe: false,
-    ),
-    this.arucoRan = true,
     this.documentDetectionFailed = false,
     this.documentDetectionError,
   }) : analysisFrameSize = analysisFrameSize ?? frameSize,
@@ -227,15 +212,10 @@ final class CameraFrameObservation {
   final CameraDeviceOrientation deviceOrientation;
   final PageId? resolvedPageId;
   final String? pageResolutionErrorCode;
-  final LiveAnalysisMode analysisMode;
   final DetectedDocument? document;
   final bool documentFresh;
   final DocumentTrackingPhase documentTrackingPhase;
   final int documentTemporaryMissCount;
-  final DocumentQuality? documentQuality;
-  final DocumentStability documentStability;
-  final LiveFrameGateResult gateResult;
-  final bool arucoRan;
   final bool documentDetectionFailed;
   final String? documentDetectionError;
 }
@@ -305,13 +285,6 @@ final class CameraAnalysisState {
     this.document,
     this.documentFresh = false,
     this.documentTrackingPhase = DocumentTrackingPhase.searching,
-    this.analysisMode = LiveAnalysisMode.search,
-    this.gateResult = const LiveFrameGateResult(
-      reason: LiveFrameGateReason.disabled,
-      shouldRunAruco: true,
-      fallbackProbe: false,
-    ),
-    this.arucoConfirmationAge,
   });
 
   final MarkerTrackingState tracking;
@@ -329,9 +302,6 @@ final class CameraAnalysisState {
   final DetectedDocument? document;
   final bool documentFresh;
   final DocumentTrackingPhase documentTrackingPhase;
-  final LiveAnalysisMode analysisMode;
-  final LiveFrameGateResult gateResult;
-  final Duration? arucoConfirmationAge;
 }
 
 final class CameraDiagnostics {
@@ -344,26 +314,18 @@ final class CameraDiagnostics {
     this.averageAnalysisDuration = Duration.zero,
     this.readinessDurations = const {},
     this.firstRecognitionToReadyDuration,
-    this.documentDetectedFrameCount = 0,
-    this.documentRejectedFrameCount = 0,
-    this.documentDetectionFailureCount = 0,
-    this.lastDocumentDetectionError,
-    this.documentTemporaryLossCount = 0,
-    this.documentAcquisitionCount = 0,
-    this.documentLossCount = 0,
+    this.paperEdgeDetectionCount = 0,
+    this.paperEdgeDetectionFailureCount = 0,
+    this.lastPaperEdgeDetectionError,
+    this.paperEdgeTemporaryLossCount = 0,
+    this.paperEdgeAcquisitionCount = 0,
+    this.paperEdgeLossCount = 0,
     this.recoverableAnalysisFailureCount = 0,
     this.lastRecoverableAnalysisError,
     this.arucoAttemptedFrameCount = 0,
-    this.arucoSkippedFrameCount = 0,
-    this.arucoFallbackProbeFrameCount = 0,
     this.readyFrameCount = 0,
-    this.averageDocumentGateDuration = Duration.zero,
+    this.averagePaperEdgeDetectionDuration = Duration.zero,
     this.averageArucoDuration = Duration.zero,
-    this.firstDocumentToReadyDuration,
-    this.firstDocumentToIdentityDuration,
-    this.searchFrameCount = 0,
-    this.activeFrameCount = 0,
-    this.activeArucoAttemptedFrameCount = 0,
     this.timeToFirstMarker,
     this.timeToFirstIdentity,
     this.timeToReady,
@@ -377,41 +339,25 @@ final class CameraDiagnostics {
   final Duration averageAnalysisDuration;
   final Map<CaptureReadinessStatus, Duration> readinessDurations;
   final Duration? firstRecognitionToReadyDuration;
-  final int documentDetectedFrameCount;
-  final int documentRejectedFrameCount;
-  final int documentDetectionFailureCount;
-  final String? lastDocumentDetectionError;
-  final int documentTemporaryLossCount;
-  final int documentAcquisitionCount;
-  final int documentLossCount;
+  final int paperEdgeDetectionCount;
+  final int paperEdgeDetectionFailureCount;
+  final String? lastPaperEdgeDetectionError;
+  final int paperEdgeTemporaryLossCount;
+  final int paperEdgeAcquisitionCount;
+  final int paperEdgeLossCount;
   final int recoverableAnalysisFailureCount;
   final String? lastRecoverableAnalysisError;
   final int arucoAttemptedFrameCount;
-  final int arucoSkippedFrameCount;
-  final int arucoFallbackProbeFrameCount;
   final int readyFrameCount;
-  final Duration averageDocumentGateDuration;
+  final Duration averagePaperEdgeDetectionDuration;
   final Duration averageArucoDuration;
-  final Duration? firstDocumentToReadyDuration;
-  final Duration? firstDocumentToIdentityDuration;
-  final int searchFrameCount;
-  final int activeFrameCount;
-  final int activeArucoAttemptedFrameCount;
   final Duration? timeToFirstMarker;
   final Duration? timeToFirstIdentity;
   final Duration? timeToReady;
 
-  double get activeArucoAttemptRatio => activeFrameCount == 0
-      ? 0
-      : activeArucoAttemptedFrameCount / activeFrameCount;
-
   double get arucoAttemptRatio => processedFrameCount == 0
       ? 0
       : arucoAttemptedFrameCount / processedFrameCount;
-
-  double get arucoAvoidanceRatio => processedFrameCount == 0
-      ? 0
-      : arucoSkippedFrameCount / processedFrameCount;
 
   double get droppedFrameRatio =>
       receivedFrameCount == 0 ? 0 : droppedFrameCount / receivedFrameCount;

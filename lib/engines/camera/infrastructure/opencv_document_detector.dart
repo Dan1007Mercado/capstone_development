@@ -14,69 +14,7 @@ abstract interface class DocumentDetector {
     required double cannyLowThreshold,
     required double cannyHighThreshold,
     required double polygonEpsilonRatio,
-    DocumentSearchRegion? searchRegion,
   });
-}
-
-final class DocumentSearchRegion {
-  const DocumentSearchRegion({
-    required this.left,
-    required this.top,
-    required this.right,
-    required this.bottom,
-  });
-
-  final double left;
-  final double top;
-  final double right;
-  final double bottom;
-
-  ImagePoint get center => ImagePoint((left + right) / 2, (top + bottom) / 2);
-
-  bool isInside(List<ImagePoint> polygon) {
-    final point = center;
-    var inside = false;
-    for (
-      var index = 0, previous = polygon.length - 1;
-      index < polygon.length;
-      previous = index++
-    ) {
-      final currentPoint = polygon[index];
-      final previousPoint = polygon[previous];
-      if ((currentPoint.y > point.y) != (previousPoint.y > point.y) &&
-          point.x <
-              (previousPoint.x - currentPoint.x) *
-                      (point.y - currentPoint.y) /
-                      (previousPoint.y - currentPoint.y) +
-                  currentPoint.x) {
-        inside = !inside;
-      }
-    }
-    return inside;
-  }
-}
-
-DocumentSearchRegion? markerAssistedDocumentSearchRegion({
-  required Iterable<ImagePoint> markerCorners,
-  required ImageSize sourceSize,
-  required ImageSize targetSize,
-}) {
-  final corners = List<ImagePoint>.of(markerCorners);
-  if (corners.isEmpty) return null;
-  final scaleX = targetSize.width / sourceSize.width;
-  final scaleY = targetSize.height / sourceSize.height;
-  final left = corners.map((point) => point.x * scaleX).reduce(math.min);
-  final right = corners.map((point) => point.x * scaleX).reduce(math.max);
-  final top = corners.map((point) => point.y * scaleY).reduce(math.min);
-  final bottom = corners.map((point) => point.y * scaleY).reduce(math.max);
-  final span = math.max(right - left, bottom - top);
-  final margin = math.max(12.0, span * 0.35);
-  return DocumentSearchRegion(
-    left: (left - margin).clamp(0, targetSize.width - 1).toDouble(),
-    top: (top - margin).clamp(0, targetSize.height - 1).toDouble(),
-    right: (right + margin).clamp(0, targetSize.width - 1).toDouble(),
-    bottom: (bottom + margin).clamp(0, targetSize.height - 1).toDouble(),
-  );
 }
 
 final class DocumentDetectionAttempt {
@@ -96,7 +34,6 @@ DocumentDetectionAttempt detectDocumentBestEffort({
   required double cannyLowThreshold,
   required double cannyHighThreshold,
   required double polygonEpsilonRatio,
-  DocumentSearchRegion? searchRegion,
 }) {
   try {
     return DocumentDetectionAttempt(
@@ -107,7 +44,6 @@ DocumentDetectionAttempt detectDocumentBestEffort({
         cannyLowThreshold: cannyLowThreshold,
         cannyHighThreshold: cannyHighThreshold,
         polygonEpsilonRatio: polygonEpsilonRatio,
-        searchRegion: searchRegion,
       ),
     );
   } on Object catch (error) {
@@ -131,7 +67,6 @@ final class OpenCvDocumentDetector implements DocumentDetector {
     required double cannyLowThreshold,
     required double cannyHighThreshold,
     required double polygonEpsilonRatio,
-    DocumentSearchRegion? searchRegion,
   }) {
     if (pixels.length != width * height || width <= 0 || height <= 0) {
       throw ArgumentError('Document pixels must match positive dimensions.');
@@ -177,7 +112,6 @@ final class OpenCvDocumentDetector implements DocumentDetector {
           }
           final ordered = tryOrderDocumentCorners(points);
           if (ordered == null || !_isConvex(ordered)) continue;
-          if (searchRegion != null && !searchRegion.isInside(ordered)) continue;
           final area = _polygonArea(ordered).abs();
           final boundingWidth = _boundingWidth(ordered);
           final boundingHeight = _boundingHeight(ordered);

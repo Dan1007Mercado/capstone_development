@@ -157,18 +157,13 @@ class _P10CameraDiagnosticsScreenState extends State<P10CameraDiagnosticsScreen>
           Text('Processed frames: ${diagnostics.processedFrameCount}'),
           Text('Dropped frames: ${diagnostics.droppedFrameCount}'),
           Text(
-            'Mode: ${analysis?.analysisMode.name ?? 'unavailable'} '
-            '(SEARCH ${diagnostics.searchFrameCount}, '
-            'ACTIVE ${diagnostics.activeFrameCount})',
+            'Paper-edge acquisitions/losses: '
+            '${diagnostics.paperEdgeAcquisitionCount}/'
+            '${diagnostics.paperEdgeLossCount}',
           ),
           Text(
-            'Document acquisitions/losses: '
-            '${diagnostics.documentAcquisitionCount}/'
-            '${diagnostics.documentLossCount}',
-          ),
-          Text(
-            'ACTIVE ArUco: '
-            '${(diagnostics.activeArucoAttemptRatio * 100).toStringAsFixed(1)}%',
+            'ArUco opportunity ratio: '
+            '${(diagnostics.arucoAttemptRatio * 100).toStringAsFixed(1)}%',
           ),
           Text(
             'First marker/identity/ready: '

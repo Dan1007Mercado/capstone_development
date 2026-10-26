@@ -38,40 +38,28 @@ final class CameraEngine {
   int _processedFrames = 0;
   int _droppedFrames = 0;
   Duration _totalAnalysisDuration = Duration.zero;
-  Duration _totalDocumentGateDuration = Duration.zero;
+  Duration _totalPaperEdgeDetectionDuration = Duration.zero;
   Duration _totalArucoDuration = Duration.zero;
-  int _documentDetectedFrames = 0;
-  int _documentRejectedFrames = 0;
-  int _documentDetectionFailures = 0;
-  String? _lastDocumentDetectionError;
-  int _documentTemporaryLosses = 0;
+  int _paperEdgeDetections = 0;
+  int _paperEdgeDetectionFailures = 0;
+  String? _lastPaperEdgeDetectionError;
+  int _paperEdgeTemporaryLosses = 0;
   bool _documentTemporarilyLost = false;
   bool _documentPresent = false;
-  int _documentAcquisitions = 0;
-  int _documentLosses = 0;
+  int _paperEdgeAcquisitions = 0;
+  int _paperEdgeLosses = 0;
   int _recoverableAnalysisFailures = 0;
   String? _lastRecoverableAnalysisError;
   int _arucoAttemptedFrames = 0;
-  int _arucoSkippedFrames = 0;
-  int _arucoFallbackProbeFrames = 0;
   int _readyFrames = 0;
   final Queue<DateTime> _processedFrameTimes = Queue<DateTime>();
   final Map<CaptureReadinessStatus, Duration> _readinessDurations = {};
   CaptureReadinessStatus? _lastReadinessStatus;
   DateTime? _lastReadinessEvaluatedAt;
   DateTime? _firstPageRecognizedAt;
-  DateTime? _firstDocumentDetectedAt;
   Duration? _firstRecognitionToReadyDuration;
-  Duration? _firstDocumentToReadyDuration;
-  Duration? _firstDocumentToIdentityDuration;
-  DateTime? _lastSuccessfulArucoConfirmationAt;
-  PageId? _lastConfirmedPageId;
-  Set<int>? _lastConfirmedMarkerIds;
   int _wrongIdentityStreak = 0;
   bool _wrongIdentityConfirmed = false;
-  int _searchFrames = 0;
-  int _activeFrames = 0;
-  int _activeArucoAttemptedFrames = 0;
   DateTime? _analysisStartedAt;
   Duration? _timeToFirstMarker;
   Duration? _timeToFirstIdentity;
@@ -238,14 +226,20 @@ final class CameraEngine {
       materializationStopwatch.stop();
       totalStopwatch.stop();
       _analysisBusy = false;
+      _recoverableAnalysisFailures++;
+      _lastRecoverableAnalysisError = error.toString();
+      _resetStability();
+      final readiness = CaptureReadiness(
+        status: CaptureReadinessStatus.searching,
+        stableFrameCount: 0,
+        requiredStableFrameCount: config.minimumStableFrames,
+      );
       _emit(
-        _copyState(
-          lifecycle: CameraLifecycleState.error,
-          error: EngineError(
-            code: 'CAMERA_FRAME_MATERIALIZATION_FAILED',
-            message: 'An accepted camera frame could not be materialized.',
-            details: {'cause': error.toString()},
-          ),
+        CameraEngineState(
+          lifecycle: CameraLifecycleState.analyzing,
+          previewInfo: _state.previewInfo,
+          diagnostics: _diagnostics,
+          readiness: readiness,
         ),
       );
       return;
@@ -268,7 +262,7 @@ final class CameraEngine {
       if (result.error.code == 'CAMERA_FRAME_ANALYSIS_RECOVERABLE') {
         _recoverableAnalysisFailures++;
         _lastRecoverableAnalysisError = result.error.message;
-        _resetStability(clearConfirmation: true);
+        _resetStability();
         final readiness = CaptureReadiness(
           status: CaptureReadinessStatus.searching,
           stableFrameCount: 0,
@@ -307,43 +301,28 @@ final class CameraEngine {
     );
     _processedFrames++;
     _totalAnalysisDuration += timings.totalDuration;
-    _totalDocumentGateDuration +=
-        timings.documentDetectionDuration +
-        timings.qualityEvaluationDuration +
-        timings.stabilityEvaluationDuration;
-    if (result.value.documentFresh) _documentDetectedFrames++;
+    _totalPaperEdgeDetectionDuration += timings.paperEdgeDetectionDuration;
+    if (result.value.documentFresh) _paperEdgeDetections++;
     if (result.value.documentFresh && !_documentPresent) {
-      _documentAcquisitions++;
+      _paperEdgeAcquisitions++;
     }
     if (result.value.document == null && _documentPresent) {
-      _documentLosses++;
+      _paperEdgeLosses++;
     }
     _documentPresent = result.value.document != null;
     final temporarilyLost =
         result.value.documentTrackingPhase ==
         DocumentTrackingPhase.temporarilyLost;
     if (temporarilyLost && !_documentTemporarilyLost) {
-      _documentTemporaryLosses++;
+      _paperEdgeTemporaryLosses++;
     }
     _documentTemporarilyLost = temporarilyLost;
-    if (!result.value.gateResult.passed) _documentRejectedFrames++;
     if (result.value.documentDetectionFailed) {
-      _documentDetectionFailures++;
-      _lastDocumentDetectionError = result.value.documentDetectionError;
+      _paperEdgeDetectionFailures++;
+      _lastPaperEdgeDetectionError = result.value.documentDetectionError;
     }
-    if (result.value.arucoRan) {
-      _arucoAttemptedFrames++;
-      _totalArucoDuration += timings.arucoDetectionDuration;
-    } else {
-      _arucoSkippedFrames++;
-    }
-    if (result.value.analysisMode == LiveAnalysisMode.active) {
-      _activeFrames++;
-      if (result.value.arucoRan) _activeArucoAttemptedFrames++;
-    } else {
-      _searchFrames++;
-    }
-    if (result.value.gateResult.fallbackProbe) _arucoFallbackProbeFrames++;
+    _arucoAttemptedFrames++;
+    _totalArucoDuration += timings.arucoDetectionDuration;
     _processedFrameTimes.addLast(frame.timestamp);
     while (_processedFrameTimes.length > config.stabilityWindowSize) {
       _processedFrameTimes.removeFirst();
@@ -381,11 +360,6 @@ final class CameraEngine {
           document: result.value.document,
           documentFresh: result.value.documentFresh,
           documentTrackingPhase: result.value.documentTrackingPhase,
-          analysisMode: result.value.analysisMode,
-          gateResult: result.value.gateResult,
-          arucoConfirmationAge: _lastSuccessfulArucoConfirmationAt == null
-              ? null
-              : frame.timestamp.difference(_lastSuccessfulArucoConfirmationAt!),
         ),
         diagnostics: _diagnostics,
         readiness: evaluation.$1,
@@ -399,109 +373,43 @@ final class CameraEngine {
     DateTime timestamp,
   ) {
     final isWrongIdentity =
-        observation.arucoRan &&
-        (observation.pageResolutionErrorCode == 'SCAN_UNKNOWN_PAGE_MARKERS' ||
-            observation.pageResolutionErrorCode ==
-                'SCAN_DUPLICATE_PAGE_MARKERS');
+        observation.pageResolutionErrorCode == 'SCAN_UNKNOWN_PAGE_MARKERS' ||
+        observation.pageResolutionErrorCode == 'SCAN_DUPLICATE_PAGE_MARKERS';
     _wrongIdentityStreak = isWrongIdentity ? _wrongIdentityStreak + 1 : 0;
     _wrongIdentityConfirmed = _wrongIdentityStreak >= 3;
     final expected = config.markerIds.values.toSet();
     final detected = observation.detectedMarkerIds.toSet();
-    final validArucoConfirmation =
-        observation.arucoRan &&
-        observation.registrationPoints.length == 4 &&
-        (config.pageMarkerSignatures.isEmpty ||
-            observation.resolvedPageId != null);
-    final authoritativeFallback =
-        observation.gateResult.reason == LiveFrameGateReason.noDocument &&
-        observation.gateResult.fallbackProbe &&
-        validArucoConfirmation;
     CaptureReadinessStatus? failure;
-    failure = switch (observation.gateResult.reason) {
-      LiveFrameGateReason.noDocument =>
-        authoritativeFallback ? null : CaptureReadinessStatus.searching,
-      LiveFrameGateReason.tooDark => CaptureReadinessStatus.tooDark,
-      LiveFrameGateReason.tooBright => CaptureReadinessStatus.tooBright,
-      LiveFrameGateReason.tooBlurry => CaptureReadinessStatus.tooBlurry,
-      LiveFrameGateReason.disabled || LiveFrameGateReason.pass => null,
-    };
-    if (validArucoConfirmation) {
-      final markerIds = observation.detectedMarkerIds.toSet();
-      final priorConfirmationAt = _lastSuccessfulArucoConfirmationAt;
-      final confirmationGapTooLarge =
-          observation.gateResult.reason == LiveFrameGateReason.noDocument &&
-          priorConfirmationAt != null &&
-          timestamp.difference(priorConfirmationAt) >
-              _maximumFallbackStabilityGap;
-      final identityChanged =
-          (_lastConfirmedPageId != null &&
-              observation.resolvedPageId != _lastConfirmedPageId) ||
-          (_lastConfirmedMarkerIds != null &&
-              !_sameIds(_lastConfirmedMarkerIds!, markerIds));
-      if (identityChanged || confirmationGapTooLarge) _resetStability();
-      _lastSuccessfulArucoConfirmationAt = timestamp;
-      _lastConfirmedPageId = observation.resolvedPageId;
-      _lastConfirmedMarkerIds = markerIds;
-    } else if (observation.arucoRan &&
-        (observation.gateResult.reason == LiveFrameGateReason.noDocument ||
-            (observation.pageResolutionErrorCode != null ||
-                observation.registrationPoints.length != 4))) {
-      _resetStability(clearConfirmation: true);
-    }
-    final confirmationAt = _lastSuccessfulArucoConfirmationAt;
-    final confirmationRecent =
-        confirmationAt != null &&
-        !timestamp.difference(confirmationAt).isNegative &&
-        timestamp.difference(confirmationAt) <= config.arucoConfirmationMaxAge;
-    if (failure == null &&
-        config.pageMarkerSignatures.isNotEmpty &&
+    if (config.pageMarkerSignatures.isNotEmpty &&
         observation.resolvedPageId == null) {
       failure = _wrongIdentityConfirmed
           ? CaptureReadinessStatus.unknownSheet
-          : observation.gateResult.reason != LiveFrameGateReason.disabled
-          ? CaptureReadinessStatus.verifyingMarkers
-          : CaptureReadinessStatus.markersMissing;
-    } else if (failure == null &&
-        config.requireAllMarkers &&
+          : CaptureReadinessStatus.verifyingMarkers;
+    } else if (config.requireAllMarkers &&
         config.pageMarkerSignatures.isEmpty &&
         !detected.containsAll(expected)) {
-      failure = observation.gateResult.reason != LiveFrameGateReason.disabled
-          ? CaptureReadinessStatus.verifyingMarkers
-          : CaptureReadinessStatus.markersMissing;
-    } else if (failure == null && !confirmationRecent) {
-      failure = CaptureReadinessStatus.verifyingMarkers;
-    } else if (failure == null &&
-        ((observation.pageAreaRatio ?? 0) < config.minimumPageAreaRatio ||
-            (observation.minimumMarkerSidePixels ?? 0) <
-                config.minimumMarkerSidePixels)) {
+      failure = CaptureReadinessStatus.markersMissing;
+    } else if ((observation.pageAreaRatio ?? 0) < config.minimumPageAreaRatio ||
+        (observation.minimumMarkerSidePixels ?? 0) <
+            config.minimumMarkerSidePixels) {
       failure = CaptureReadinessStatus.tooSmall;
-    } else if (failure == null &&
-        (observation.perspectiveRatio ?? double.infinity) >
-            config.maximumPerspectiveRatio) {
+    } else if ((observation.perspectiveRatio ?? double.infinity) >
+        config.maximumPerspectiveRatio) {
       failure = CaptureReadinessStatus.tooSkewed;
-    } else if (failure == null &&
-        observation.brightness < config.minimumBrightness) {
+    } else if (observation.brightness < config.minimumBrightness) {
       failure = CaptureReadinessStatus.tooDark;
-    } else if (failure == null &&
-        observation.brightness > config.maximumBrightness) {
+    } else if (observation.brightness > config.maximumBrightness) {
       failure = CaptureReadinessStatus.tooBright;
-    } else if (failure == null &&
-        observation.sharpness < config.minimumSharpness) {
+    } else if (observation.sharpness < config.minimumSharpness) {
       failure = CaptureReadinessStatus.tooBlurry;
     }
 
     var stabilityScore = 0.0;
-    final awaitingFallbackProbe =
-        observation.gateResult.reason == LiveFrameGateReason.noDocument &&
-        !observation.arucoRan;
-    if (awaitingFallbackProbe) {
-      // Keep prior probe geometry for a bounded interval, but never report
-      // readiness from a frame that did not run authoritative marker checks.
-      stabilityScore = 0;
-    } else if (failure != null ||
-        observation.registrationPoints.length != 4 ||
-        (_previousPageId != null &&
-            observation.resolvedPageId != _previousPageId)) {
+    final pageChanged =
+        _previousPageId != null &&
+        observation.resolvedPageId != _previousPageId;
+    if (pageChanged) _resetStability();
+    if (failure != null || observation.registrationPoints.length != 4) {
       _resetStability();
     } else {
       final previous = _previousRegistrationPoints;
@@ -591,24 +499,22 @@ final class CameraEngine {
             ),
       readinessDurations: Map.unmodifiable(_readinessDurations),
       firstRecognitionToReadyDuration: _firstRecognitionToReadyDuration,
-      documentDetectedFrameCount: _documentDetectedFrames,
-      documentRejectedFrameCount: _documentRejectedFrames,
-      documentDetectionFailureCount: _documentDetectionFailures,
-      lastDocumentDetectionError: _lastDocumentDetectionError,
-      documentTemporaryLossCount: _documentTemporaryLosses,
-      documentAcquisitionCount: _documentAcquisitions,
-      documentLossCount: _documentLosses,
+      paperEdgeDetectionCount: _paperEdgeDetections,
+      paperEdgeDetectionFailureCount: _paperEdgeDetectionFailures,
+      lastPaperEdgeDetectionError: _lastPaperEdgeDetectionError,
+      paperEdgeTemporaryLossCount: _paperEdgeTemporaryLosses,
+      paperEdgeAcquisitionCount: _paperEdgeAcquisitions,
+      paperEdgeLossCount: _paperEdgeLosses,
       recoverableAnalysisFailureCount: _recoverableAnalysisFailures,
       lastRecoverableAnalysisError: _lastRecoverableAnalysisError,
       arucoAttemptedFrameCount: _arucoAttemptedFrames,
-      arucoSkippedFrameCount: _arucoSkippedFrames,
-      arucoFallbackProbeFrameCount: _arucoFallbackProbeFrames,
       readyFrameCount: _readyFrames,
-      averageDocumentGateDuration: _processedFrames == 0
+      averagePaperEdgeDetectionDuration: _processedFrames == 0
           ? Duration.zero
           : Duration(
               microseconds:
-                  _totalDocumentGateDuration.inMicroseconds ~/ _processedFrames,
+                  _totalPaperEdgeDetectionDuration.inMicroseconds ~/
+                  _processedFrames,
             ),
       averageArucoDuration: _arucoAttemptedFrames == 0
           ? Duration.zero
@@ -616,11 +522,6 @@ final class CameraEngine {
               microseconds:
                   _totalArucoDuration.inMicroseconds ~/ _arucoAttemptedFrames,
             ),
-      firstDocumentToReadyDuration: _firstDocumentToReadyDuration,
-      firstDocumentToIdentityDuration: _firstDocumentToIdentityDuration,
-      searchFrameCount: _searchFrames,
-      activeFrameCount: _activeFrames,
-      activeArucoAttemptedFrameCount: _activeArucoAttemptedFrames,
       timeToFirstMarker: _timeToFirstMarker,
       timeToFirstIdentity: _timeToFirstIdentity,
       timeToReady: _timeToReady,
@@ -653,19 +554,9 @@ final class CameraEngine {
     }
     _lastReadinessEvaluatedAt = timestamp;
     _lastReadinessStatus = status;
-    if (observation.documentFresh) {
-      _firstDocumentDetectedAt ??= timestamp;
-    }
     if (observation.resolvedPageId != null) {
       _timeToFirstIdentity ??= sinceStart();
       _firstPageRecognizedAt ??= timestamp;
-      if (_firstDocumentDetectedAt != null &&
-          _firstDocumentToIdentityDuration == null) {
-        final elapsed = timestamp.difference(_firstDocumentDetectedAt!);
-        _firstDocumentToIdentityDuration = elapsed.isNegative
-            ? Duration.zero
-            : elapsed;
-      }
     }
     if (status == CaptureReadinessStatus.ready &&
         _firstRecognitionToReadyDuration == null &&
@@ -678,14 +569,6 @@ final class CameraEngine {
     if (status == CaptureReadinessStatus.ready) {
       _timeToReady ??= sinceStart();
     }
-    if (status == CaptureReadinessStatus.ready &&
-        _firstDocumentToReadyDuration == null &&
-        _firstDocumentDetectedAt != null) {
-      final elapsed = timestamp.difference(_firstDocumentDetectedAt!);
-      _firstDocumentToReadyDuration = elapsed.isNegative
-          ? Duration.zero
-          : elapsed;
-    }
   }
 
   void resetTracking() {
@@ -695,31 +578,14 @@ final class CameraEngine {
     _documentPresent = false;
     _wrongIdentityStreak = 0;
     _wrongIdentityConfirmed = false;
-    _resetStability(clearConfirmation: true);
+    _resetStability();
   }
 
-  void _resetStability({bool clearConfirmation = false}) {
+  void _resetStability() {
     _previousRegistrationPoints = null;
     _previousAreaRatio = null;
     _previousPageId = null;
     _stableFrameCount = 0;
-    if (clearConfirmation) {
-      _lastSuccessfulArucoConfirmationAt = null;
-      _lastConfirmedPageId = null;
-      _lastConfirmedMarkerIds = null;
-    }
-  }
-
-  bool _sameIds(Set<int> left, Set<int> right) =>
-      left.length == right.length && left.containsAll(right);
-
-  Duration get _maximumFallbackStabilityGap {
-    final expectedProbeGap =
-        config.analysisInterval * config.arucoProbeEveryNFrames;
-    final boundedProbeGap = expectedProbeGap * 2;
-    return boundedProbeGap > config.arucoConfirmationMaxAge
-        ? boundedProbeGap
-        : config.arucoConfirmationMaxAge;
   }
 
   CameraEngineState _copyState({

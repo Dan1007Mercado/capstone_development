@@ -30,77 +30,22 @@ final class DetectedDocument {
 
 enum DocumentTrackingPhase { searching, acquired, tracking, temporarilyLost }
 
-enum LiveAnalysisMode { search, active }
-
 final class DocumentTrackingUpdate {
   const DocumentTrackingUpdate({
     required this.phase,
     required this.document,
     required this.isFresh,
     required this.temporaryMissCount,
-    required this.stability,
   });
 
   const DocumentTrackingUpdate.searching()
     : phase = DocumentTrackingPhase.searching,
       document = null,
       isFresh = false,
-      temporaryMissCount = 0,
-      stability = DocumentStability.unavailable;
+      temporaryMissCount = 0;
 
   final DocumentTrackingPhase phase;
   final DetectedDocument? document;
   final bool isFresh;
   final int temporaryMissCount;
-  final DocumentStability stability;
-}
-
-final class DocumentQuality {
-  const DocumentQuality({required this.brightness, required this.sharpness});
-
-  final double brightness;
-  final double sharpness;
-}
-
-enum LiveFrameGateReason {
-  disabled,
-  noDocument,
-  tooDark,
-  tooBright,
-  tooBlurry,
-  pass,
-}
-
-final class DocumentStability {
-  const DocumentStability({
-    required this.isStable,
-    required this.stableFrameCount,
-    required this.motion,
-  });
-
-  static const unavailable = DocumentStability(
-    isStable: false,
-    stableFrameCount: 0,
-    motion: double.infinity,
-  );
-
-  final bool isStable;
-  final int stableFrameCount;
-  final double motion;
-}
-
-final class LiveFrameGateResult {
-  const LiveFrameGateResult({
-    required this.reason,
-    required this.shouldRunAruco,
-    required this.fallbackProbe,
-  });
-
-  final LiveFrameGateReason reason;
-  final bool shouldRunAruco;
-  final bool fallbackProbe;
-
-  bool get passed =>
-      reason == LiveFrameGateReason.pass ||
-      reason == LiveFrameGateReason.disabled;
 }
