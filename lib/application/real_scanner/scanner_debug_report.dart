@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import '../../core/errors/engine_error.dart';
+import '../../engines/aruco/domain/alignment_failure_diagnostics.dart';
 import '../../engines/aruco/domain/image_geometry.dart';
 import '../../engines/aruco/domain/page_alignment_result.dart';
 import '../../engines/camera/domain/camera_models.dart';
@@ -125,8 +126,12 @@ final class ScannerDebugReportBuilder {
     final missing = expected.where((id) => !observed.contains(id)).toList();
     final duplicates = _duplicates(observed);
     final error = latest?.error ?? currentState.error;
+    final failureAlignment = error == null
+        ? null
+        : AlignmentFailureDiagnostics.findInDetails(error.details);
     final finalObserved =
         alignment?.detectedMarkerIds ??
+        failureAlignment?.detectedRegistrationMarkerIds ??
         _detailIntList(error, 'detectedMarkerIds');
     final document = analysis?.document;
     final buffer = StringBuffer()
@@ -223,7 +228,7 @@ final class ScannerDebugReportBuilder {
       )
       ..writeln(
         'Attempt observed marker IDs: '
-        '${_list(latest?.result?.diagnostics.alignment.detectedMarkerIds ?? latest?.cameraState.analysis?.tracking.detectedMarkerIds)}',
+        '${_list(latest?.result?.diagnostics.alignment.detectedMarkerIds ?? failureAlignment?.detectedRegistrationMarkerIds ?? latest?.cameraState.analysis?.tracking.detectedMarkerIds)}',
       )
       ..writeln('Attempt total duration: ${_ms(latest?.timings.totalDuration)}')
       ..writeln()
@@ -232,10 +237,20 @@ final class ScannerDebugReportBuilder {
         'Captured image size: '
         '${_captureSize(latest?.capture ?? currentState.finalCaptureDiagnostics)}',
       )
-      ..writeln('Decoded source size: ${_size(alignment?.sourceSize)}')
-      ..writeln('Detection resolution: ${_size(alignment?.detectionSize)}')
       ..writeln(
-        'Detection resize factors: ${alignment == null ? 'unavailable' : '${_fixed(alignment.detectionScaleX)} x ${_fixed(alignment.detectionScaleY)}'}',
+        'Decoded source size: '
+        '${_size(alignment?.sourceSize ?? failureAlignment?.sourceSize)}',
+      )
+      ..writeln(
+        'Detection resolution: '
+        '${_size(alignment?.detectionSize ?? failureAlignment?.detectionSize)}',
+      )
+      ..writeln(
+        'Detection resize factors: ${alignment != null
+            ? '${_fixed(alignment.detectionScaleX)} x ${_fixed(alignment.detectionScaleY)}'
+            : failureAlignment != null
+            ? '${_fixed(failureAlignment.detectionScaleX)} x ${_fixed(failureAlignment.detectionScaleY)}'
+            : 'unavailable'}',
       )
       ..writeln(
         'Detected marker count: ${finalObserved?.length ?? 'unavailable'}',
@@ -258,7 +273,11 @@ final class ScannerDebugReportBuilder {
       ..writeln(
         'Registration corner coordinates: '
         '${_points(alignment?.sourceRegistrationPoints)}',
-      )
+      );
+    if (failureAlignment != null) {
+      _writeAlignmentFailure(buffer, failureAlignment);
+    }
+    buffer
       ..writeln()
       ..writeln('HOMOGRAPHY')
       ..writeln(
@@ -277,9 +296,7 @@ final class ScannerDebugReportBuilder {
       ..writeln(
         'Compact alignment summary: ${_alignmentSummary(alignment, error)}',
       )
-      ..writeln(
-        'Worst corners: ${_worstCorners(alignment)}',
-      );
+      ..writeln('Worst corners: ${_worstCorners(alignment)}');
     _writeCandidate(buffer, 'Four-point', alignment?.fourPointCandidate);
     _writeCandidate(buffer, 'Multi-point', alignment?.multiPointCandidate);
     buffer
@@ -443,6 +460,134 @@ final class ScannerDebugReportBuilder {
     return buffer.toString().trimRight();
   }
 
+  static void _writeAlignmentFailure(
+    StringBuffer buffer,
+    AlignmentFailureDiagnostics diagnostics,
+  ) {
+    buffer
+      ..writeln()
+      ..writeln('SCANNER ALIGNMENT FAILURE')
+      ..writeln('Required markers: ${_list(diagnostics.expectedMarkerIds)}')
+      ..writeln(
+        'Detected markers: '
+        '${_list(diagnostics.detectedRegistrationMarkerIds)}',
+      );
+    _writeFailedAttempt(buffer, 'FOUR-POINT', diagnostics.fourPoint);
+    _writeFailedAttempt(buffer, '16-POINT RANSAC', diagnostics.multiPoint);
+    buffer
+      ..writeln()
+      ..writeln('WORST CORNERS');
+    final worst = _failureWorstCorners(diagnostics);
+    if (worst.isEmpty) {
+      buffer.writeln('unavailable: neither estimator produced residuals');
+    } else {
+      for (final item in worst) {
+        buffer.writeln(
+          '${item.method}: marker ${item.markerId} corner ${item.corner}: '
+          '${_fixed(item.error)} px',
+        );
+      }
+    }
+    buffer
+      ..writeln()
+      ..writeln('FINAL DECISION')
+      ..writeln('Alignment rejected.')
+      ..writeln('No homography selected.')
+      ..writeln('Reason: ${diagnostics.selectionReason}')
+      ..writeln(
+        'Marker side lengths: ${_compactDetail(diagnostics.markerSideLengths)}',
+      )
+      ..writeln(
+        'Detected corners: ${_compactDetail(diagnostics.detectedCorners)}',
+      )
+      ..writeln(
+        'Expected corners: ${_compactDetail(diagnostics.expectedCorners)}',
+      )
+      ..writeln(
+        'Detection/correspondence/total: '
+        '${_ms(diagnostics.detectionDuration)}/'
+        '${_ms(diagnostics.correspondenceDuration)}/'
+        '${_ms(diagnostics.totalDuration)}',
+      );
+  }
+
+  static void _writeFailedAttempt(
+    StringBuffer buffer,
+    String label,
+    HomographyAttemptDiagnostics attempt,
+  ) {
+    buffer
+      ..writeln()
+      ..writeln(label)
+      ..writeln('Estimate: ${attempt.estimationStatus.name.toUpperCase()}')
+      ..writeln('Validation: ${attempt.validationStatus.name.toUpperCase()}')
+      ..writeln(
+        'Reason: '
+        '${attempt.rejectionReason ?? attempt.estimationFailureCode ?? 'none'}',
+      )
+      ..writeln('Homography: ${_list(attempt.homography?.values)}')
+      ..writeln(
+        'Residual mean/median/P95/max: '
+        '${_number(attempt.meanResidual)}/'
+        '${_number(attempt.medianResidual)}/'
+        '${_number(attempt.percentile95Residual)}/'
+        '${_number(attempt.maximumResidual)} px',
+      )
+      ..writeln('All corner residuals: ${_list(attempt.cornerResiduals)}')
+      ..writeln(
+        'RANSAC inliers: ${attempt.inlierCount}/'
+        '${attempt.inlierMask.length}',
+      )
+      ..writeln('Inlier mask: ${_list(attempt.inlierMask)}')
+      ..writeln('Inlier counts per marker: ${_list(attempt.inliersPerMarker)}')
+      ..writeln(
+        'Geometry validation: '
+        '${attempt.geometryValidationResult ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Numerical validation: '
+        '${attempt.numericalValidationResult ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Effective thresholds (consistency/RANSAC/tail): '
+        '${_fixed(attempt.effectiveReprojectionThresholdPixels)}/'
+        '${_fixed(attempt.effectiveRansacThresholdPixels)}/'
+        '${_fixed(attempt.effectiveRejectedCornerThresholdPixels)} px',
+      )
+      ..writeln(
+        'Estimator/validation duration: '
+        '${_ms(attempt.estimationDuration)}/'
+        '${_ms(attempt.validationDuration)}',
+      );
+  }
+
+  static List<({String method, int markerId, String corner, double error})>
+  _failureWorstCorners(AlignmentFailureDiagnostics diagnostics) {
+    final values =
+        <({String method, int markerId, String corner, double error})>[];
+    for (final entry in [
+      (method: 'four-point', attempt: diagnostics.fourPoint),
+      (method: '16-point', attempt: diagnostics.multiPoint),
+    ]) {
+      for (
+        var index = 0;
+        index < entry.attempt.cornerResiduals.length &&
+            index < diagnostics.detectedCorners.length;
+        index++
+      ) {
+        final point = diagnostics.detectedCorners[index];
+        values.add((
+          method: entry.method,
+          markerId: point['id'] as int,
+          corner: point['corner'] as String,
+          error: entry.attempt.cornerResiduals[index],
+        ));
+      }
+    }
+    values.sort((left, right) => right.error.compareTo(left.error));
+    return values.take(4).toList(growable: false);
+  }
+
   static void _writeCandidate(
     StringBuffer buffer,
     String label,
@@ -485,13 +630,18 @@ final class ScannerDebugReportBuilder {
     EngineError? error,
   ) {
     if (alignment != null) {
-      final allMarkers = alignment.expectedMarkerIds.toSet().difference(
-        alignment.detectedMarkerIds.toSet(),
-      ).isEmpty;
+      final allMarkers = alignment.expectedMarkerIds
+          .toSet()
+          .difference(alignment.detectedMarkerIds.toSet())
+          .isEmpty;
       final multi = alignment.multiPointCandidate;
       return 'markers=${allMarkers ? 'all detected' : 'missing'}; '
           'selected=${alignment.selectedHomographyMethod.name}; '
-          'multi=${multi == null ? 'not run' : multi.accepted ? 'accepted' : 'rejected (${multi.rejectionReason})'}';
+          'multi=${multi == null
+              ? 'not run'
+              : multi.accepted
+              ? 'accepted'
+              : 'rejected (${multi.rejectionReason})'}';
     }
     final four = _deepestDetail(error, 'fourPointRejectionReason');
     final multi = _deepestDetail(error, 'multiPointRejectionReason');
@@ -507,14 +657,17 @@ final class ScannerDebugReportBuilder {
       for (var index = 0; index < alignment.reprojectionErrors.length; index++)
         (index: index, error: alignment.reprojectionErrors[index]),
     ]..sort((left, right) => right.error.compareTo(left.error));
-    return indexed.take(4).map((entry) {
-      final markerIndex = entry.index ~/ 4;
-      final marker = markerIndex < alignment.expectedMarkerIds.length
-          ? alignment.expectedMarkerIds[markerIndex]
-          : '?';
-      const corners = ['TL', 'TR', 'BR', 'BL'];
-      return 'marker $marker ${corners[entry.index % 4]}=${_fixed(entry.error)}px';
-    }).join(', ');
+    return indexed
+        .take(4)
+        .map((entry) {
+          final markerIndex = entry.index ~/ 4;
+          final marker = markerIndex < alignment.expectedMarkerIds.length
+              ? alignment.expectedMarkerIds[markerIndex]
+              : '?';
+          const corners = ['TL', 'TR', 'BR', 'BL'];
+          return 'marker $marker ${corners[entry.index % 4]}=${_fixed(entry.error)}px';
+        })
+        .join(', ');
   }
 }
 

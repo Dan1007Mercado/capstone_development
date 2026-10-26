@@ -74,7 +74,12 @@ void main() {
       testError: EngineError(
         code: 'TEST_WORKER_FAILURE',
         message: 'Worker failed predictably.',
-        details: const {'stage': 'alignment'},
+        details: const {
+          'stage': 'alignment',
+          'alignmentFailureDiagnostics': {
+            'selectionReason': 'NO_TRUSTWORTHY_HOMOGRAPHY',
+          },
+        },
       ),
     );
     final result = await runner.scan(
@@ -90,7 +95,12 @@ void main() {
     );
 
     expect(result.error.code, 'TEST_WORKER_FAILURE');
-    expect(result.error.details, {'stage': 'alignment'});
+    expect(result.error.details['stage'], 'alignment');
+    expect(
+      (result.error.details['alignmentFailureDiagnostics']
+          as Map)['selectionReason'],
+      'NO_TRUSTWORTHY_HOMOGRAPHY',
+    );
     await runner.dispose();
   });
 
@@ -267,7 +277,21 @@ void main() {
 
   test('scanner failure preserves the structured P9 cause', () async {
     final fixture = _Fixture(
-      scannerResults: [_failure('SCAN_ALIGNMENT_FAILED', 'alignment failed')],
+      scannerResults: [
+        _failure(
+          'SCAN_ALIGNMENT_FAILED',
+          'alignment failed',
+          details: const {
+            'causeDetails': {
+              'alignmentFailureDiagnostics': {
+                'selectionReason': 'NO_TRUSTWORTHY_HOMOGRAPHY',
+                'fourPoint': {'validationStatus': 'rejected'},
+                'multiPoint': {'validationStatus': 'rejected'},
+              },
+            },
+          },
+        ),
+      ],
     );
     await fixture.initialize();
 
@@ -275,6 +299,11 @@ void main() {
 
     expect(result.error.code, 'CAPTURE_SCAN_SCANNER_FAILED');
     expect(result.error.details['causeCode'], 'SCAN_ALIGNMENT_FAILED');
+    expect(
+      ((result.error.details['causeDetails'] as Map)['causeDetails']
+          as Map)['alignmentFailureDiagnostics'],
+      isA<Map>(),
+    );
     expect(fixture.coordinator.state.phase, CameraScanPhase.scanFailed);
     expect(fixture.coordinator.state.result, isNull);
     expect(fixture.coordinator.state.finalCaptureDiagnostics?.width, 4000);
@@ -470,43 +499,6 @@ void main() {
     await fixture.dispose();
   });
 
-  test(
-    'opt-in failed still sink retains exact scanner input only on failure',
-    () async {
-      final sink = _FakeFailedCaptureSink();
-      final fixture = _Fixture(
-        failedScanCaptureSink: sink,
-        scannerResults: [_failure('SCAN_ALIGNMENT_FAILED', 'alignment failed')],
-      );
-      await fixture.initialize();
-
-      final result = await fixture.coordinator.captureAndScan();
-
-      expect(result.isFailure, isTrue);
-      expect(sink.stagedBytes, fixture.camera.stillBytes);
-      expect(sink.context, same(fixture.context));
-      expect(sink.failure?.code, 'CAPTURE_SCAN_SCANNER_FAILED');
-      expect(sink.discardCount, 0);
-      await fixture.dispose();
-    },
-  );
-
-  test(
-    'opt-in failed still sink discards staged bytes after success',
-    () async {
-      final sink = _FakeFailedCaptureSink();
-      final fixture = _Fixture(failedScanCaptureSink: sink);
-      await fixture.initialize();
-
-      expect((await fixture.coordinator.captureAndScan()).isSuccess, isTrue);
-
-      expect(sink.stagedBytes, fixture.camera.stillBytes);
-      expect(sink.failure, isNull);
-      expect(sink.discardCount, 1);
-      await fixture.dispose();
-    },
-  );
-
   test('updated expected page reaches scanner without substitution', () async {
     final fixture = _Fixture();
     await fixture.initialize();
@@ -581,7 +573,6 @@ final class _Fixture {
     EngineResult<CapturedPageImage>? captureResult,
     EngineResult<Uint8List>? loadResult,
     List<EngineResult<ScanResult>>? scannerResults,
-    FailedScanCaptureSink? failedScanCaptureSink,
   }) : camera = _FakeCamera(
          readyOnStart: readyOnStart,
          captureGate: captureGate,
@@ -605,7 +596,6 @@ final class _Fixture {
       scanner: scanner,
       context: context,
       autoCaptureEnabled: autoCaptureEnabled,
-      failedScanCaptureSink: failedScanCaptureSink,
     );
   }
 
@@ -821,25 +811,6 @@ final class _FakeScanner implements OfflineScanRunner {
   Future<void> dispose() async {}
 }
 
-final class _FakeFailedCaptureSink implements FailedScanCaptureSink {
-  Uint8List? stagedBytes;
-  CameraScanContext? context;
-  EngineError? failure;
-  int discardCount = 0;
-
-  @override
-  void stage(Uint8List encodedImage, CameraScanContext context) {
-    stagedBytes = Uint8List.fromList(encodedImage);
-    this.context = context;
-  }
-
-  @override
-  void commitFailure(EngineError error) => failure = error;
-
-  @override
-  void discard() => discardCount++;
-}
-
 CameraEngineState _cameraState({
   required CameraLifecycleState lifecycle,
   bool ready = false,
@@ -933,8 +904,13 @@ ScanResult _scanResult({CameraScanContext? context}) {
   );
 }
 
-EngineResult<T> _failure<T>(String code, String message) =>
-    EngineResult.failure(EngineError(code: code, message: message));
+EngineResult<T> _failure<T>(
+  String code,
+  String message, {
+  Map<String, Object?> details = const {},
+}) => EngineResult.failure(
+  EngineError(code: code, message: message, details: details),
+);
 
 Future<void> _waitFor(bool Function() condition) async {
   for (var attempt = 0; attempt < 100; attempt++) {

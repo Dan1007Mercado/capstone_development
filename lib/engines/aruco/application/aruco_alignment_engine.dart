@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../../layout/domain/page_layout.dart';
+import '../domain/alignment_failure_diagnostics.dart';
 import '../domain/aruco_alignment_config.dart';
 import '../domain/aruco_vision_backend.dart';
 import '../domain/detected_marker.dart';
@@ -118,27 +119,33 @@ final class ArucoAlignmentEngine {
         confidence: effectiveConfig.multipointConfidence,
       );
       final validationStopwatch = Stopwatch()..start();
-      final fourPointCandidate = fourPointEstimate.isSuccess
-          ? _evaluateCandidate(
-              estimate: fourPointEstimate.value,
-              method: AlignmentHomographyMethod.fourPoint,
-              fittingCorrespondences: correspondenceSet.baselineCorrespondences,
-              fullCorrespondences: correspondenceSet.allCornerCorrespondences,
-              heldOutValidationResiduals: _residualStatistics(
-                fourPointEstimate.value.homography,
-                _fourPointHeldOutCorrespondences(correspondenceSet),
-              ),
-              page: page,
-              sourceSize: session.sourceSize,
-              config: effectiveConfig,
-              effectiveReprojectionErrorPixels: effectiveReprojectionError,
-              effectiveInlierReprojectionErrorPixels: effectiveRansacThreshold,
-              effectiveRejectedCornerErrorPixels: effectiveRejectedCornerError,
-            )
-          : null;
+      var fourPointValidationDuration = Duration.zero;
+      HomographyCandidateDiagnostics? fourPointCandidate;
+      if (fourPointEstimate.isSuccess) {
+        final candidateStopwatch = Stopwatch()..start();
+        fourPointCandidate = _evaluateCandidate(
+          estimate: fourPointEstimate.value,
+          method: AlignmentHomographyMethod.fourPoint,
+          fittingCorrespondences: correspondenceSet.baselineCorrespondences,
+          fullCorrespondences: correspondenceSet.allCornerCorrespondences,
+          heldOutValidationResiduals: _residualStatistics(
+            fourPointEstimate.value.homography,
+            _fourPointHeldOutCorrespondences(correspondenceSet),
+          ),
+          page: page,
+          sourceSize: session.sourceSize,
+          config: effectiveConfig,
+          effectiveReprojectionErrorPixels: effectiveReprojectionError,
+          effectiveInlierReprojectionErrorPixels: effectiveRansacThreshold,
+          effectiveRejectedCornerErrorPixels: effectiveRejectedCornerError,
+        );
+        candidateStopwatch.stop();
+        fourPointValidationDuration = candidateStopwatch.elapsed;
+      }
 
       EngineResult<BackendHomographyEstimate>? multiPointEstimate;
       HomographyCandidateDiagnostics? multiPointCandidate;
+      var multiPointValidationDuration = Duration.zero;
       if (effectiveConfig.enableMultipointHomography) {
         multiPointEstimate = session.estimateHomography(
           sourcePoints: correspondenceSet.allSourcePoints,
@@ -149,6 +156,7 @@ final class ArucoAlignmentEngine {
           confidence: effectiveConfig.multipointConfidence,
         );
         if (multiPointEstimate.isSuccess) {
+          final candidateStopwatch = Stopwatch()..start();
           multiPointCandidate = _evaluateCandidate(
             estimate: multiPointEstimate.value,
             method: AlignmentHomographyMethod.multiPoint,
@@ -163,6 +171,8 @@ final class ArucoAlignmentEngine {
             effectiveInlierReprojectionErrorPixels: effectiveRansacThreshold,
             effectiveRejectedCornerErrorPixels: effectiveRejectedCornerError,
           );
+          candidateStopwatch.stop();
+          multiPointValidationDuration = candidateStopwatch.elapsed;
         }
       }
       validationStopwatch.stop();
@@ -174,12 +184,65 @@ final class ArucoAlignmentEngine {
       );
       final selectedMethod = selection.method;
       if (selectedMethod == null) {
+        final failureDiagnostics = AlignmentFailureDiagnostics(
+          sourceSize: session.sourceSize,
+          detectionSize: session.openTimings.detectionSize,
+          detectionScaleX: session.openTimings.detectionScaleX,
+          detectionScaleY: session.openTimings.detectionScaleY,
+          expectedMarkerIds: expectedIds.toList()..sort(),
+          detectedRegistrationMarkerIds: registrationIds,
+          markerSideLengths: [
+            for (final observation in correspondenceSet.observations)
+              {
+                'id': observation.detectedMarker.id,
+                'minimum': observation.detectedMarker.minimumSideLength,
+                'sides': observation.detectedMarker.sideLengths,
+              },
+          ],
+          detectedCorners: _correspondencePoints(
+            correspondenceSet.allCornerCorrespondences,
+            source: true,
+          ),
+          expectedCorners: _correspondencePoints(
+            correspondenceSet.allCornerCorrespondences,
+            source: false,
+          ),
+          selectionPolicy: effectiveConfig.selectionPolicy,
+          selectionReason: selection.selectionReason,
+          fourPoint: _attemptDiagnostics(
+            method: AlignmentHomographyMethod.fourPoint,
+            estimate: fourPointEstimate,
+            candidate: fourPointCandidate,
+            validationDuration: fourPointValidationDuration,
+            effectiveReprojectionError: effectiveReprojectionError,
+            effectiveRansacThreshold: effectiveRansacThreshold,
+            effectiveRejectedCornerError: effectiveRejectedCornerError,
+          ),
+          multiPoint: _attemptDiagnostics(
+            method: AlignmentHomographyMethod.multiPoint,
+            estimate: multiPointEstimate,
+            candidate: multiPointCandidate,
+            validationDuration: multiPointValidationDuration,
+            effectiveReprojectionError: effectiveReprojectionError,
+            effectiveRansacThreshold: effectiveRansacThreshold,
+            effectiveRejectedCornerError: effectiveRejectedCornerError,
+          ),
+          decodeDuration: session.openTimings.decode,
+          detectionPreparationDuration:
+              session.openTimings.detectionPreparation,
+          detectionDuration: session.openTimings.detection,
+          coordinateRemapDuration: session.openTimings.coordinateRemap,
+          pageResolutionDuration: pageResolutionStopwatch.elapsed,
+          correspondenceDuration: correspondenceStopwatch.elapsed,
+          totalDuration: stopwatch.elapsed,
+        );
         return _failure(
           'ARUCO_REPROJECTION_FAILED',
           'Neither homography candidate passed alignment validation '
               '(fourPoint=${fourPointCandidate?.rejectionReason ?? fourPointEstimate.errorOrNull?.code}, '
               'multiPoint=${multiPointCandidate?.rejectionReason ?? multiPointEstimate?.errorOrNull?.code}).',
           {
+            AlignmentFailureDiagnostics.detailsKey: failureDiagnostics.toMap(),
             'sourceSize': _sizeDetails(session.sourceSize),
             'detectionSize': _sizeDetails(session.openTimings.detectionSize),
             'detectionScaleX': session.openTimings.detectionScaleX,
@@ -331,6 +394,9 @@ final class ArucoAlignmentEngine {
             effectiveRejectedCornerErrorPixels: effectiveRejectedCornerError,
             selectionReason: selection.selectionReason,
             fallbackReason: selection.fallbackReason,
+            fourPointEstimationFailureCode: fourPointEstimate.errorOrNull?.code,
+            multiPointEstimationFailureCode:
+                multiPointEstimate?.errorOrNull?.code,
           ),
           detectedMarkers: session.detection.markers,
         ),
@@ -581,6 +647,60 @@ final class ArucoAlignmentEngine {
 
   Map<String, int>? _sizeDetails(ImageSize? size) =>
       size == null ? null : {'width': size.width, 'height': size.height};
+
+  HomographyAttemptDiagnostics _attemptDiagnostics({
+    required AlignmentHomographyMethod method,
+    required EngineResult<BackendHomographyEstimate>? estimate,
+    required HomographyCandidateDiagnostics? candidate,
+    required Duration validationDuration,
+    required double effectiveReprojectionError,
+    required double effectiveRansacThreshold,
+    required double effectiveRejectedCornerError,
+  }) {
+    final succeeded = estimate?.isSuccess == true;
+    return HomographyAttemptDiagnostics(
+      method: method,
+      estimationStatus: succeeded
+          ? HomographyEstimationStatus.succeeded
+          : HomographyEstimationStatus.failed,
+      validationStatus: !succeeded
+          ? HomographyValidationStatus.notRun
+          : candidate?.accepted == true
+          ? HomographyValidationStatus.accepted
+          : HomographyValidationStatus.rejected,
+      estimationFailureCode:
+          estimate?.errorOrNull?.code ??
+          (estimate == null ? 'ESTIMATOR_DISABLED' : null),
+      estimationFailureMessage: estimate?.errorOrNull?.message,
+      homography: estimate?.valueOrNull?.homography,
+      rejectionReason: candidate?.rejectionReason,
+      meanResidual: candidate?.meanCommonReprojectionError,
+      medianResidual: candidate?.medianCommonReprojectionError,
+      percentile95Residual: candidate == null
+          ? null
+          : ReprojectionStatistics(
+              candidate.commonReprojectionErrors,
+            ).percentile95,
+      maximumResidual: candidate?.maxCommonReprojectionError,
+      cornerResiduals: candidate?.commonReprojectionErrors ?? const [],
+      inlierMask: candidate?.inlierMask ?? const [],
+      inlierCount: candidate?.inlierCount ?? 0,
+      inliersPerMarker: candidate?.inliersPerMarker ?? const [],
+      geometryValidationResult:
+          candidate?.geometryValidationFailure ??
+          (succeeded ? 'passed' : 'notRun'),
+      numericalValidationResult: candidate == null
+          ? succeeded
+                ? 'unavailable'
+                : 'notRun'
+          : _numericalValidationResult(candidate),
+      effectiveReprojectionThresholdPixels: effectiveReprojectionError,
+      effectiveRansacThresholdPixels: effectiveRansacThreshold,
+      effectiveRejectedCornerThresholdPixels: effectiveRejectedCornerError,
+      estimationDuration: estimate?.valueOrNull?.duration ?? Duration.zero,
+      validationDuration: validationDuration,
+    );
+  }
 
   double _milliseconds(Duration duration) =>
       duration.inMicroseconds / Duration.microsecondsPerMillisecond;

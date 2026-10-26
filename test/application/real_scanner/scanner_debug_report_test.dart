@@ -2,6 +2,8 @@ import 'package:capstone_development/application/camera_scanner/domain/camera_sc
 import 'package:capstone_development/application/real_scanner/scanner_debug_report.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/ids/identifiers.dart';
+import 'package:capstone_development/engines/aruco/domain/alignment_failure_diagnostics.dart';
+import 'package:capstone_development/engines/aruco/domain/aruco_alignment_config.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/aruco/domain/marker_correspondence.dart';
 import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
@@ -59,26 +61,8 @@ void main() {
           'causeCode': 'ARUCO_REPROJECTION_FAILED',
           'causeMessage': 'Neither homography candidate passed.',
           'causeDetails': {
-            'sourceSize': {'width': 3000, 'height': 4000},
-            'detectionSize': {'width': 1050, 'height': 1400},
-            'detectionScaleX': 2.857,
-            'detectionScaleY': 2.857,
-            'detectedRegistrationIds': [10, 11, 12, 13],
-            'multiPointResiduals': [0.5, 1.2, 5.9],
-            'multiPointInlierMask': [true, true, false],
-            'multiPointInliersPerMarker': [4, 3, 3, 2],
-            'effectiveRansacThreshold': 3.2,
-            'effectiveFourPointConsistencyThreshold': 2.1,
-            'effectiveRejectedCornerThreshold': 8.4,
-            'reprojectionScaleFactor': 2.1,
-            'fourPointNumericalValidation': 'passed',
-            'multiPointNumericalValidation': 'passed',
-            'fourPointGeometryValidation': 'passed',
-            'multiPointGeometryValidation': 'passed',
-            'stageTimingsMs': {'detection': 120.0, 'alignmentElapsed': 180.0},
-            'fourPointRejectionReason': 'FULL_CORNER_CONSISTENCY_EXCEEDED',
-            'multiPointRejectionReason': 'INSUFFICIENT_INLIERS',
-            'multiPointInlierRatio': 0.75,
+            AlignmentFailureDiagnostics.detailsKey: _failureDiagnostics()
+                .toMap(),
             'authToken': 'must-not-copy',
             'cause': r'C:\private\scanner.dart:10',
           },
@@ -87,7 +71,7 @@ void main() {
     );
     final state = CameraScanState(
       phase: CameraScanPhase.scanFailed,
-      cameraState: _cameraState(),
+      cameraState: const CameraEngineState.uninitialized(),
       error: error,
       finalCaptureDiagnostics: FinalCaptureDiagnostics(
         width: 3000,
@@ -111,22 +95,19 @@ void main() {
     expect(history.attempts.single.pipelineStage, 'HOMOGRAPHY');
     expect(report, contains('Root cause code: ARUCO_REPROJECTION_FAILED'));
     expect(report, contains('Stage: HOMOGRAPHY'));
-    expect(
-      report,
-      contains(
-        'Failure four-point rejection reason: FULL_CORNER_CONSISTENCY_EXCEEDED',
-      ),
-    );
-    expect(
-      report,
-      contains('Failure multi-point rejection reason: INSUFFICIENT_INLIERS'),
-    );
-    expect(report, contains('Failure source size: 3000x4000'));
-    expect(report, contains('Failure detection size: 1050x1400'));
-    expect(report, contains('Failure registration IDs: [10, 11, 12, 13]'));
-    expect(report, contains('Failure multi-point residuals/mask/per-marker:'));
-    expect(report, contains('Failure thresholds (RANSAC/four/tail/scale):'));
-    expect(report, contains('Failure stage timings:'));
+    expect(report, contains('SCANNER ALIGNMENT FAILURE'));
+    expect(report, contains('Detected markers: [10, 11, 12, 13]'));
+    expect(report, contains('Attempt observed marker IDs: [10, 11, 12, 13]'));
+    expect(report, contains('FOUR-POINT'));
+    expect(report, contains('16-POINT RANSAC'));
+    expect(report, contains('Estimate: SUCCEEDED'));
+    expect(report, contains('Validation: REJECTED'));
+    expect(report, contains('Reason: FULL_CORNER_CONSISTENCY_EXCEEDED'));
+    expect(report, contains('Reason: UNSAFE_INLIER_DISTRIBUTION'));
+    expect(report, contains('RANSAC inliers: 12/16'));
+    expect(report, contains('marker 13 corner bottomLeft: 9.000 px'));
+    expect(report, contains('No homography selected.'));
+    expect(report, contains('Detection resolution: 1050x1400'));
     expect(report, isNot(contains('must-not-copy')));
     expect(report, isNot(contains(r'C:\private')));
   });
@@ -182,6 +163,84 @@ void main() {
     expect(report, contains('Selected method: unavailable'));
     expect(report, contains('Native marker detection: unavailable'));
   });
+}
+
+AlignmentFailureDiagnostics _failureDiagnostics() {
+  final corners = [
+    for (final markerId in const [10, 11, 12, 13])
+      for (final corner in const [
+        'topLeft',
+        'topRight',
+        'bottomRight',
+        'bottomLeft',
+      ])
+        {'id': markerId, 'corner': corner, 'x': 10.0, 'y': 20.0},
+  ];
+  HomographyAttemptDiagnostics attempt({
+    required AlignmentHomographyMethod method,
+    required String reason,
+    required List<double> residuals,
+    required List<int> perMarker,
+  }) => HomographyAttemptDiagnostics(
+    method: method,
+    estimationStatus: HomographyEstimationStatus.succeeded,
+    validationStatus: HomographyValidationStatus.rejected,
+    estimationDuration: const Duration(milliseconds: 2),
+    validationDuration: const Duration(milliseconds: 1),
+    effectiveReprojectionThresholdPixels: 2.1,
+    effectiveRansacThresholdPixels: 3.2,
+    effectiveRejectedCornerThresholdPixels: 8.4,
+    homography: HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+    rejectionReason: reason,
+    meanResidual: residuals.reduce((a, b) => a + b) / residuals.length,
+    medianResidual: 1,
+    percentile95Residual: residuals.last,
+    maximumResidual: residuals.reduce((a, b) => a > b ? a : b),
+    cornerResiduals: residuals,
+    inlierMask: [for (var index = 0; index < 16; index++) index < 12],
+    inlierCount: 12,
+    inliersPerMarker: perMarker,
+    geometryValidationResult: 'passed',
+    numericalValidationResult: 'passed',
+  );
+  return AlignmentFailureDiagnostics(
+    sourceSize: ImageSize(width: 3000, height: 4000),
+    detectionSize: ImageSize(width: 1050, height: 1400),
+    detectionScaleX: 2.857,
+    detectionScaleY: 2.857,
+    expectedMarkerIds: const [10, 11, 12, 13],
+    detectedRegistrationMarkerIds: const [10, 11, 12, 13],
+    markerSideLengths: const [
+      {
+        'id': 10,
+        'minimum': 30.0,
+        'sides': [30.0, 30.0, 30.0, 30.0],
+      },
+    ],
+    detectedCorners: corners,
+    expectedCorners: corners,
+    selectionPolicy: HomographySelectionPolicy.validatedMultiPointPreference,
+    selectionReason: 'NO_TRUSTWORTHY_HOMOGRAPHY',
+    fourPoint: attempt(
+      method: AlignmentHomographyMethod.fourPoint,
+      reason: 'FULL_CORNER_CONSISTENCY_EXCEEDED',
+      residuals: [for (var index = 0; index < 16; index++) 2.0],
+      perMarker: const [3, 3, 3, 3],
+    ),
+    multiPoint: attempt(
+      method: AlignmentHomographyMethod.multiPoint,
+      reason: 'UNSAFE_INLIER_DISTRIBUTION',
+      residuals: [for (var index = 0; index < 15; index++) 1.0, 9.0],
+      perMarker: const [4, 4, 4, 0],
+    ),
+    decodeDuration: const Duration(milliseconds: 8),
+    detectionPreparationDuration: const Duration(milliseconds: 4),
+    detectionDuration: const Duration(milliseconds: 120),
+    coordinateRemapDuration: const Duration(milliseconds: 1),
+    pageResolutionDuration: const Duration(milliseconds: 1),
+    correspondenceDuration: const Duration(milliseconds: 3),
+    totalDuration: const Duration(milliseconds: 180),
+  );
 }
 
 CameraScanState _successfulState() => CameraScanState(

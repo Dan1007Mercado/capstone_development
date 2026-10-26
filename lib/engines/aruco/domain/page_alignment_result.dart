@@ -227,6 +227,8 @@ final class PageAlignmentDiagnostics {
     this.effectiveRejectedCornerErrorPixels,
     this.selectionReason,
     this.fallbackReason,
+    this.fourPointEstimationFailureCode,
+    this.multiPointEstimationFailureCode,
   }) : expectedMarkerIds = UnmodifiableListView(List.of(expectedMarkerIds)),
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        sourceMarkerSideLengths = UnmodifiableListView(
@@ -276,6 +278,8 @@ final class PageAlignmentDiagnostics {
   final double? effectiveRejectedCornerErrorPixels;
   final String? selectionReason;
   final String? fallbackReason;
+  final String? fourPointEstimationFailureCode;
+  final String? multiPointEstimationFailureCode;
 }
 
 final class PageAlignmentResult {

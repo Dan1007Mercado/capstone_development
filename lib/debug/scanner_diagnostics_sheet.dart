@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 typedef ScannerDebugClipboardWriter = Future<void> Function(String text);
-typedef FailedCaptureExporter = Future<String?> Function();
 
 Future<void> _writeScannerDebugClipboard(String text) =>
     Clipboard.setData(ClipboardData(text: text));
@@ -11,13 +10,11 @@ class ScannerDiagnosticsSheet extends StatelessWidget {
   const ScannerDiagnosticsSheet({
     required this.report,
     this.clipboardWriter = _writeScannerDebugClipboard,
-    this.failedCaptureExporter,
     super.key,
   });
 
   final String report;
   final ScannerDebugClipboardWriter clipboardWriter;
-  final FailedCaptureExporter? failedCaptureExporter;
 
   Future<void> _copy(BuildContext context) async {
     try {
@@ -30,21 +27,6 @@ class ScannerDiagnosticsSheet extends StatelessWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not copy debug results.')),
-      );
-    }
-  }
-
-  Future<void> _exportFailedCapture(BuildContext context) async {
-    try {
-      final path = await failedCaptureExporter!();
-      if (!context.mounted || path == null) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed still exported to $path')));
-    } on Object {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not export failed still.')),
       );
     }
   }
@@ -83,15 +65,6 @@ class ScannerDiagnosticsSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            if (failedCaptureExporter != null) ...[
-              OutlinedButton.icon(
-                key: const Key('export-failed-scanner-capture'),
-                onPressed: () => _exportFailedCapture(context),
-                icon: const Icon(Icons.save_alt),
-                label: const Text('Export Failed Still'),
-              ),
-              const SizedBox(height: 8),
-            ],
             FilledButton.icon(
               key: const Key('copy-scanner-debug-results'),
               onPressed: () => _copy(context),

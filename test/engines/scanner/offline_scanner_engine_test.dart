@@ -191,6 +191,36 @@ void main() {
     });
   }
 
+  test('alignment failure diagnostics survive the scanner stage wrapper', () {
+    const failurePayload = {
+      'alignmentFailureDiagnostics': {
+        'selectionReason': 'NO_TRUSTWORTHY_HOMOGRAPHY',
+        'fourPoint': {'validationStatus': 'rejected'},
+        'multiPoint': {'validationStatus': 'rejected'},
+      },
+    };
+    final pipeline = _FakePipeline(
+      page,
+      _classifications(questionIds, const [
+        MarkState.marked,
+        MarkState.marked,
+        MarkState.marked,
+      ]),
+      failAt: ScanStage.alignment,
+      failureDetails: failurePayload,
+    );
+
+    final result = _engine(pipeline).scan(
+      encodedImage: Uint8List.fromList([1]),
+      template: template,
+      pageLayout: page,
+      config: ScannerConfig(),
+    );
+
+    expect(result.isFailure, isTrue);
+    expect(result.error.details['causeDetails'], failurePayload);
+  });
+
   test('template/layout mismatch fails before image processing', () {
     final pipeline = _FakePipeline(
       page,
@@ -515,12 +545,14 @@ final class _FakePipeline
     this.classifications, {
     this.failAt,
     this.mutateInput = false,
+    this.failureDetails = const {'value': 7},
   });
 
   final PageLayout page;
   final List<QuestionClassification> classifications;
   final ScanStage? failAt;
   final bool mutateInput;
+  final Map<String, Object?> failureDetails;
   final List<ScanStage> calls = [];
   BubbleMeasurementSet? measurementSet;
   BubbleMeasurementSet? classificationMeasurements;
@@ -533,7 +565,7 @@ final class _FakePipeline
       EngineError(
         code: 'CHILD_FAILED',
         message: 'stage failed',
-        details: const {'value': 7},
+        details: failureDetails,
       ),
     );
   }
