@@ -58,6 +58,43 @@ final class CanonicalPageImage {
   final Uint8List grayscaleBytes;
 }
 
+enum AlignmentHomographyMethod { fourPoint, multiPoint }
+
+final class HomographyCandidateDiagnostics {
+  HomographyCandidateDiagnostics({
+    required this.method,
+    required Iterable<double> commonReprojectionErrors,
+    required this.meanCommonReprojectionError,
+    required this.medianCommonReprojectionError,
+    required this.maxCommonReprojectionError,
+    required this.inlierCount,
+    required this.totalPointCount,
+    required this.accepted,
+    required this.duration,
+  }) : commonReprojectionErrors = UnmodifiableListView(
+         List.of(commonReprojectionErrors),
+       );
+
+  final AlignmentHomographyMethod method;
+  final List<double> commonReprojectionErrors;
+  final double meanCommonReprojectionError;
+  final double medianCommonReprojectionError;
+  final double maxCommonReprojectionError;
+  final int inlierCount;
+  final int totalPointCount;
+  final bool accepted;
+  final Duration duration;
+
+  double get inlierRatio => totalPointCount == 0 ? 0 : inlierCount / totalPointCount;
+
+  /// Shared score used only between candidates evaluated on the same 16
+  /// published marker corners. It intentionally includes tail error.
+  double get commonScore =>
+      medianCommonReprojectionError +
+      meanCommonReprojectionError * 0.25 +
+      maxCommonReprojectionError * 0.1;
+}
+
 final class PageAlignmentDiagnostics {
   PageAlignmentDiagnostics({
     required Iterable<int> expectedMarkerIds,
@@ -83,6 +120,11 @@ final class PageAlignmentDiagnostics {
     this.detectionSize,
     this.detectionScaleX = 1,
     this.detectionScaleY = 1,
+    this.selectedHomographyMethod = AlignmentHomographyMethod.fourPoint,
+    this.fourPointCandidate,
+    this.multiPointCandidate,
+    this.fourPointHomographyDuration = Duration.zero,
+    this.multiPointHomographyDuration = Duration.zero,
   }) : expectedMarkerIds = UnmodifiableListView(List.of(expectedMarkerIds)),
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        sourceMarkerSideLengths = UnmodifiableListView(
@@ -119,6 +161,11 @@ final class PageAlignmentDiagnostics {
   final ImageSize? detectionSize;
   final double detectionScaleX;
   final double detectionScaleY;
+  final AlignmentHomographyMethod selectedHomographyMethod;
+  final HomographyCandidateDiagnostics? fourPointCandidate;
+  final HomographyCandidateDiagnostics? multiPointCandidate;
+  final Duration fourPointHomographyDuration;
+  final Duration multiPointHomographyDuration;
 }
 
 final class PageAlignmentResult {

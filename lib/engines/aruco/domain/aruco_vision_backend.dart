@@ -19,25 +19,45 @@ abstract interface class ArucoImageSession {
   ImageSize get sourceSize;
   ArucoBackendOpenTimings get openTimings;
 
-  EngineResult<BackendRectification> rectify({
+  EngineResult<BackendHomographyEstimate> estimateHomography({
     required List<ImagePoint> sourcePoints,
     required List<ImagePoint> destinationPoints,
+    required HomographyEstimationMethod method,
+    required double ransacReprojectionThresholdPixels,
+    required int maximumIterations,
+    required double confidence,
+  });
+
+  EngineResult<BackendWarp> warp({
+    required HomographyMatrix homography,
     required ImageSize outputSize,
   });
 
   void dispose();
 }
 
-final class BackendRectification {
-  const BackendRectification({
-    required this.canonicalPage,
+enum HomographyEstimationMethod { fourPoint, multiPointRansac }
+
+final class BackendHomographyEstimate {
+  BackendHomographyEstimate({
     required this.homography,
-    this.timings = const ArucoBackendRectificationTimings(),
+    required Iterable<bool> inliers,
+    this.duration = Duration.zero,
+  }) : inliers = List<bool>.unmodifiable(inliers);
+
+  final HomographyMatrix homography;
+  final List<bool> inliers;
+  final Duration duration;
+}
+
+final class BackendWarp {
+  const BackendWarp({
+    required this.canonicalPage,
+    this.duration = Duration.zero,
   });
 
   final CanonicalPageImage canonicalPage;
-  final HomographyMatrix homography;
-  final ArucoBackendRectificationTimings timings;
+  final Duration duration;
 }
 
 final class ArucoBackendOpenTimings {
@@ -58,14 +78,4 @@ final class ArucoBackendOpenTimings {
   final ImageSize? detectionSize;
   final double detectionScaleX;
   final double detectionScaleY;
-}
-
-final class ArucoBackendRectificationTimings {
-  const ArucoBackendRectificationTimings({
-    this.homography = Duration.zero,
-    this.warp = Duration.zero,
-  });
-
-  final Duration homography;
-  final Duration warp;
 }

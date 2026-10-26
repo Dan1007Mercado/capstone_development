@@ -45,19 +45,35 @@ final class RegistrationQuality {
 final class MarkerCorrespondenceSet {
   MarkerCorrespondenceSet({
     required Iterable<MarkerObservation> observations,
-    required Iterable<MarkerCorrespondence> correspondences,
+    required Iterable<MarkerCorrespondence> baselineCorrespondences,
+    required Iterable<MarkerCorrespondence> allCornerCorrespondences,
     required this.quality,
   }) : observations = UnmodifiableListView(List.of(observations)),
-       correspondences = UnmodifiableListView(List.of(correspondences));
+       baselineCorrespondences = UnmodifiableListView(
+         List.of(baselineCorrespondences),
+       ),
+       allCornerCorrespondences = UnmodifiableListView(
+         List.of(allCornerCorrespondences),
+       );
 
   final List<MarkerObservation> observations;
-  final List<MarkerCorrespondence> correspondences;
+  final List<MarkerCorrespondence> baselineCorrespondences;
+  final List<MarkerCorrespondence> allCornerCorrespondences;
   final RegistrationQuality quality;
 
-  List<ImagePoint> get sourcePoints =>
-      correspondences.map((item) => item.sourcePoint).toList(growable: false);
+  List<ImagePoint> get baselineSourcePoints => baselineCorrespondences
+      .map((item) => item.sourcePoint)
+      .toList(growable: false);
 
-  List<ImagePoint> get destinationPoints => correspondences
+  List<ImagePoint> get baselineDestinationPoints => baselineCorrespondences
+      .map((item) => item.destinationPoint)
+      .toList(growable: false);
+
+  List<ImagePoint> get allSourcePoints => allCornerCorrespondences
+      .map((item) => item.sourcePoint)
+      .toList(growable: false);
+
+  List<ImagePoint> get allDestinationPoints => allCornerCorrespondences
       .map((item) => item.destinationPoint)
       .toList(growable: false);
 }

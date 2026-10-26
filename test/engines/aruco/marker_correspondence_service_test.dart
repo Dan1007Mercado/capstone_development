@@ -37,13 +37,13 @@ void main() {
     );
 
     expect(result.isSuccess, isTrue);
-    expect(result.value.correspondences.map((item) => item.role), [
+    expect(result.value.baselineCorrespondences.map((item) => item.role), [
       MarkerRole.topLeft,
       MarkerRole.topRight,
       MarkerRole.bottomRight,
       MarkerRole.bottomLeft,
     ]);
-    expect(result.value.correspondences.map((item) => item.markerId), [
+    expect(result.value.baselineCorrespondences.map((item) => item.markerId), [
       41,
       7,
       5,
@@ -54,13 +54,16 @@ void main() {
   test('each page role selects its P4.1 page-facing detected corner', () {
     final result = _build(service, page, _uprightMarkers(page.markerRegions));
 
-    expect(result.value.correspondences.map((item) => item.sourceCorner), [
-      MarkerCorner.bottomRight,
-      MarkerCorner.bottomLeft,
-      MarkerCorner.topLeft,
-      MarkerCorner.topRight,
-    ]);
-    expect(result.value.sourcePoints, [
+    expect(
+      result.value.baselineCorrespondences.map((item) => item.sourceCorner),
+      [
+        MarkerCorner.bottomRight,
+        MarkerCorner.bottomLeft,
+        MarkerCorner.topLeft,
+        MarkerCorner.topRight,
+      ],
+    );
+    expect(result.value.baselineSourcePoints, [
       ImagePoint(140, 140),
       ImagePoint(860, 140),
       ImagePoint(860, 1260),
@@ -71,7 +74,7 @@ void main() {
   test('destination points derive from physical registration points', () {
     final result = _build(service, page, _uprightMarkers(page.markerRegions));
 
-    for (final correspondence in result.value.correspondences) {
+    for (final correspondence in result.value.baselineCorrespondences) {
       final region = page.markerRegions.singleWhere(
         (marker) => marker.markerId == correspondence.markerId,
       );
@@ -115,12 +118,64 @@ void main() {
     );
 
     expect(result.isSuccess, isTrue);
-    expect(result.value.correspondences.map((item) => item.markerId), [
+    expect(result.value.baselineCorrespondences.map((item) => item.markerId), [
       41,
       7,
       5,
       23,
     ]);
+  });
+
+  test('all 16 corners map to exact published detectable marker corners', () {
+    final result = _build(service, page, _uprightMarkers(page.markerRegions));
+
+    expect(result.value.allCornerCorrespondences, hasLength(16));
+    for (final correspondence in result.value.allCornerCorrespondences) {
+      final region = page.markerRegions.singleWhere(
+        (marker) => marker.markerId == correspondence.markerId,
+      );
+      expect(
+        correspondence.destinationPoint,
+        service.physicalMarkerCornerToCanonical(
+          region,
+          correspondence.sourceCorner,
+          page,
+        ),
+      );
+    }
+  });
+
+  test('uniform source scaling preserves published corner identities', () {
+    final scaled = _uprightMarkers(page.markerRegions)
+        .map(
+          (marker) => _transform(
+            marker,
+            (point) => ImagePoint(point.x * 0.6, point.y * 0.6),
+          ),
+        )
+        .toList();
+    final result = service.build(
+      detection: ArucoDetection(
+        sourceSize: ImageSize(width: 600, height: 840),
+        markers: scaled,
+      ),
+      page: page,
+      config: ArucoAlignmentConfig(),
+    );
+
+    expect(result.isSuccess, isTrue);
+    expect(result.value.allCornerCorrespondences, hasLength(16));
+    expect(
+      result.value.allCornerCorrespondences.map(
+        (item) => (item.markerId, item.sourceCorner),
+      ),
+      containsAll(
+        page.markerRegions.expand(
+          (marker) =>
+              MarkerCorner.values.map((corner) => (marker.markerId, corner)),
+        ),
+      ),
+    );
   });
 
   test('duplicate expected marker returns structured ambiguity failure', () {

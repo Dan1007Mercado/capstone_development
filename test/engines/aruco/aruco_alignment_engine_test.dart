@@ -8,7 +8,6 @@ import 'package:capstone_development/engines/aruco/domain/aruco_vision_backend.d
 import 'package:capstone_development/engines/aruco/domain/detected_marker.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
-import 'package:capstone_development/engines/layout/domain/layout_regions.dart';
 import 'package:capstone_development/engines/layout/domain/page_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -44,7 +43,13 @@ void main() {
     );
     expect(result.value.homography.values, [1, 0, 0, 0, 1, 0, 0, 0, 1]);
     expect(result.value.observations, hasLength(4));
-    expect(result.value.correspondences, hasLength(4));
+    expect(result.value.correspondences, hasLength(16));
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.fourPoint,
+    );
+    expect(result.value.diagnostics.fourPointCandidate, isNotNull);
+    expect(result.value.diagnostics.multiPointCandidate, isNotNull);
     expect(result.value.diagnostics.reprojectionErrors, everyElement(0));
     expect(result.value.diagnostics.meanReprojectionError, 0);
     expect(result.value.diagnostics.maxReprojectionError, 0);
@@ -95,6 +100,82 @@ void main() {
     expect(backend.session!.disposed, isTrue);
   });
 
+  test('multi-point is selected only for a material common-score gain', () {
+    final page = _page();
+    final backend = _FakeBackend(
+      _detectionFor(page),
+      fourPointHomography: HomographyMatrix([1, 0, 0.8, 0, 1, 0, 0, 0, 1]),
+      multiPointHomography: HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.multiPoint,
+    );
+    expect(
+      result.value.diagnostics.multiPointCandidate!.commonScore,
+      lessThan(result.value.diagnostics.fourPointCandidate!.commonScore),
+    );
+    expect(backend.session!.warpCount, 1);
+  });
+
+  test('four-point remains selected when multi-point is not better', () {
+    final page = _page();
+    final backend = _FakeBackend(
+      _detectionFor(page),
+      multiPointHomography: HomographyMatrix([1, 0, 0.5, 0, 1, 0, 0, 0, 1]),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.fourPoint,
+    );
+    expect(backend.session!.warpCount, 1);
+  });
+
+  test('four-point remains operational when multi-point is disabled', () {
+    final page = _page();
+    final backend = _FakeBackend(_detectionFor(page));
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+      config: ArucoAlignmentConfig(enableMultipointHomography: false),
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.fourPoint,
+    );
+    expect(backend.session!.estimationMethods, [
+      HomographyEstimationMethod.fourPoint,
+    ]);
+  });
+
+  test('near-degenerate candidates fail before warping', () {
+    final page = _page();
+    final degenerate = HomographyMatrix([1, 0, 0, 0, 0, 0, 0, 0, 1]);
+    final backend = _FakeBackend(_detectionFor(page), homography: degenerate);
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isFailure, isTrue);
+    expect(result.error.code, 'ARUCO_REPROJECTION_FAILED');
+    expect(backend.session!.warpCount, 0);
+  });
+
   test('final still rejects a different page marker signature', () {
     final pages = buildLayout(longTemplate(30)).pages;
     final backend = _FakeBackend(_detectionFor(pages[1]));
@@ -136,8 +217,31 @@ ArucoDetection _detectionFor(PageLayout page) {
   const service = MarkerCorrespondenceService();
   final markers = <DetectedMarker>[];
   for (final region in page.markerRegions) {
-    final target = service.physicalRegistrationToCanonical(region, page);
-    markers.add(_markerAtRegistration(region, target));
+    markers.add(
+      DetectedMarker(
+        id: region.markerId,
+        topLeft: service.physicalMarkerCornerToCanonical(
+          region,
+          MarkerCorner.topLeft,
+          page,
+        ),
+        topRight: service.physicalMarkerCornerToCanonical(
+          region,
+          MarkerCorner.topRight,
+          page,
+        ),
+        bottomRight: service.physicalMarkerCornerToCanonical(
+          region,
+          MarkerCorner.bottomRight,
+          page,
+        ),
+        bottomLeft: service.physicalMarkerCornerToCanonical(
+          region,
+          MarkerCorner.bottomLeft,
+          page,
+        ),
+      ),
+    );
   }
   return ArucoDetection(
     sourceSize: ImageSize(
@@ -145,23 +249,6 @@ ArucoDetection _detectionFor(PageLayout page) {
       height: page.canonicalPageSpec.heightPixels,
     ),
     markers: markers,
-  );
-}
-
-DetectedMarker _markerAtRegistration(MarkerRegion region, ImagePoint point) {
-  const size = 20.0;
-  final (left, top) = switch (region.role) {
-    MarkerRole.topLeft => (point.x - size, point.y - size),
-    MarkerRole.topRight => (point.x, point.y - size),
-    MarkerRole.bottomLeft => (point.x - size, point.y),
-    MarkerRole.bottomRight => (point.x, point.y),
-  };
-  return DetectedMarker(
-    id: region.markerId,
-    topLeft: ImagePoint(left, top),
-    topRight: ImagePoint(left + size, top),
-    bottomRight: ImagePoint(left + size, top + size),
-    bottomLeft: ImagePoint(left, top + size),
   );
 }
 
@@ -174,11 +261,23 @@ DetectedMarker _identityMarker(int id, double left) => DetectedMarker(
 );
 
 final class _FakeBackend implements ArucoVisionBackend {
-  _FakeBackend(this.detection, {HomographyMatrix? homography})
-    : homography = homography ?? HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  _FakeBackend(
+    this.detection, {
+    HomographyMatrix? homography,
+    HomographyMatrix? fourPointHomography,
+    HomographyMatrix? multiPointHomography,
+  }) : fourPointHomography =
+           fourPointHomography ??
+           homography ??
+           HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+       multiPointHomography =
+           multiPointHomography ??
+           homography ??
+           HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
   final ArucoDetection detection;
-  final HomographyMatrix homography;
+  final HomographyMatrix fourPointHomography;
+  final HomographyMatrix multiPointHomography;
   bool opened = false;
   _FakeSession? session;
 
@@ -188,13 +287,21 @@ final class _FakeBackend implements ArucoVisionBackend {
     ArucoAlignmentConfig config,
   ) {
     opened = true;
-    session = _FakeSession(detection, homography);
+    session = _FakeSession(
+      detection,
+      fourPointHomography,
+      multiPointHomography,
+    );
     return EngineResult.success(session!);
   }
 }
 
 final class _FakeSession implements ArucoImageSession {
-  _FakeSession(this.detection, this.homography);
+  _FakeSession(
+    this.detection,
+    this.fourPointHomography,
+    this.multiPointHomography,
+  );
 
   @override
   final ArucoDetection detection;
@@ -204,24 +311,48 @@ final class _FakeSession implements ArucoImageSession {
 
   @override
   ArucoBackendOpenTimings get openTimings => const ArucoBackendOpenTimings();
-  final HomographyMatrix homography;
+  final HomographyMatrix fourPointHomography;
+  final HomographyMatrix multiPointHomography;
   bool disposed = false;
+  int warpCount = 0;
+  final List<HomographyEstimationMethod> estimationMethods = [];
 
   @override
   void dispose() => disposed = true;
 
   @override
-  EngineResult<BackendRectification> rectify({
+  EngineResult<BackendHomographyEstimate> estimateHomography({
     required List<ImagePoint> sourcePoints,
     required List<ImagePoint> destinationPoints,
-    required ImageSize outputSize,
-  }) => EngineResult.success(
-    BackendRectification(
-      canonicalPage: CanonicalPageImage(
-        size: outputSize,
-        pngBytes: [137, 80, 78, 71],
+    required HomographyEstimationMethod method,
+    required double ransacReprojectionThresholdPixels,
+    required int maximumIterations,
+    required double confidence,
+  }) {
+    estimationMethods.add(method);
+    return EngineResult.success(
+      BackendHomographyEstimate(
+        homography: method == HomographyEstimationMethod.fourPoint
+            ? fourPointHomography
+            : multiPointHomography,
+        inliers: List<bool>.filled(sourcePoints.length, true),
       ),
-      homography: homography,
-    ),
-  );
+    );
+  }
+
+  @override
+  EngineResult<BackendWarp> warp({
+    required HomographyMatrix homography,
+    required ImageSize outputSize,
+  }) {
+    warpCount++;
+    return EngineResult.success(
+      BackendWarp(
+        canonicalPage: CanonicalPageImage(
+          size: outputSize,
+          pngBytes: [137, 80, 78, 71],
+        ),
+      ),
+    );
+  }
 }

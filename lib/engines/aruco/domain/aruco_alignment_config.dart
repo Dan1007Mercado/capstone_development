@@ -9,6 +9,13 @@ final class ArucoAlignmentConfig {
     double minimumRegistrationSpacingPixels = 24,
     double maximumExtremePerspectiveRatio = 12,
     double maximumReprojectionErrorPixels = 1,
+    double maximumRejectedCornerErrorPixels = 4,
+    double multipointRansacReprojectionThresholdPixels = 1.5,
+    double minimumMultipointInlierRatio = 0.875,
+    double minimumMultipointScoreImprovementPixels = 0.05,
+    int multipointMaximumIterations = 500,
+    double multipointConfidence = 0.995,
+    bool enableMultipointHomography = true,
     bool allowAdditionalUnrelatedMarkers = true,
     int? finalMarkerDetectionMaxDimension = 1400,
   }) {
@@ -18,10 +25,22 @@ final class ArucoAlignmentConfig {
       minimumRegistrationSpacingPixels,
       maximumExtremePerspectiveRatio,
       maximumReprojectionErrorPixels,
+      maximumRejectedCornerErrorPixels,
+      multipointRansacReprojectionThresholdPixels,
     ];
     if (positive.any((value) => !value.isFinite || value <= 0) ||
         minimumRegistrationAreaRatio >= 1 ||
-        maximumExtremePerspectiveRatio < 1) {
+        maximumExtremePerspectiveRatio < 1 ||
+        maximumRejectedCornerErrorPixels < maximumReprojectionErrorPixels ||
+        !minimumMultipointInlierRatio.isFinite ||
+        minimumMultipointInlierRatio <= 0 ||
+        minimumMultipointInlierRatio > 1 ||
+        !minimumMultipointScoreImprovementPixels.isFinite ||
+        minimumMultipointScoreImprovementPixels < 0 ||
+        multipointMaximumIterations < 1 ||
+        !multipointConfidence.isFinite ||
+        multipointConfidence <= 0 ||
+        multipointConfidence >= 1) {
       throw ArgumentError('Alignment thresholds are outside valid ranges.');
     }
     if (finalMarkerDetectionMaxDimension != null &&
@@ -37,6 +56,15 @@ final class ArucoAlignmentConfig {
       minimumRegistrationSpacingPixels: minimumRegistrationSpacingPixels,
       maximumExtremePerspectiveRatio: maximumExtremePerspectiveRatio,
       maximumReprojectionErrorPixels: maximumReprojectionErrorPixels,
+      maximumRejectedCornerErrorPixels: maximumRejectedCornerErrorPixels,
+      multipointRansacReprojectionThresholdPixels:
+          multipointRansacReprojectionThresholdPixels,
+      minimumMultipointInlierRatio: minimumMultipointInlierRatio,
+      minimumMultipointScoreImprovementPixels:
+          minimumMultipointScoreImprovementPixels,
+      multipointMaximumIterations: multipointMaximumIterations,
+      multipointConfidence: multipointConfidence,
+      enableMultipointHomography: enableMultipointHomography,
       allowAdditionalUnrelatedMarkers: allowAdditionalUnrelatedMarkers,
       finalMarkerDetectionMaxDimension: finalMarkerDetectionMaxDimension,
     );
@@ -49,6 +77,13 @@ final class ArucoAlignmentConfig {
     required this.minimumRegistrationSpacingPixels,
     required this.maximumExtremePerspectiveRatio,
     required this.maximumReprojectionErrorPixels,
+    required this.maximumRejectedCornerErrorPixels,
+    required this.multipointRansacReprojectionThresholdPixels,
+    required this.minimumMultipointInlierRatio,
+    required this.minimumMultipointScoreImprovementPixels,
+    required this.multipointMaximumIterations,
+    required this.multipointConfidence,
+    required this.enableMultipointHomography,
     required this.allowAdditionalUnrelatedMarkers,
     required this.finalMarkerDetectionMaxDimension,
   });
@@ -59,6 +94,16 @@ final class ArucoAlignmentConfig {
   final double minimumRegistrationSpacingPixels;
   final double maximumExtremePerspectiveRatio;
   final double maximumReprojectionErrorPixels;
+
+  /// Bound for a corner rejected by the robust estimator. This remains finite
+  /// so RANSAC cannot hide a badly mismatched marker corner.
+  final double maximumRejectedCornerErrorPixels;
+  final double multipointRansacReprojectionThresholdPixels;
+  final double minimumMultipointInlierRatio;
+  final double minimumMultipointScoreImprovementPixels;
+  final int multipointMaximumIterations;
+  final double multipointConfidence;
+  final bool enableMultipointHomography;
   final bool allowAdditionalUnrelatedMarkers;
 
   /// Maximum long edge used only for final-still ArUco detection.

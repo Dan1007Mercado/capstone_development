@@ -203,7 +203,7 @@ final class MarkerCorrespondenceService {
     final observations = [
       for (final role in _homographyOrder) observationsByRole[role]!,
     ];
-    final correspondences = [
+    final baselineCorrespondences = [
       for (var index = 0; index < _homographyOrder.length; index++)
         MarkerCorrespondence(
           markerId: observations[index].expectedRegion.markerId,
@@ -218,11 +218,27 @@ final class MarkerCorrespondenceService {
           ),
         ),
     ];
+    final allCornerCorrespondences = [
+      for (final observation in observations)
+        for (final corner in MarkerCorner.values)
+          MarkerCorrespondence(
+            markerId: observation.expectedRegion.markerId,
+            role: observation.expectedRegion.role,
+            sourceCorner: corner,
+            sourcePoint: observation.detectedMarker.corner(corner),
+            destinationPoint: physicalMarkerCornerToCanonical(
+              observation.expectedRegion,
+              corner,
+              page,
+            ),
+          ),
+    ];
 
     return EngineResult.success(
       MarkerCorrespondenceSet(
         observations: observations,
-        correspondences: correspondences,
+        baselineCorrespondences: baselineCorrespondences,
+        allCornerCorrespondences: allCornerCorrespondences,
         quality: RegistrationQuality(
           quadrilateralAreaRatio: areaRatio,
           minimumMarkerSidePixels: minimumMarkerSide,
@@ -243,6 +259,31 @@ final class MarkerCorrespondenceService {
         page.pageSpec.size.height.millimeters *
         page.canonicalPageSpec.heightPixels,
   );
+
+  /// Maps a detector corner to the same physical corner of the published
+  /// detectable marker bounds. Detector corner order is marker-local and is
+  /// deliberately preserved rather than inferred from camera position.
+  ImagePoint physicalMarkerCornerToCanonical(
+    MarkerRegion marker,
+    MarkerCorner corner,
+    PageLayout page,
+  ) {
+    final bounds = marker.physicalMarkerBounds;
+    final physical = switch (corner) {
+      MarkerCorner.topLeft => (bounds.left, bounds.top),
+      MarkerCorner.topRight => (bounds.right, bounds.top),
+      MarkerCorner.bottomRight => (bounds.right, bounds.bottom),
+      MarkerCorner.bottomLeft => (bounds.left, bounds.bottom),
+    };
+    return ImagePoint(
+      physical.$1.millimeters /
+          page.pageSpec.size.width.millimeters *
+          page.canonicalPageSpec.widthPixels,
+      physical.$2.millimeters /
+          page.pageSpec.size.height.millimeters *
+          page.canonicalPageSpec.heightPixels,
+    );
+  }
 
   static List<double> _sideLengths(List<ImagePoint> points) => [
     for (var index = 0; index < points.length; index++)

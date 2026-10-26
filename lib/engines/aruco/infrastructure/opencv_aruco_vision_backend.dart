@@ -152,10 +152,13 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
       ImageSize(width: _image?.width ?? 0, height: _image?.height ?? 0);
 
   @override
-  EngineResult<BackendRectification> rectify({
+  EngineResult<BackendHomographyEstimate> estimateHomography({
     required List<ImagePoint> sourcePoints,
     required List<ImagePoint> destinationPoints,
-    required ImageSize outputSize,
+    required HomographyEstimationMethod method,
+    required double ransacReprojectionThresholdPixels,
+    required int maximumIterations,
+    required double confidence,
   }) {
     if (_image == null) {
       return _failure(
@@ -163,18 +166,22 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
         'The OpenCV image session has already been disposed.',
       );
     }
-    if (sourcePoints.length != 4 || destinationPoints.length != 4) {
+    if (sourcePoints.length != destinationPoints.length ||
+        sourcePoints.length < 4 ||
+        (method == HomographyEstimationMethod.fourPoint &&
+            sourcePoints.length != 4)) {
       return _failure(
         'ARUCO_HOMOGRAPHY_FAILED',
-        'Exactly four point correspondences are required.',
+        'Homography point correspondences are invalid for the estimator.',
       );
     }
 
     cv.VecPoint2f? sourceVector;
     cv.VecPoint2f? destinationVector;
+    cv.Mat? sourceMat;
+    cv.Mat? destinationMat;
+    cv.Mat? inlierMask;
     cv.Mat? homography;
-    cv.Mat? warped;
-    cv.Scalar? border;
     try {
       sourceVector = cv.VecPoint2f.generate(
         sourcePoints.length,
@@ -186,10 +193,31 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
             cv.Point2f(destinationPoints[index].x, destinationPoints[index].y),
       );
       final homographyStopwatch = Stopwatch()..start();
-      homography = cv.getPerspectiveTransform2f(
-        sourceVector,
-        destinationVector,
-      );
+      if (method == HomographyEstimationMethod.fourPoint) {
+        homography = cv.getPerspectiveTransform2f(
+          sourceVector,
+          destinationVector,
+        );
+      } else {
+        sourceMat = cv.Mat.fromVec(sourceVector);
+        destinationMat = cv.Mat.fromVec(destinationVector);
+        inlierMask = cv.Mat.empty();
+        homography = cv.findHomography(
+          sourceMat,
+          destinationMat,
+          method: cv.HOMOGRAPY_RANSAC,
+          ransacReprojThreshold: ransacReprojectionThresholdPixels,
+          mask: inlierMask,
+          maxIters: maximumIterations,
+          confidence: confidence,
+        );
+      }
+      if (homography.isEmpty || homography.rows != 3 || homography.cols != 3) {
+        return _failure(
+          'ARUCO_HOMOGRAPHY_FAILED',
+          'OpenCV returned an empty or malformed homography.',
+        );
+      }
       final matrixValues = homography
           .toList()
           .expand((row) => row)
@@ -197,9 +225,62 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
           .toList(growable: false);
       final matrix = HomographyMatrix(matrixValues);
       homographyStopwatch.stop();
-      final warpStopwatch = Stopwatch()..start();
+      final inliers = method == HomographyEstimationMethod.fourPoint
+          ? List<bool>.filled(sourcePoints.length, true)
+          : inlierMask!.data.map((value) => value != 0).toList(growable: false);
+      if (inliers.length != sourcePoints.length) {
+        return _failure(
+          'ARUCO_HOMOGRAPHY_FAILED',
+          'OpenCV returned an inconsistent homography inlier mask.',
+        );
+      }
+      return EngineResult.success(
+        BackendHomographyEstimate(
+          homography: matrix,
+          inliers: inliers,
+          duration: homographyStopwatch.elapsed,
+        ),
+      );
+    } on Object catch (error) {
+      return _failure(
+        'ARUCO_HOMOGRAPHY_FAILED',
+        'OpenCV could not compute or apply the page homography.',
+        {'cause': error.toString()},
+      );
+    } finally {
+      homography?.dispose();
+      inlierMask?.dispose();
+      destinationMat?.dispose();
+      sourceMat?.dispose();
+      destinationVector?.dispose();
+      sourceVector?.dispose();
+    }
+  }
+
+  @override
+  EngineResult<BackendWarp> warp({
+    required HomographyMatrix homography,
+    required ImageSize outputSize,
+  }) {
+    if (_image == null) {
+      return _failure(
+        'ARUCO_BACKEND_UNAVAILABLE',
+        'The OpenCV image session has already been disposed.',
+      );
+    }
+    cv.Mat? nativeHomography;
+    cv.Mat? warped;
+    cv.Scalar? border;
+    try {
+      final stopwatch = Stopwatch()..start();
+      nativeHomography = cv.Mat.fromList(
+        3,
+        3,
+        cv.MatType.CV_64FC1,
+        homography.values,
+      );
       border = cv.Scalar.all(255);
-      warped = cv.warpPerspective(_image!, homography, (
+      warped = cv.warpPerspective(_image!, nativeHomography, (
         outputSize.width,
         outputSize.height,
       ), borderValue: border);
@@ -212,32 +293,26 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
         );
       }
       final grayscaleBytes = Uint8List.fromList(warped.data);
-      warpStopwatch.stop();
+      stopwatch.stop();
       return EngineResult.success(
-        BackendRectification(
+        BackendWarp(
           canonicalPage: CanonicalPageImage.ownedGrayscale(
             size: outputSize,
             grayscaleBytes: grayscaleBytes,
           ),
-          homography: matrix,
-          timings: ArucoBackendRectificationTimings(
-            homography: homographyStopwatch.elapsed,
-            warp: warpStopwatch.elapsed,
-          ),
+          duration: stopwatch.elapsed,
         ),
       );
     } on Object catch (error) {
       return _failure(
         'ARUCO_HOMOGRAPHY_FAILED',
-        'OpenCV could not compute or apply the page homography.',
+        'OpenCV could not apply the page homography.',
         {'cause': error.toString()},
       );
     } finally {
       warped?.dispose();
       border?.dispose();
-      homography?.dispose();
-      destinationVector?.dispose();
-      sourceVector?.dispose();
+      nativeHomography?.dispose();
     }
   }
 
@@ -247,7 +322,7 @@ final class _OpenCvArucoImageSession implements ArucoImageSession {
     _image = null;
   }
 
-  EngineResult<BackendRectification> _failure(
+  EngineResult<T> _failure<T>(
     String code,
     String message, [
     Map<String, Object?> details = const {},

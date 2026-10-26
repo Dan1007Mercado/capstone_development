@@ -104,11 +104,19 @@ final class ScannerDiagnosticSnapshot {
       },
       'homography': homography.values,
       'alignment': {
+        'selectedHomographyMethod':
+            result.diagnostics.alignment.selectedHomographyMethod.name,
         'meanReprojectionError':
             result.diagnostics.alignment.meanReprojectionError,
         'maxReprojectionError':
             result.diagnostics.alignment.maxReprojectionError,
         'reprojectionErrors': result.diagnostics.alignment.reprojectionErrors,
+        'fourPointCandidate': _homographyCandidateJson(
+          result.diagnostics.alignment.fourPointCandidate,
+        ),
+        'multiPointCandidate': _homographyCandidateJson(
+          result.diagnostics.alignment.multiPointCandidate,
+        ),
       },
       'timingsMs': {
         'total': _milliseconds(result.diagnostics.totalProcessingDuration),
@@ -204,6 +212,23 @@ final class ScannerDiagnosticSnapshot {
       ],
     };
   }
+
+  Map<String, Object?>? _homographyCandidateJson(
+    HomographyCandidateDiagnostics? candidate,
+  ) => candidate == null
+      ? null
+      : {
+          'accepted': candidate.accepted,
+          'meanCommonReprojectionError': candidate.meanCommonReprojectionError,
+          'medianCommonReprojectionError':
+              candidate.medianCommonReprojectionError,
+          'maxCommonReprojectionError': candidate.maxCommonReprojectionError,
+          'commonScore': candidate.commonScore,
+          'inlierCount': candidate.inlierCount,
+          'totalPointCount': candidate.totalPointCount,
+          'inlierRatio': candidate.inlierRatio,
+          'durationMs': _milliseconds(candidate.duration),
+        };
 
   Map<String, Object?> _measurementJson(
     BubbleMeasurement measurement,
