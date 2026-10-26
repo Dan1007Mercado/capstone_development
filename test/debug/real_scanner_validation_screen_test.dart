@@ -20,6 +20,7 @@ import 'package:capstone_development/engines/layout/domain/layout_config.dart';
 import 'package:capstone_development/engines/preprocessing/domain/preprocessed_page.dart';
 import 'package:capstone_development/engines/recognition/domain/mark_classification.dart';
 import 'package:capstone_development/engines/scanner/domain/scan_result.dart';
+import 'package:capstone_development/engines/scanner/domain/packet_scan_identity.dart';
 import 'package:capstone_development/engines/template/domain/question_type.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -211,6 +212,40 @@ void main() {
     },
   );
 
+  testWidgets('recorded confirmation waits for packet persistence', (
+    tester,
+  ) async {
+    final fixture = _FlowFixture();
+    final page = fixture.flow.session.pages.first;
+    final result = fixture.resultForPage(
+      0,
+      packetIdentity: PacketPageIdentity(
+        packetId: PacketId('PK000001'),
+        templateId: fixture.flow.session.artifact.templateId,
+        templateVersion: fixture.flow.session.artifact.templateVersion,
+        pageId: page.pageId,
+        pageIndex: 0,
+        totalPages: fixture.flow.session.pages.length,
+        identityMarkerIds: page.markerRegions
+            .map((region) => region.markerId)
+            .toList(),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScannerPageResultScreen(
+          session: fixture.flow.session,
+          result: result,
+          onContinue: () {},
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('scan-recording-pending')), findsOneWidget);
+    expect(find.byKey(const Key('scan-recording-confirmed')), findsNothing);
+  });
+
   testWidgets('missing review result renders typed error instead of throwing', (
     tester,
   ) async {
@@ -344,6 +379,7 @@ final class _FlowFixture {
   ScanResult resultForPage(
     int index, {
     List<QuestionClassification> questions = const [],
+    PacketPageIdentity? packetIdentity,
   }) {
     final session = flow.session;
     final page = session.pages[index];
@@ -411,6 +447,7 @@ final class _FlowFixture {
           measuredBubbles: 0,
         ),
       ),
+      packetIdentity: packetIdentity,
     );
   }
 }

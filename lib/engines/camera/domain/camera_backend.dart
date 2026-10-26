@@ -21,6 +21,8 @@ abstract interface class CameraBackend {
 
   Future<EngineResult<CapturedPageImage>> captureStill();
 
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled);
+
   Future<void> dispose();
 }
 

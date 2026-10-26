@@ -33,6 +33,10 @@ final class CameraEngineScanAdapter implements CameraScanCamera {
   Future<EngineResult<CapturedPageImage>> capture() => engine.capture();
 
   @override
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled) =>
+      engine.setTorchEnabled(enabled);
+
+  @override
   Future<EngineResult<bool>> suspend() => engine.suspend();
 
   @override

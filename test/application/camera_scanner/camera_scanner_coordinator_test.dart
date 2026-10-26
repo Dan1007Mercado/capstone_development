@@ -657,6 +657,10 @@ final class _FakeCamera implements CameraScanCamera {
     return captureResult;
   }
 
+  @override
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled) async =>
+      EngineResult.success(enabled);
+
   void emitAnalyzing({required bool ready, bool autoCaptureRequested = false}) {
     processedFrames++;
     _publishAnalyzing(ready: ready, autoCaptureRequested: autoCaptureRequested);

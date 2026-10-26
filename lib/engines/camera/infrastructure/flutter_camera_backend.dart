@@ -11,6 +11,8 @@ import '../domain/camera_models.dart';
 
 final class FlutterCameraBackend implements CameraBackend {
   camera.CameraController? _controller;
+  bool _desiredTorchEnabled = true;
+  bool _torchOperationInProgress = false;
 
   camera.CameraController? get controller => _controller;
 
@@ -56,10 +58,20 @@ final class FlutterCameraBackend implements CameraBackend {
       } on Object {
         // Optional capability; initialization remains useful without it.
       }
-      try {
-        await controller.setFlashMode(camera.FlashMode.off);
-      } on Object {
-        // Flash-off is requested but unsupported flash hardware is acceptable.
+      var torchAvailable = false;
+      var torchEnabled = false;
+      if (description.lensDirection == camera.CameraLensDirection.back) {
+        try {
+          await controller.setFlashMode(
+            _desiredTorchEnabled
+                ? camera.FlashMode.torch
+                : camera.FlashMode.off,
+          );
+          torchAvailable = true;
+          torchEnabled = _desiredTorchEnabled;
+        } on Object {
+          // Unsupported flash hardware must not prevent camera startup.
+        }
       }
 
       final previewSize = controller.value.previewSize;
@@ -79,6 +91,8 @@ final class FlutterCameraBackend implements CameraBackend {
           automaticFocusEnabled: focusEnabled,
           automaticExposureEnabled: exposureEnabled,
           requestedPreviewFps: config.preferredPreviewFps,
+          torchAvailable: torchAvailable,
+          torchEnabled: torchEnabled,
         ),
       );
     } on camera.CameraException catch (error) {
@@ -91,6 +105,52 @@ final class FlutterCameraBackend implements CameraBackend {
         'Camera initialization failed.',
         {'cause': error.toString()},
       );
+    }
+  }
+
+  @override
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled) async {
+    _desiredTorchEnabled = enabled;
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return _failure(
+        'CAMERA_TORCH_UNAVAILABLE',
+        'The camera torch is not available.',
+      );
+    }
+    if (controller.description.lensDirection !=
+        camera.CameraLensDirection.back) {
+      return _failure(
+        'CAMERA_TORCH_UNAVAILABLE',
+        'The selected camera does not provide a scanning torch.',
+      );
+    }
+    if (_torchOperationInProgress) {
+      return _failure(
+        'CAMERA_TORCH_BUSY',
+        'A camera torch operation is already in progress.',
+      );
+    }
+    _torchOperationInProgress = true;
+    try {
+      await controller.setFlashMode(
+        enabled ? camera.FlashMode.torch : camera.FlashMode.off,
+      );
+      return EngineResult.success(enabled);
+    } on camera.CameraException catch (error) {
+      return _failure(
+        'CAMERA_TORCH_UNAVAILABLE',
+        'The camera torch could not be changed.',
+        {'pluginCode': error.code, 'cause': error.description},
+      );
+    } on Object catch (error) {
+      return _failure(
+        'CAMERA_TORCH_UNAVAILABLE',
+        'The camera torch could not be changed.',
+        {'cause': error.toString()},
+      );
+    } finally {
+      _torchOperationInProgress = false;
     }
   }
 
@@ -220,6 +280,11 @@ final class FlutterCameraBackend implements CameraBackend {
     final controller = _controller;
     _controller = null;
     if (controller == null) return;
+    try {
+      await controller.setFlashMode(camera.FlashMode.off);
+    } on Object {
+      // Best effort: unsupported or already-closed flash hardware is safe.
+    }
     if (controller.value.isStreamingImages) {
       try {
         await controller.stopImageStream();

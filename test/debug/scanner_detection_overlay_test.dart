@@ -15,6 +15,21 @@ void main() {
     expect(scannerOverlayInnerStrokeWidth, 2);
   });
 
+  test('polygon colors follow search, adjust, ready, and rejection states', () {
+    expect(scannerOverlayColor(ScannerOverlayState.searching), Colors.white);
+    expect(
+      scannerOverlayColor(ScannerOverlayState.partial),
+      Colors.amberAccent,
+    );
+    expect(
+      scannerOverlayColor(ScannerOverlayState.unstable),
+      Colors.amberAccent,
+    );
+    expect(scannerOverlayColor(ScannerOverlayState.ready), Colors.greenAccent);
+    expect(scannerOverlayColor(ScannerOverlayState.processing), Colors.white);
+    expect(scannerOverlayColor(ScannerOverlayState.failure), Colors.redAccent);
+  });
+
   test('overlay state maps real tracking and workflow phases', () {
     expect(
       scannerOverlayState(_state(markerIds: const [])),
@@ -40,6 +55,14 @@ void main() {
   });
 
   test('status gives actionable text without exposing metrics', () {
+    expect(
+      scannerStatusText(
+        _state(markerIds: const []),
+        pageNumber: 1,
+        pageCount: 3,
+      ),
+      'Looking for answer sheet...',
+    );
     expect(
       scannerStatusText(
         _state(markerIds: const [10]),
@@ -115,11 +138,41 @@ void main() {
       final geometry = scannerOverlayGeometry(
         _state(markerIds: const [], document: _document()).cameraState.analysis,
         page: buildP5NativeValidationPage(),
+        allowPaperEdgeVisualization: true,
       );
       expect(geometry.source, ScannerOverlayGeometrySource.paperEdge);
       expect(geometry.points, _document().geometry.corners);
     },
   );
+
+  test('paper edges do not create authoritative geometry by default', () {
+    final geometry = scannerOverlayGeometry(
+      _state(markerIds: const [], document: _document()).cameraState.analysis,
+      page: buildP5NativeValidationPage(),
+    );
+
+    expect(geometry.source, ScannerOverlayGeometrySource.none);
+    expect(geometry.points, isEmpty);
+  });
+
+  test('processing and success text describe the durable workflow stage', () {
+    expect(
+      scannerStatusText(
+        _state(markerIds: const [], phase: CameraScanPhase.scanning),
+        pageNumber: 1,
+        pageCount: 2,
+      ),
+      'Reading your answers...',
+    );
+    expect(
+      scannerStatusText(
+        _state(markerIds: const [], phase: CameraScanPhase.scanCompleted),
+        pageNumber: 1,
+        pageCount: 2,
+      ),
+      'Sheet successfully recorded',
+    );
+  });
 
   test('missing markers do not retain a prior marker outline', () {
     final page = buildP5NativeValidationPage();

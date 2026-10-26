@@ -49,6 +49,8 @@ final class CameraPreviewInfo {
     required this.automaticFocusEnabled,
     required this.automaticExposureEnabled,
     required this.requestedPreviewFps,
+    this.torchAvailable = false,
+    this.torchEnabled = false,
   });
 
   final int width;
@@ -58,6 +60,8 @@ final class CameraPreviewInfo {
   final bool automaticFocusEnabled;
   final bool automaticExposureEnabled;
   final int? requestedPreviewFps;
+  final bool torchAvailable;
+  final bool torchEnabled;
 
   double get aspectRatio => width / height;
 }
@@ -335,6 +339,10 @@ final class CameraDiagnostics {
     this.timeToFirstMarker,
     this.timeToFirstIdentity,
     this.timeToReady,
+    this.torchAvailable = false,
+    this.torchEnabled = false,
+    this.torchDesiredEnabled = true,
+    this.lastTorchError,
   });
 
   final int receivedFrameCount;
@@ -366,6 +374,10 @@ final class CameraDiagnostics {
   final Duration? timeToFirstMarker;
   final Duration? timeToFirstIdentity;
   final Duration? timeToReady;
+  final bool torchAvailable;
+  final bool torchEnabled;
+  final bool torchDesiredEnabled;
+  final String? lastTorchError;
 
   double get arucoAttemptRatio => processedFrameCount == 0
       ? 0

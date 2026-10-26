@@ -22,6 +22,15 @@ enum ScannerOverlayGeometrySource { none, markerProjection, paperEdge }
 const scannerOverlayOuterStrokeWidth = 4.0;
 const scannerOverlayInnerStrokeWidth = 2.0;
 
+Color scannerOverlayColor(ScannerOverlayState state) => switch (state) {
+  ScannerOverlayState.ready ||
+  ScannerOverlayState.success => Colors.greenAccent,
+  ScannerOverlayState.failure => Colors.redAccent,
+  ScannerOverlayState.partial ||
+  ScannerOverlayState.unstable => Colors.amberAccent,
+  _ => Colors.white,
+};
+
 final class ScannerOverlayGeometry {
   const ScannerOverlayGeometry({required this.points, required this.source});
 
@@ -36,6 +45,7 @@ final class ScannerOverlayGeometry {
 ScannerOverlayGeometry scannerOverlayGeometry(
   CameraAnalysisState? analysis, {
   PageLayout? page,
+  bool allowPaperEdgeVisualization = false,
 }) {
   if (analysis == null) return const ScannerOverlayGeometry.none();
   final resolvedPageId = analysis.tracking.resolvedPageId;
@@ -53,7 +63,9 @@ ScannerOverlayGeometry scannerOverlayGeometry(
       );
     }
   }
-  final documentCorners = analysis.document?.geometry.corners;
+  final documentCorners = allowPaperEdgeVisualization
+      ? analysis.document?.geometry.corners
+      : null;
   if (documentCorners?.length == 4) {
     return ScannerOverlayGeometry(
       points: documentCorners!,
@@ -80,10 +92,9 @@ ScannerOverlayState scannerOverlayState(CameraScanState state) {
     case CameraScanPhase.cameraReady:
       return ScannerOverlayState.searching;
     case CameraScanPhase.tracking:
-      final document = state.cameraState.analysis?.document;
       final count =
           state.cameraState.analysis?.tracking.detectedMarkerIds.length ?? 0;
-      if (count == 0 && document == null) {
+      if (count == 0) {
         return ScannerOverlayState.searching;
       }
       if (count < 4) return ScannerOverlayState.partial;
@@ -109,8 +120,11 @@ String scannerStatusText(
   }
   final readiness = state.cameraState.readiness.status;
   final analysis = state.cameraState.analysis;
+  if (scannerOverlayState(state) == ScannerOverlayState.ready) {
+    return 'Answer sheet detected';
+  }
   return switch (scannerOverlayState(state)) {
-    ScannerOverlayState.searching => 'Searching for sheet...',
+    ScannerOverlayState.searching => 'Looking for answer sheet...',
     ScannerOverlayState.partial =>
       analysis?.document != null
           ? 'Hold the full sheet in view'
@@ -131,12 +145,10 @@ String scannerStatusText(
             : 'Hold steady',
     },
     ScannerOverlayState.ready => 'Page $pageNumber detected · Ready',
-    ScannerOverlayState.capturing => 'Capturing Page $pageNumber...',
-    ScannerOverlayState.processing =>
-      'Processing page $pageNumber of $pageCount',
-    ScannerOverlayState.success => 'Page $pageNumber scanned',
-    ScannerOverlayState.failure =>
-      state.error?.message ?? 'Scanner unavailable',
+    ScannerOverlayState.capturing ||
+    ScannerOverlayState.processing => 'Reading your answers...',
+    ScannerOverlayState.success => 'Sheet successfully recorded',
+    ScannerOverlayState.failure => 'Scan needs attention',
   };
 }
 
@@ -200,14 +212,7 @@ final class _ScannerDetectionPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (points.length != 4) return;
-    final color = switch (state) {
-      ScannerOverlayState.ready ||
-      ScannerOverlayState.success => Colors.greenAccent,
-      ScannerOverlayState.failure => Colors.redAccent,
-      ScannerOverlayState.partial ||
-      ScannerOverlayState.unstable => Colors.amberAccent,
-      _ => Colors.white,
-    };
+    final color = scannerOverlayColor(state);
     final path = Path()..moveTo(points.first.x, points.first.y);
     for (final point in points.skip(1)) {
       path.lineTo(point.x, point.y);

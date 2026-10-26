@@ -19,7 +19,7 @@ final class CameraEngineConfig {
     int? preferredPreviewFps = 60,
     double targetAnalysisFps = 10,
     int analysisMaxDimension = defaultAnalysisMaxDimension,
-    bool paperEdgeVisualizationEnabled = true,
+    bool paperEdgeVisualizationEnabled = false,
     int paperEdgeMaxDimension = 640,
     int paperEdgeDetectionIntervalFrames = 3,
     double paperEdgeCannyLowThreshold = 40,

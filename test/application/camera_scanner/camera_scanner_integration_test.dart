@@ -154,6 +154,10 @@ final class _ReadyHighQualityCamera implements CameraScanCamera {
       );
 
   @override
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled) async =>
+      EngineResult.success(enabled);
+
+  @override
   Future<EngineResult<bool>> suspend() async {
     _publish(const CameraEngineState.uninitialized());
     return EngineResult.success(true);

@@ -12,6 +12,7 @@ import '../application/real_scanner/physical_validation_recorder.dart';
 import '../application/real_scanner/real_scanner_runtime.dart';
 import '../application/real_scanner/scanner_validation_flow.dart';
 import '../application/real_scanner/scanner_validation_session.dart';
+import '../application/real_scanner/scanner_user_feedback.dart';
 import '../application/answer_sheet_packets/packet_generation_service.dart';
 import '../application/answer_sheet_packets/packet_models.dart';
 import '../application/answer_sheet_packets/packet_response_repository.dart';
@@ -258,6 +259,9 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
   bool _disposing = false;
   PacketPageClaimResult? _packetClaim;
   EngineError? _packetClaimError;
+  Timer? _failurePolygonTimer;
+  bool _showRejectedOutcome = false;
+  bool _showFailurePolygon = false;
 
   @override
   void initState() {
@@ -275,6 +279,16 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
   void _onCoordinatorState(CameraScanState state) {
     if (!mounted || _disposing) return;
     final action = _flow.handleCoordinatorState(state);
+    if (state.phase == CameraScanPhase.scanFailed ||
+        action == ScannerValidationFlowAction.resultRejected) {
+      _showRejectedOutcome = true;
+      _showFailurePolygon = true;
+      _failurePolygonTimer?.cancel();
+      _failurePolygonTimer = Timer(const Duration(milliseconds: 1400), () {
+        if (!mounted || _disposing) return;
+        setState(() => _showFailurePolygon = false);
+      });
+    }
     setState(() {});
     switch (action) {
       case ScannerValidationFlowAction.resultRecorded:
@@ -284,7 +298,6 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
       case ScannerValidationFlowAction.resultRejected:
         _packetClaim = null;
         _packetClaimError = null;
-        _runtime.coordinator.reset();
         break;
       case ScannerValidationFlowAction.stateUpdated:
       case ScannerValidationFlowAction.completionIgnored:
@@ -334,7 +347,21 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
       return;
     }
     _runtime.coordinator.reset();
+    _clearRejectedOutcome();
     setState(() {});
+  }
+
+  void _retryScan() {
+    _flow.clearSessionError();
+    _clearRejectedOutcome();
+    _runtime.coordinator.reset();
+    setState(() {});
+  }
+
+  void _clearRejectedOutcome() {
+    _failurePolygonTimer?.cancel();
+    _showRejectedOutcome = false;
+    _showFailurePolygon = false;
   }
 
   void _captureDuplicate() {
@@ -343,6 +370,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
 
   Future<void> _retryCamera() async {
     _flow.clearSessionError();
+    _clearRejectedOutcome();
     await _runtime.coordinator.resume();
     if (mounted && !_disposing) setState(() {});
   }
@@ -352,6 +380,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     _disposing = true;
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_subscription.cancel());
+    _failurePolygonTimer?.cancel();
     unawaited(_runtime.coordinator.dispose());
     super.dispose();
   }
@@ -392,6 +421,32 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
         title: Text('Scan ${session.artifact.template.name}'),
         actions: [
           IconButton(
+            key: const Key('scanner-torch-toggle'),
+            tooltip: state.cameraState.diagnostics.torchAvailable
+                ? state.cameraState.diagnostics.torchEnabled
+                      ? 'Turn flashlight off'
+                      : 'Turn flashlight on'
+                : 'Flashlight unavailable',
+            onPressed:
+                !state.operationInProgress &&
+                    state.cameraState.diagnostics.torchAvailable &&
+                    (state.cameraState.lifecycle ==
+                            CameraLifecycleState.ready ||
+                        state.cameraState.lifecycle ==
+                            CameraLifecycleState.analyzing)
+                ? () => unawaited(
+                    _runtime.coordinator.setTorchEnabled(
+                      !state.cameraState.diagnostics.torchDesiredEnabled,
+                    ),
+                  )
+                : null,
+            icon: Icon(
+              state.cameraState.diagnostics.torchEnabled
+                  ? Icons.flashlight_on
+                  : Icons.flashlight_off,
+            ),
+          ),
+          IconButton(
             tooltip: 'Show diagnostics',
             onPressed: () =>
                 setState(() => _showDiagnostics = !_showDiagnostics),
@@ -427,8 +482,13 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                             ),
                             IgnorePointer(
                               child: ScannerDetectionOverlay(
-                                points: overlay.points,
-                                state: scannerOverlayState(state),
+                                points:
+                                    _showRejectedOutcome && !_showFailurePolygon
+                                    ? const []
+                                    : overlay.points,
+                                state: _showRejectedOutcome
+                                    ? ScannerOverlayState.failure
+                                    : scannerOverlayState(state),
                                 geometrySource: overlay.source,
                               ),
                             ),
@@ -457,62 +517,19 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                 : const Center(child: CircularProgressIndicator()),
           ),
           if (displayedError != null)
-            Container(
-              width: double.infinity,
-              color: Colors.red.shade900,
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${displayedError.code}: ${displayedError.message}',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  if (state.phase == CameraScanPhase.scanFailed)
-                    TextButton(
-                      onPressed:
-                          state.cameraState.lifecycle ==
-                              CameraLifecycleState.error
-                          ? () => unawaited(_retryCamera())
-                          : () {
-                              _runtime.coordinator.reset();
-                              _flow.clearSessionError();
-                              setState(() {});
-                            },
-                      child: Text(
-                        state.cameraState.lifecycle ==
-                                CameraLifecycleState.error
-                            ? 'Retry Camera'
-                            : 'Retry',
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                ],
-              ),
+            ScannerFailureCard(
+              feedback: scannerUserFeedbackForError(displayedError),
+              onAction:
+                  scannerUserFeedbackForError(displayedError).kind ==
+                      ScannerFailureKind.fatal
+                  ? () => unawaited(_retryCamera())
+                  : _retryScan,
             ),
           if (acceptanceRejection != null)
-            Container(
+            ScannerFailureCard(
               key: const Key('scan-rescan-required'),
-              width: double.infinity,
-              color: Colors.red.shade900,
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    acceptanceRejection.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    acceptanceRejection.guidance,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ],
-              ),
+              feedback: scannerUserFeedbackForAcceptance(acceptanceRejection),
+              onAction: _retryScan,
             ),
           if (_packetClaim != null || _packetClaimError != null)
             _PacketClaimPanel(claim: _packetClaim, error: _packetClaimError),
@@ -648,7 +665,7 @@ class ScannerReviewStateView extends StatelessWidget {
   }
 }
 
-class ScannerStatusBanner extends StatelessWidget {
+class ScannerStatusBanner extends StatefulWidget {
   const ScannerStatusBanner({
     required this.text,
     required this.progress,
@@ -657,6 +674,60 @@ class ScannerStatusBanner extends StatelessWidget {
 
   final String text;
   final String progress;
+
+  @override
+  State<ScannerStatusBanner> createState() => _ScannerStatusBannerState();
+}
+
+class _ScannerStatusBannerState extends State<ScannerStatusBanner> {
+  static const _minimumMessageDuration = Duration(milliseconds: 450);
+  late String _displayedText = widget.text;
+  DateTime _changedAt = DateTime.now();
+  Timer? _pendingChange;
+
+  @override
+  void didUpdateWidget(covariant ScannerStatusBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.text == _displayedText) {
+      _pendingChange?.cancel();
+      return;
+    }
+    if (_isImmediate(widget.text)) {
+      _setDisplayedText(widget.text);
+      return;
+    }
+    final elapsed = DateTime.now().difference(_changedAt);
+    if (elapsed >= _minimumMessageDuration) {
+      _setDisplayedText(widget.text);
+      return;
+    }
+    _pendingChange?.cancel();
+    _pendingChange = Timer(_minimumMessageDuration - elapsed, () {
+      if (!mounted) return;
+      _setDisplayedText(widget.text);
+    });
+  }
+
+  bool _isImmediate(String text) => const {
+    'Reading your answers...',
+    'Sheet successfully recorded',
+    'Scan needs attention',
+  }.contains(text);
+
+  void _setDisplayedText(String value) {
+    _pendingChange?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _displayedText = value;
+      _changedAt = DateTime.now();
+    });
+  }
+
+  @override
+  void dispose() {
+    _pendingChange?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -670,12 +741,69 @@ class ScannerStatusBanner extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(text, style: const TextStyle(color: Colors.white, fontSize: 17)),
-          Text(progress, style: const TextStyle(color: Colors.white70)),
+          Text(
+            _displayedText,
+            style: const TextStyle(color: Colors.white, fontSize: 17),
+          ),
+          Text(widget.progress, style: const TextStyle(color: Colors.white70)),
         ],
       ),
     ),
   );
+}
+
+class ScannerFailureCard extends StatelessWidget {
+  const ScannerFailureCard({
+    required this.feedback,
+    required this.onAction,
+    super.key,
+  });
+
+  final ScannerUserFeedback feedback;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final fatal = feedback.kind == ScannerFailureKind.fatal;
+    final colors = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: fatal ? colors.errorContainer : colors.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: fatal ? colors.error : Colors.orange.shade700,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            fatal ? Icons.camera_alt_outlined : Icons.info_outline,
+            color: fatal ? colors.onErrorContainer : Colors.orange.shade800,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  feedback.title,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(feedback.description),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(onPressed: onAction, child: Text(feedback.actionLabel)),
+        ],
+      ),
+    );
+  }
 }
 
 class ScannerPageResultScreen extends StatelessWidget {
@@ -710,11 +838,37 @@ class ScannerPageResultScreen extends StatelessWidget {
         List<QuestionClassification>.of(result.questions)..sort(
           (left, right) => left.questionNumber.compareTo(right.questionNumber),
         );
+    final recordingConfirmed = result.packetIdentity == null
+        ? true
+        : packetClaim?.status == PacketPageClaimStatus.accepted;
     return Scaffold(
       appBar: AppBar(title: const Text('Page scan result')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (recordingConfirmed)
+            Card(
+              key: const Key('scan-recording-confirmed'),
+              color: Colors.green.shade50,
+              child: ListTile(
+                leading: const Icon(Icons.check_circle, color: Colors.green),
+                title: const Text('Sheet successfully recorded'),
+                subtitle: Text(
+                  'Page ${result.packetIdentity?.pageIndex != null ? result.packetIdentity!.pageIndex + 1 : session.currentPageIndex + 1} accepted',
+                ),
+              ),
+            )
+          else if (packetClaimError == null)
+            const Card(
+              key: Key('scan-recording-pending'),
+              child: ListTile(
+                leading: SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                title: Text('Saving sheet...'),
+              ),
+            ),
           Text(
             session.artifact.template.name,
             style: Theme.of(context).textTheme.titleLarge,

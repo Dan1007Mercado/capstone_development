@@ -23,6 +23,61 @@ void main() {
     await fixture.dispose();
   });
 
+  test('rear camera reports the default torch state in diagnostics', () async {
+    final fixture = _Fixture();
+    await fixture.engine.initialize();
+
+    expect(fixture.engine.diagnostics.torchAvailable, isTrue);
+    expect(fixture.engine.diagnostics.torchEnabled, isTrue);
+    expect(fixture.engine.diagnostics.torchDesiredEnabled, isTrue);
+    await fixture.dispose();
+  });
+
+  test('manual torch override is retained as desired session state', () async {
+    final fixture = _Fixture();
+    await fixture.engine.initialize();
+
+    final result = await fixture.engine.setTorchEnabled(false);
+
+    expect(result.isSuccess, isTrue);
+    expect(fixture.backend.torchValues, [false]);
+    expect(fixture.engine.diagnostics.torchEnabled, isFalse);
+    expect(fixture.engine.diagnostics.torchDesiredEnabled, isFalse);
+    await fixture.dispose();
+  });
+
+  test('unsupported torch is non-fatal and remains diagnostic', () async {
+    final backend = _FakeCameraBackend()
+      ..torchResult = _failure('CAMERA_TORCH_UNAVAILABLE', 'unsupported');
+    final fixture = _Fixture(backend: backend);
+    await fixture.engine.initialize();
+
+    final result = await fixture.engine.setTorchEnabled(false);
+
+    expect(result.isFailure, isTrue);
+    expect(fixture.engine.state.lifecycle, CameraLifecycleState.ready);
+    expect(fixture.engine.diagnostics.torchAvailable, isFalse);
+    expect(fixture.engine.diagnostics.lastTorchError, 'unsupported');
+    await fixture.dispose();
+  });
+
+  test(
+    'suspend records torch off while preserving the user preference',
+    () async {
+      final fixture = _Fixture();
+      await fixture.engine.initialize();
+      await fixture.engine.setTorchEnabled(false);
+
+      await fixture.engine.suspend();
+
+      expect(fixture.engine.diagnostics.torchAvailable, isFalse);
+      expect(fixture.engine.diagnostics.torchEnabled, isFalse);
+      expect(fixture.engine.diagnostics.torchDesiredEnabled, isFalse);
+      expect(fixture.backend.disposed, isTrue);
+      await fixture.dispose();
+    },
+  );
+
   test('initialization failure becomes structured error state', () async {
     final backend = _FakeCameraBackend()
       ..initializeResult = _failure('CAMERA_INITIALIZATION_FAILED', 'failed');
@@ -216,6 +271,31 @@ void main() {
     );
     await fixture.dispose();
   });
+
+  test(
+    'moderate perspective reaches ready after the stability window',
+    () async {
+      final fixture = _Fixture(
+        analyzer: _FakeAnalyzer(
+          observations: [
+            for (var index = 0; index < 3; index++)
+              _observation(perspective: 4.5),
+          ],
+        ),
+      );
+      await fixture.initializeAndStart();
+
+      await fixture.emitAndSettle(0);
+      await fixture.emitAndSettle(200);
+      await fixture.emitAndSettle(400);
+
+      expect(
+        fixture.engine.state.readiness.status,
+        CaptureReadinessStatus.ready,
+      );
+      await fixture.dispose();
+    },
+  );
 
   test('too-dark frame is not ready', () async {
     final fixture = _Fixture(
@@ -1004,10 +1084,13 @@ final class _FakeCameraBackend implements CameraBackend {
       automaticFocusEnabled: true,
       automaticExposureEnabled: true,
       requestedPreviewFps: 60,
+      torchAvailable: true,
+      torchEnabled: true,
     ),
   );
   EngineResult<bool> startResult = EngineResult.success(true);
   EngineResult<bool> stopResult = EngineResult.success(true);
+  EngineResult<bool> torchResult = EngineResult.success(true);
   EngineResult<CapturedPageImage> captureResult = EngineResult.success(
     CapturedPageImage(
       encodedBytes: Uint8List.fromList([7, 8, 9]),
@@ -1023,6 +1106,7 @@ final class _FakeCameraBackend implements CameraBackend {
   int captureCalls = 0;
   int materializeCalls = 0;
   bool disposed = false;
+  final List<bool> torchValues = [];
 
   @override
   Future<EngineResult<CameraPreviewInfo>> initialize(
@@ -1047,6 +1131,12 @@ final class _FakeCameraBackend implements CameraBackend {
   Future<EngineResult<CapturedPageImage>> captureStill() async {
     captureCalls++;
     return captureResult;
+  }
+
+  @override
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled) async {
+    torchValues.add(enabled);
+    return torchResult.isFailure ? torchResult : EngineResult.success(enabled);
   }
 
   void emit(DateTime timestamp, CameraFrameMaterializer materialize) {

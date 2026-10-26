@@ -71,6 +71,11 @@ final class CameraEngine {
   Duration? _timeToFirstMarker;
   Duration? _timeToFirstIdentity;
   Duration? _timeToReady;
+  bool _torchAvailable = false;
+  bool _torchEnabled = false;
+  bool _torchDesiredEnabled = true;
+  String? _lastTorchError;
+  bool _torchOperationInProgress = false;
 
   CameraEngineState get state => _state;
   CameraDiagnostics get diagnostics => _diagnostics;
@@ -95,6 +100,9 @@ final class CameraEngine {
       );
       return EngineResult.failure(result.error);
     }
+    _torchAvailable = result.value.torchAvailable;
+    _torchEnabled = result.value.torchEnabled;
+    _lastTorchError = null;
     _emit(
       CameraEngineState(
         lifecycle: CameraLifecycleState.ready,
@@ -104,6 +112,35 @@ final class CameraEngine {
       ),
     );
     return EngineResult.success(true);
+  }
+
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled) async {
+    if (_disposed) return _disposedFailure();
+    _torchDesiredEnabled = enabled;
+    if (_torchOperationInProgress) {
+      return _failure(
+        'CAMERA_TORCH_BUSY',
+        'A camera torch operation is already in progress.',
+      );
+    }
+    _torchOperationInProgress = true;
+    try {
+      final result = await backend.setTorchEnabled(enabled);
+      if (result.isFailure) {
+        _torchAvailable = false;
+        _torchEnabled = false;
+        _lastTorchError = result.error.message;
+        _emit(_copyState());
+        return result;
+      }
+      _torchAvailable = true;
+      _torchEnabled = result.value;
+      _lastTorchError = null;
+      _emit(_copyState());
+      return result;
+    } finally {
+      _torchOperationInProgress = false;
+    }
   }
 
   Future<EngineResult<bool>> startAnalysis() async {
@@ -220,6 +257,8 @@ final class CameraEngine {
       }
     }
     await backend.dispose();
+    _torchAvailable = false;
+    _torchEnabled = false;
     resetTracking();
     _emit(const CameraEngineState.uninitialized());
     return EngineResult.success(true);
@@ -612,6 +651,10 @@ final class CameraEngine {
       timeToFirstMarker: _timeToFirstMarker,
       timeToFirstIdentity: _timeToFirstIdentity,
       timeToReady: _timeToReady,
+      torchAvailable: _torchAvailable,
+      torchEnabled: _torchEnabled,
+      torchDesiredEnabled: _torchDesiredEnabled,
+      lastTorchError: _lastTorchError,
     );
   }
 
@@ -761,6 +804,8 @@ final class CameraEngine {
     if (wasAnalyzing) await backend.stopAnalysis();
     await analyzer.dispose();
     await backend.dispose();
+    _torchAvailable = false;
+    _torchEnabled = false;
     _emit(
       CameraEngineState(
         lifecycle: CameraLifecycleState.disposed,

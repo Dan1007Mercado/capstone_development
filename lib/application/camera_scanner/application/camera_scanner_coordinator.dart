@@ -431,6 +431,11 @@ final class CameraScannerCoordinator {
     }
   }
 
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled) async {
+    if (_disposed) return _disposedFailure();
+    return camera.setTorchEnabled(enabled);
+  }
+
   Future<EngineResult<ScanResult>> _finishFailure({
     required String code,
     required String message,

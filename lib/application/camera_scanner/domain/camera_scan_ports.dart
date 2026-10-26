@@ -14,6 +14,7 @@ abstract interface class CameraScanCamera {
   Future<EngineResult<bool>> startAnalysis();
   Future<EngineResult<bool>> stopAnalysis();
   Future<EngineResult<CapturedPageImage>> capture();
+  Future<EngineResult<bool>> setTorchEnabled(bool enabled);
   Future<EngineResult<bool>> suspend();
   void resetTracking();
   Future<void> dispose();
