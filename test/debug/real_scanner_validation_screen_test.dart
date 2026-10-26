@@ -6,6 +6,7 @@ import 'package:capstone_development/application/real_scanner/published_scanner_
 import 'package:capstone_development/application/real_scanner/multi_page_validation_recorder.dart';
 import 'package:capstone_development/application/real_scanner/scanner_validation_flow.dart';
 import 'package:capstone_development/application/real_scanner/scanner_validation_session.dart';
+import 'package:capstone_development/application/real_scanner/scanner_user_feedback.dart';
 import 'package:capstone_development/application/published_templates/in_memory_published_template_artifact_repository.dart';
 import 'package:capstone_development/application/published_templates/published_template_artifact_service.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
@@ -211,6 +212,56 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('successful review keeps scanner diagnostics accessible', (
+    tester,
+  ) async {
+    final fixture = _FlowFixture();
+    final result = fixture.resultForPage(0);
+    fixture.flow.handleCoordinatorState(_completed(result));
+    var opens = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScannerReviewStateView(
+          session: fixture.flow.session,
+          reviewResult: fixture.flow.reviewResult,
+          onContinue: () {},
+          onShowDiagnostics: () => opens++,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('review-scanner-diagnostics')));
+    expect(opens, 1);
+  });
+
+  testWidgets('rejected capture card exposes debug details before retry', (
+    tester,
+  ) async {
+    var retries = 0;
+    var diagnostics = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScannerFailureCard(
+            feedback: const ScannerUserFeedback(
+              kind: ScannerFailureKind.recoverable,
+              title: 'Alignment failed validation',
+              description: 'Keep markers sharp.',
+              actionLabel: 'Scan Again',
+            ),
+            onAction: () => retries++,
+            onShowDiagnostics: () => diagnostics++,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('rejection-scanner-diagnostics')));
+    expect(diagnostics, 1);
+    expect(retries, 0);
+  });
 
   testWidgets('recorded confirmation waits for packet persistence', (
     tester,

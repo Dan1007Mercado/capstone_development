@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../application/camera_scanner/domain/camera_scan_state.dart';
@@ -13,6 +14,7 @@ import '../application/real_scanner/real_scanner_runtime.dart';
 import '../application/real_scanner/scanner_validation_flow.dart';
 import '../application/real_scanner/scanner_validation_session.dart';
 import '../application/real_scanner/scanner_user_feedback.dart';
+import '../application/real_scanner/scanner_debug_report.dart';
 import '../application/answer_sheet_packets/packet_generation_service.dart';
 import '../application/answer_sheet_packets/packet_models.dart';
 import '../application/answer_sheet_packets/packet_response_repository.dart';
@@ -24,8 +26,8 @@ import '../engines/recognition/domain/mark_classification.dart';
 import '../engines/scanner/domain/scan_result.dart';
 import '../engines/template/application/template_publication_service.dart';
 import '../engines/template/domain/template_question.dart';
-import 'p11_camera_scanner_screen.dart';
 import 'real_scanner_roi_diagnostics_screen.dart';
+import 'scanner_diagnostics_sheet.dart';
 import 'scanner_detection_overlay.dart';
 
 class RealScannerSelectionScreen extends StatefulWidget {
@@ -255,13 +257,13 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
   late final RealScannerRuntime _runtime;
   late final ScannerValidationFlowController _flow;
   late final StreamSubscription<CameraScanState> _subscription;
-  bool _showDiagnostics = false;
   bool _disposing = false;
   PacketPageClaimResult? _packetClaim;
   EngineError? _packetClaimError;
   Timer? _failurePolygonTimer;
   bool _showRejectedOutcome = false;
   bool _showFailurePolygon = false;
+  ScannerDebugHistory _debugHistory = ScannerDebugHistory();
 
   @override
   void initState() {
@@ -279,6 +281,29 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
   void _onCoordinatorState(CameraScanState state) {
     if (!mounted || _disposing) return;
     final action = _flow.handleCoordinatorState(state);
+    if (state.phase == CameraScanPhase.scanFailed) {
+      _recordDebugAttempt(
+        state,
+        ScannerDebugAttemptOutcome.failed,
+        error: state.error,
+      );
+    } else if (action == ScannerValidationFlowAction.resultRecorded) {
+      _recordDebugAttempt(state, ScannerDebugAttemptOutcome.succeeded);
+    } else if (action == ScannerValidationFlowAction.resultRejected) {
+      final acceptance = _flow.acceptanceRejection;
+      _recordDebugAttempt(
+        state,
+        ScannerDebugAttemptOutcome.failed,
+        error:
+            _flow.sessionError ??
+            (acceptance == null
+                ? null
+                : EngineError(
+                    code: acceptance.decision.name,
+                    message: acceptance.guidance,
+                  )),
+      );
+    }
     if (state.phase == CameraScanPhase.scanFailed ||
         action == ScannerValidationFlowAction.resultRejected) {
       _showRejectedOutcome = true;
@@ -303,6 +328,40 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
       case ScannerValidationFlowAction.completionIgnored:
         break;
     }
+  }
+
+  void _recordDebugAttempt(
+    CameraScanState state,
+    ScannerDebugAttemptOutcome outcome, {
+    EngineError? error,
+  }) {
+    _debugHistory = _debugHistory.record(
+      state: state,
+      outcome: outcome,
+      timestamp: DateTime.now(),
+      error: error,
+    );
+  }
+
+  void _showScannerDiagnostics() {
+    final report = const ScannerDebugReportBuilder().build(
+      currentState: _flow.latestCameraState,
+      expectedMarkerIds: _runtime
+          .coordinator
+          .activeContext
+          .pageLayout
+          .markerRegions
+          .map((marker) => marker.markerId),
+      history: _debugHistory,
+      platform: defaultTargetPlatform.name,
+    );
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => ScannerDiagnosticsSheet(report: report),
+      ),
+    );
   }
 
   void _claimPacketResult(ScanResult? result) {
@@ -396,6 +455,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
         onContinue: _continue,
         packetClaim: _packetClaim,
         packetClaimError: _packetClaimError,
+        onShowDiagnostics: _showScannerDiagnostics,
       );
     }
     if (session.state == ScannerValidationSessionState.complete) {
@@ -447,9 +507,9 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
             ),
           ),
           IconButton(
-            tooltip: 'Show diagnostics',
-            onPressed: () =>
-                setState(() => _showDiagnostics = !_showDiagnostics),
+            key: const Key('open-scanner-diagnostics'),
+            tooltip: 'Scanner diagnostics',
+            onPressed: _showScannerDiagnostics,
             icon: const Icon(Icons.bug_report_outlined),
           ),
         ],
@@ -524,12 +584,14 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                       ScannerFailureKind.fatal
                   ? () => unawaited(_retryCamera())
                   : _retryScan,
+              onShowDiagnostics: _showScannerDiagnostics,
             ),
           if (acceptanceRejection != null)
             ScannerFailureCard(
               key: const Key('scan-rescan-required'),
               feedback: scannerUserFeedbackForAcceptance(acceptanceRejection),
               onAction: _retryScan,
+              onShowDiagnostics: _showScannerDiagnostics,
             ),
           if (_packetClaim != null || _packetClaimError != null)
             _PacketClaimPanel(claim: _packetClaim, error: _packetClaimError),
@@ -553,23 +615,6 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
                     child: const Text('Capture duplicate Page 2'),
                   ),
                 ],
-              ),
-            ),
-          if (_showDiagnostics)
-            Container(
-              constraints: const BoxConstraints(maxHeight: 280),
-              color: Theme.of(context).colorScheme.surface,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(12),
-                child: P11CameraScannerDiagnosticsPanel(
-                  state: state,
-                  expectedPage:
-                      detectedPage ??
-                      _runtime.coordinator.activeContext.pageLayout,
-                  onCapture: () =>
-                      unawaited(_runtime.coordinator.captureAndScan()),
-                  onReset: () => _runtime.coordinator.reset(),
-                ),
               ),
             ),
         ],
@@ -630,6 +675,7 @@ class ScannerReviewStateView extends StatelessWidget {
     required this.onContinue,
     this.packetClaim,
     this.packetClaimError,
+    this.onShowDiagnostics,
     super.key,
   });
 
@@ -638,6 +684,7 @@ class ScannerReviewStateView extends StatelessWidget {
   final VoidCallback onContinue;
   final PacketPageClaimResult? packetClaim;
   final EngineError? packetClaimError;
+  final VoidCallback? onShowDiagnostics;
 
   @override
   Widget build(BuildContext context) {
@@ -661,6 +708,7 @@ class ScannerReviewStateView extends StatelessWidget {
       onContinue: onContinue,
       packetClaim: packetClaim,
       packetClaimError: packetClaimError,
+      onShowDiagnostics: onShowDiagnostics,
     );
   }
 }
@@ -756,11 +804,13 @@ class ScannerFailureCard extends StatelessWidget {
   const ScannerFailureCard({
     required this.feedback,
     required this.onAction,
+    this.onShowDiagnostics,
     super.key,
   });
 
   final ScannerUserFeedback feedback;
   final VoidCallback onAction;
+  final VoidCallback? onShowDiagnostics;
 
   @override
   Widget build(BuildContext context) {
@@ -799,7 +849,21 @@ class ScannerFailureCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          TextButton(onPressed: onAction, child: Text(feedback.actionLabel)),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                onPressed: onAction,
+                child: Text(feedback.actionLabel),
+              ),
+              if (onShowDiagnostics != null)
+                TextButton(
+                  key: const Key('rejection-scanner-diagnostics'),
+                  onPressed: onShowDiagnostics,
+                  child: const Text('Debug details'),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -813,6 +877,7 @@ class ScannerPageResultScreen extends StatelessWidget {
     required this.onContinue,
     this.packetClaim,
     this.packetClaimError,
+    this.onShowDiagnostics,
     super.key,
   });
 
@@ -821,6 +886,7 @@ class ScannerPageResultScreen extends StatelessWidget {
   final VoidCallback onContinue;
   final PacketPageClaimResult? packetClaim;
   final EngineError? packetClaimError;
+  final VoidCallback? onShowDiagnostics;
 
   @override
   Widget build(BuildContext context) {
@@ -842,7 +908,18 @@ class ScannerPageResultScreen extends StatelessWidget {
         ? true
         : packetClaim?.status == PacketPageClaimStatus.accepted;
     return Scaffold(
-      appBar: AppBar(title: const Text('Page scan result')),
+      appBar: AppBar(
+        title: const Text('Page scan result'),
+        actions: [
+          if (onShowDiagnostics != null)
+            IconButton(
+              key: const Key('review-scanner-diagnostics'),
+              tooltip: 'Scanner diagnostics',
+              onPressed: onShowDiagnostics,
+              icon: const Icon(Icons.bug_report_outlined),
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

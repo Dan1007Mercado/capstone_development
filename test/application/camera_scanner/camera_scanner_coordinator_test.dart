@@ -163,6 +163,8 @@ void main() {
         same(fixture.context.pageLayout),
       );
       expect(fixture.coordinator.state.phase, CameraScanPhase.scanCompleted);
+      expect(fixture.coordinator.state.finalCaptureDiagnostics?.width, 4000);
+      expect(fixture.coordinator.state.finalCaptureDiagnostics?.height, 3000);
       expect(fixture.camera.stopCalls, 1);
       expect(fixture.camera.startCalls, 2);
       await fixture.dispose();
@@ -275,6 +277,8 @@ void main() {
     expect(result.error.details['causeCode'], 'SCAN_ALIGNMENT_FAILED');
     expect(fixture.coordinator.state.phase, CameraScanPhase.scanFailed);
     expect(fixture.coordinator.state.result, isNull);
+    expect(fixture.coordinator.state.finalCaptureDiagnostics?.width, 4000);
+    expect(fixture.coordinator.state.finalCaptureDiagnostics?.height, 3000);
     await fixture.dispose();
   });
 

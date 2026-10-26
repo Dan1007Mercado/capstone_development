@@ -36,4 +36,38 @@ void main() {
     expect(feedback.title, 'Sheet could not be recorded');
     expect(feedback.description, isNot(contains('secret detail')));
   });
+
+  test('nested reprojection failure is not collapsed into unclear corners', () {
+    final feedback = scannerUserFeedbackForError(
+      EngineError(
+        code: 'CAPTURE_SCAN_SCANNER_FAILED',
+        message: 'wrapper',
+        details: const {
+          'causeCode': 'SCAN_ALIGNMENT_FAILED',
+          'causeDetails': {'causeCode': 'ARUCO_REPROJECTION_FAILED'},
+        },
+      ),
+    );
+
+    expect(feedback.title, 'Alignment failed validation');
+    expect(feedback.description, contains('ArUco registration markers'));
+  });
+
+  test('missing registration markers are distinguished from paper corners', () {
+    final feedback = scannerUserFeedbackForError(
+      EngineError(code: 'SCAN_PAGE_MARKERS_INCOMPLETE', message: 'missing'),
+    );
+
+    expect(feedback.title, 'Registration markers not found');
+    expect(feedback.description, contains('square ArUco registration markers'));
+  });
+
+  test('duplicate marker identity has specific guidance', () {
+    final feedback = scannerUserFeedbackForError(
+      EngineError(code: 'SCAN_DUPLICATE_PAGE_MARKERS', message: 'duplicate'),
+    );
+
+    expect(feedback.title, 'Duplicate registration marker detected');
+    expect(feedback.description, contains('one copy'));
+  });
 }

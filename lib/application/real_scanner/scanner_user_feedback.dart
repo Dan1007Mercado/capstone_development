@@ -48,7 +48,6 @@ ScannerUserFeedback scannerUserFeedbackForError(EngineError error) {
   }
   if (const {
     'SCAN_UNKNOWN_PAGE_MARKERS',
-    'SCAN_DUPLICATE_PAGE_MARKERS',
     'SCAN_TEMPLATE_ID_MISMATCH',
     'SCAN_TEMPLATE_VERSION_MISMATCH',
     'SCAN_PAGE_ID_MISMATCH',
@@ -58,6 +57,18 @@ ScannerUserFeedback scannerUserFeedbackForError(EngineError error) {
       kind: ScannerFailureKind.recoverable,
       title: 'Incorrect answer sheet',
       description: 'Use a sheet that belongs to the selected form or packet.',
+      actionLabel: 'Scan Again',
+    );
+  }
+  if (const {
+    'SCAN_DUPLICATE_PAGE_MARKERS',
+    'ARUCO_REQUIRED_MARKER_DUPLICATE',
+  }.contains(code)) {
+    return const ScannerUserFeedback(
+      kind: ScannerFailureKind.recoverable,
+      title: 'Duplicate registration marker detected',
+      description:
+          'Use an undamaged sheet with one copy of each expected ArUco marker.',
       actionLabel: 'Scan Again',
     );
   }
@@ -72,12 +83,46 @@ ScannerUserFeedback scannerUserFeedbackForError(EngineError error) {
   }
   if (const {
     'SCAN_PAGE_MARKERS_INCOMPLETE',
+    'ARUCO_REQUIRED_MARKER_MISSING',
+    'ARUCO_DETECTION_FAILED',
+  }.contains(code)) {
+    return const ScannerUserFeedback(
+      kind: ScannerFailureKind.recoverable,
+      title: 'Registration markers not found',
+      description:
+          'Keep all four square ArUco registration markers visible and in focus.',
+      actionLabel: 'Scan Again',
+    );
+  }
+  if (code == 'ARUCO_MARKER_TOO_SMALL') {
+    return const ScannerUserFeedback(
+      kind: ScannerFailureKind.recoverable,
+      title: 'Registration markers are too small',
+      description: 'Move closer while keeping all four ArUco markers visible.',
+      actionLabel: 'Scan Again',
+    );
+  }
+  if (const {
+    'ARUCO_GEOMETRY_INVALID',
+    'ARUCO_REFLECTION_DETECTED',
+  }.contains(code)) {
+    return const ScannerUserFeedback(
+      kind: ScannerFailureKind.recoverable,
+      title: 'Page angle is too steep',
+      description: 'Hold the camera more parallel to the flat answer sheet.',
+      actionLabel: 'Scan Again',
+    );
+  }
+  if (const {
+    'ARUCO_REPROJECTION_FAILED',
+    'ARUCO_HOMOGRAPHY_FAILED',
     'SCAN_ALIGNMENT_FAILED',
   }.contains(code)) {
     return const ScannerUserFeedback(
       kind: ScannerFailureKind.recoverable,
-      title: 'Markers were not clear',
-      description: 'Keep all four corner markers visible and scan again.',
+      title: 'Alignment failed validation',
+      description:
+          'Keep the sheet flat and all four ArUco registration markers sharp.',
       actionLabel: 'Scan Again',
     );
   }
@@ -132,6 +177,12 @@ ScannerUserFeedback scannerUserFeedbackForAcceptance(
 };
 
 String _deepestCode(EngineError error) {
-  final cause = error.details['causeCode'];
-  return cause is String && cause.isNotEmpty ? cause : error.code;
+  var code = error.code;
+  Object? details = error.details;
+  while (details is Map) {
+    final cause = details['causeCode'];
+    if (cause is String && cause.isNotEmpty) code = cause;
+    details = details['causeDetails'];
+  }
+  return code;
 }

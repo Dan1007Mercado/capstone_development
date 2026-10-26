@@ -42,6 +42,18 @@ final class FinalScanTimings {
   final Duration workerStartupDuration;
 }
 
+final class FinalCaptureDiagnostics {
+  const FinalCaptureDiagnostics({
+    required this.width,
+    required this.height,
+    required this.timestamp,
+  });
+
+  final int? width;
+  final int? height;
+  final DateTime timestamp;
+}
+
 final class CameraScanState {
   const CameraScanState({
     required this.phase,
@@ -50,6 +62,7 @@ final class CameraScanState {
     this.error,
     this.finalScanTimings = FinalScanTimings.zero,
     this.diagnosticSnapshot,
+    this.finalCaptureDiagnostics,
   });
 
   const CameraScanState.idle()
@@ -58,7 +71,8 @@ final class CameraScanState {
       result = null,
       error = null,
       finalScanTimings = FinalScanTimings.zero,
-      diagnosticSnapshot = null;
+      diagnosticSnapshot = null,
+      finalCaptureDiagnostics = null;
 
   final CameraScanPhase phase;
   final CameraEngineState cameraState;
@@ -66,6 +80,7 @@ final class CameraScanState {
   final EngineError? error;
   final FinalScanTimings finalScanTimings;
   final ScannerDiagnosticSnapshot? diagnosticSnapshot;
+  final FinalCaptureDiagnostics? finalCaptureDiagnostics;
 
   bool get canCapture => phase == CameraScanPhase.readyToCapture;
   bool get operationInProgress =>

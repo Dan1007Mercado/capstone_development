@@ -173,6 +173,7 @@ final class CameraScannerCoordinator {
     var isolateOverhead = Duration.zero;
     var workerReused = false;
     var workerStartupDuration = Duration.zero;
+    FinalCaptureDiagnostics? finalCaptureDiagnostics;
     final shouldRestartAnalysis = lifecycle == CameraLifecycleState.analyzing;
     var analysisStopped = false;
 
@@ -222,6 +223,11 @@ final class CameraScannerCoordinator {
           restartAnalysis: analysisStopped,
         );
       }
+      finalCaptureDiagnostics = FinalCaptureDiagnostics(
+        width: capture.value.width,
+        height: capture.value.height,
+        timestamp: capture.value.timestamp,
+      );
 
       final loadStopwatch = Stopwatch()..start();
       final loaded = await imageLoader.load(capture.value);
@@ -246,6 +252,7 @@ final class CameraScannerCoordinator {
           byteLoadDuration: byteLoadDuration,
           scannerDuration: scannerDuration,
           restartAnalysis: analysisStopped,
+          finalCaptureDiagnostics: finalCaptureDiagnostics,
         );
       }
 
@@ -265,6 +272,7 @@ final class CameraScannerCoordinator {
           byteLoadDuration: byteLoadDuration,
           scannerDuration: scannerDuration,
           restartAnalysis: false,
+          finalCaptureDiagnostics: finalCaptureDiagnostics,
         );
       }
       analysisStopped = false;
@@ -278,6 +286,7 @@ final class CameraScannerCoordinator {
             captureDuration: captureDuration,
             byteLoadDuration: byteLoadDuration,
           ),
+          finalCaptureDiagnostics: finalCaptureDiagnostics,
         ),
       );
       final scannerStopwatch = Stopwatch()..start();
@@ -316,7 +325,11 @@ final class CameraScannerCoordinator {
                 'The offline scanner rejected the captured page.',
                 scan.error,
               );
-        _emitFailure(error, timings);
+        _emitFailure(
+          error,
+          timings,
+          finalCaptureDiagnostics: finalCaptureDiagnostics,
+        );
         return EngineResult.failure(error);
       }
 
@@ -330,6 +343,7 @@ final class CameraScannerCoordinator {
           result: scan.value.result,
           finalScanTimings: timings,
           diagnosticSnapshot: sequencedDiagnostic,
+          finalCaptureDiagnostics: finalCaptureDiagnostics,
         ),
       );
       return EngineResult.success(scan.value.result);
@@ -348,7 +362,11 @@ final class CameraScannerCoordinator {
         scannerDuration: scannerDuration,
         totalDuration: totalStopwatch.elapsed,
       );
-      _emitFailure(failure, timings);
+      _emitFailure(
+        failure,
+        timings,
+        finalCaptureDiagnostics: finalCaptureDiagnostics,
+      );
       return EngineResult.failure(failure);
     } finally {
       _operationInProgress = false;
@@ -446,6 +464,7 @@ final class CameraScannerCoordinator {
     required Duration byteLoadDuration,
     required Duration scannerDuration,
     required bool restartAnalysis,
+    FinalCaptureDiagnostics? finalCaptureDiagnostics,
   }) async {
     totalStopwatch.stop();
     final restart = await _restoreCamera(restartAnalysis);
@@ -464,7 +483,11 @@ final class CameraScannerCoordinator {
       scannerDuration: scannerDuration,
       totalDuration: totalStopwatch.elapsed,
     );
-    _emitFailure(error, timings);
+    _emitFailure(
+      error,
+      timings,
+      finalCaptureDiagnostics: finalCaptureDiagnostics,
+    );
     return EngineResult.failure(error);
   }
 
@@ -558,13 +581,18 @@ final class CameraScannerCoordinator {
     return EngineResult.failure(error);
   }
 
-  void _emitFailure(EngineError error, FinalScanTimings timings) {
+  void _emitFailure(
+    EngineError error,
+    FinalScanTimings timings, {
+    FinalCaptureDiagnostics? finalCaptureDiagnostics,
+  }) {
     _emit(
       CameraScanState(
         phase: CameraScanPhase.scanFailed,
         cameraState: _latestCameraState,
         error: error,
         finalScanTimings: timings,
+        finalCaptureDiagnostics: finalCaptureDiagnostics,
       ),
     );
   }
