@@ -368,6 +368,73 @@ void main() {
     await fixture.dispose();
   });
 
+  test('small natural hand movement accumulates stable readiness', () async {
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [
+          _observation(points: _points(offset: 0)),
+          _observation(points: _points(offset: 2)),
+          _observation(points: _points(offset: 3)),
+        ],
+      ),
+    );
+    await fixture.initializeAndStart();
+
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    await fixture.emitAndSettle(400);
+
+    expect(fixture.engine.state.readiness.status, CaptureReadinessStatus.ready);
+    await fixture.dispose();
+  });
+
+  test('one transient marker miss preserves valid stability history', () async {
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [
+          _observation(),
+          _observation(),
+          _observation(ids: const [], points: const []),
+          _observation(),
+        ],
+      ),
+    );
+    await fixture.initializeAndStart();
+
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    expect(fixture.engine.state.readiness.stableFrameCount, 2);
+    await fixture.emitAndSettle(400);
+    expect(
+      fixture.engine.state.readiness.status,
+      CaptureReadinessStatus.markersMissing,
+    );
+    expect(fixture.engine.state.readiness.isReady, isFalse);
+    await fixture.emitAndSettle(600);
+
+    expect(fixture.engine.state.readiness.status, CaptureReadinessStatus.ready);
+    await fixture.dispose();
+  });
+
+  test('repeated marker misses clear preserved stability history', () async {
+    final missing = _observation(ids: const [], points: const []);
+    final fixture = _Fixture(
+      analyzer: _FakeAnalyzer(
+        observations: [_observation(), _observation(), missing, missing],
+      ),
+    );
+    await fixture.initializeAndStart();
+
+    await fixture.emitAndSettle(0);
+    await fixture.emitAndSettle(200);
+    await fixture.emitAndSettle(400);
+    await fixture.emitAndSettle(600);
+
+    expect(fixture.engine.state.readiness.stableFrameCount, 0);
+    expect(fixture.engine.state.readiness.isReady, isFalse);
+    await fixture.dispose();
+  });
+
   test('one unstable frame resets stable progress', () async {
     final analyzer = _FakeAnalyzer(
       observations: [

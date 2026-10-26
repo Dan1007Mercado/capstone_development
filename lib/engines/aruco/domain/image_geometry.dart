@@ -58,3 +58,31 @@ final class ImageSize {
   @override
   int get hashCode => Object.hash(width, height);
 }
+
+/// Perspective severity independent of the page's natural aspect ratio.
+///
+/// Points must be ordered top-left, top-right, bottom-right, bottom-left.
+/// Opposite-edge imbalance captures trapezoidal foreshortening, while the
+/// diagonal imbalance catches severe shear/collapse that balanced edges can
+/// otherwise hide.
+double registrationPerspectiveRatio(List<ImagePoint> points) {
+  if (points.length != 4) return double.infinity;
+  final top = points[0].distanceTo(points[1]);
+  final right = points[1].distanceTo(points[2]);
+  final bottom = points[2].distanceTo(points[3]);
+  final left = points[3].distanceTo(points[0]);
+  final diagonalA = points[0].distanceTo(points[2]);
+  final diagonalB = points[1].distanceTo(points[3]);
+  final ratios = [
+    _symmetricRatio(top, bottom),
+    _symmetricRatio(left, right),
+    _symmetricRatio(diagonalA, diagonalB),
+  ];
+  return ratios.reduce(math.max);
+}
+
+double _symmetricRatio(double first, double second) {
+  final minimum = math.min(first, second);
+  if (minimum <= 0 || !minimum.isFinite) return double.infinity;
+  return math.max(first, second) / minimum;
+}

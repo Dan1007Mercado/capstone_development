@@ -27,6 +27,7 @@ final class CameraEngineConfig {
     double paperEdgePolygonEpsilonRatio = 0.02,
     int minimumStableFrames = 3,
     int stabilityWindowSize = 5,
+    int maximumTransientMarkerMisses = 1,
     double maximumMotionThreshold = 0.015,
     bool requireAllMarkers = true,
     MarkerIds markerIds = MarkerIds.defaults,
@@ -62,6 +63,11 @@ final class CameraEngineConfig {
     if (minimumStableFrames <= 0 || stabilityWindowSize < minimumStableFrames) {
       throw ArgumentError(
         'The stability window must contain the required stable frames.',
+      );
+    }
+    if (maximumTransientMarkerMisses < 0 || maximumTransientMarkerMisses > 5) {
+      throw ArgumentError(
+        'Transient marker misses must be between zero and five.',
       );
     }
     final positive = [
@@ -122,6 +128,7 @@ final class CameraEngineConfig {
       paperEdgePolygonEpsilonRatio: paperEdgePolygonEpsilonRatio,
       minimumStableFrames: minimumStableFrames,
       stabilityWindowSize: stabilityWindowSize,
+      maximumTransientMarkerMisses: maximumTransientMarkerMisses,
       maximumMotionThreshold: maximumMotionThreshold,
       requireAllMarkers: requireAllMarkers,
       markerIds: markerIds,
@@ -152,6 +159,7 @@ final class CameraEngineConfig {
     required this.paperEdgePolygonEpsilonRatio,
     required this.minimumStableFrames,
     required this.stabilityWindowSize,
+    required this.maximumTransientMarkerMisses,
     required this.maximumMotionThreshold,
     required this.requireAllMarkers,
     required this.markerIds,
@@ -180,6 +188,7 @@ final class CameraEngineConfig {
   final double paperEdgePolygonEpsilonRatio;
   final int minimumStableFrames;
   final int stabilityWindowSize;
+  final int maximumTransientMarkerMisses;
   final double maximumMotionThreshold;
   final bool requireAllMarkers;
   final MarkerIds markerIds;

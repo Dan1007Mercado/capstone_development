@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:isolate';
-import 'dart:typed_data';
 
 import '../../../core/errors/engine_error.dart';
 import '../../../core/ids/identifiers.dart';
@@ -238,14 +237,6 @@ Map<Object?, Object?> _analyzeInWorker(
   );
   preparationStopwatch.stop();
 
-  final sharpnessStopwatch = Stopwatch()..start();
-  final sharpness = _laplacianVariance(
-    prepared.pixels,
-    prepared.analysisSize.width,
-    prepared.analysisSize.height,
-  );
-  sharpnessStopwatch.stop();
-
   // ArUco is authoritative and gets an opportunity on every accepted frame.
   // Optional paper-edge work happens only after this complete marker pass.
   final arucoStopwatch = Stopwatch()..start();
@@ -265,10 +256,6 @@ Map<Object?, Object?> _analyzeInWorker(
   }
 
   final geometryStopwatch = Stopwatch()..start();
-  final sourceDetection = remapArucoDetectionToSource(
-    detectionResult.value,
-    prepared.sourceSize,
-  );
   final resolver = state.resolverFor(
     (task['pageMarkerSignatures']! as List<Object?>)
         .cast<Map<Object?, Object?>>(),
@@ -276,16 +263,38 @@ Map<Object?, Object?> _analyzeInWorker(
   EngineResult<ResolvedPageMarkerSignature>? resolution;
   if (resolver != null) {
     resolution = resolver.resolve(
-      sourceDetection.markers.map((marker) => marker.id),
+      detectionResult.value.markers.map((marker) => marker.id),
     );
   }
+  final registrationMarkerIds =
+      resolution?.valueOrNull?.markerIds.values ??
+      (task['markerIds']! as List<Object?>).cast<int>();
+  final analysisGeometry = calculateCameraMarkerGeometry(
+    sourceDetection: detectionResult.value,
+    markerIds: registrationMarkerIds,
+  );
+  final sourceDetection = remapArucoDetectionToSource(
+    detectionResult.value,
+    prepared.sourceSize,
+  );
   final geometry = calculateCameraMarkerGeometry(
     sourceDetection: sourceDetection,
-    markerIds:
-        resolution?.valueOrNull?.markerIds.values ??
-        (task['markerIds']! as List<Object?>).cast<int>(),
+    markerIds: registrationMarkerIds,
   );
   geometryStopwatch.stop();
+
+  final sharpnessStopwatch = Stopwatch()..start();
+  final regionMetrics = analysisGeometry.registrationPoints.length == 4
+      ? measureAnalysisRegion(
+          pixels: prepared.pixels,
+          width: prepared.analysisSize.width,
+          height: prepared.analysisSize.height,
+          polygon: analysisGeometry.registrationPoints,
+        )
+      : null;
+  final brightness = regionMetrics?.meanIntensity ?? prepared.brightness;
+  final sharpness = regionMetrics?.sharpness ?? 0;
+  sharpnessStopwatch.stop();
 
   final documentStopwatch = Stopwatch();
   final trackingStopwatch = Stopwatch();
@@ -352,7 +361,7 @@ Map<Object?, Object?> _analyzeInWorker(
     'pageAreaRatio': geometry.pageAreaRatio,
     'perspectiveRatio': geometry.perspectiveRatio,
     'minimumMarkerSidePixels': geometry.minimumMarkerSidePixels,
-    'brightness': prepared.brightness,
+    'brightness': brightness,
     'sharpness': sharpness,
     'analysisWidth': prepared.analysisSize.width,
     'analysisHeight': prepared.analysisSize.height,
@@ -493,27 +502,4 @@ DetectedDocument? _remapDocument(
     ),
     confidence: document.confidence,
   );
-}
-
-double _laplacianVariance(Uint8List pixels, int width, int height) {
-  if (width < 3 || height < 3) return 0;
-  var count = 0;
-  var mean = 0.0;
-  var squaredDifferenceSum = 0.0;
-  for (var y = 1; y < height - 1; y += 2) {
-    for (var x = 1; x < width - 1; x += 2) {
-      final index = y * width + x;
-      final laplacian =
-          4 * pixels[index] -
-          pixels[index - 1] -
-          pixels[index + 1] -
-          pixels[index - width] -
-          pixels[index + width];
-      count++;
-      final delta = laplacian - mean;
-      mean += delta / count;
-      squaredDifferenceSum += delta * (laplacian - mean);
-    }
-  }
-  return count > 1 ? squaredDifferenceSum / (count - 1) : 0;
 }

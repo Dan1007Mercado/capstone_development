@@ -187,14 +187,7 @@ final class MarkerCorrespondenceService {
         'Required markers are implausibly close together.',
       );
     }
-    final diagonals = [
-      sourcePoints[0].distanceTo(sourcePoints[2]),
-      sourcePoints[1].distanceTo(sourcePoints[3]),
-    ];
-    final allSpans = [...outerSides, ...diagonals];
-    final minSpan = allSpans.reduce(math.min);
-    final maxSpan = allSpans.reduce(math.max);
-    final perspectiveRatio = maxSpan / minSpan;
+    final perspectiveRatio = registrationPerspectiveRatio(sourcePoints);
     if (!perspectiveRatio.isFinite ||
         perspectiveRatio > config.maximumExtremePerspectiveRatio) {
       return _failure(

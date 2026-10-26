@@ -5,10 +5,16 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../domain/detected_marker.dart';
+import '../domain/aruco_detector_profile.dart';
 import '../domain/image_geometry.dart';
 
 /// Shared DICT_4X4_50 detection boundary for encoded-image and camera paths.
 final class OpenCvArucoDetector {
+  OpenCvArucoDetector({this.profile = const ArucoDetectorProfile()}) {
+    profile.validate();
+  }
+
+  final ArucoDetectorProfile profile;
   cv.ArucoDictionary? _dictionary;
   cv.ArucoDetectorParameters? _parameters;
   cv.ArucoDetector? _detector;
@@ -106,6 +112,18 @@ final class OpenCvArucoDetector {
         cv.PredefinedDictionaryType.DICT_4X4_50,
       );
       parameters = cv.ArucoDetectorParameters.empty();
+      parameters
+        ..adaptiveThreshWinSizeMin = profile.adaptiveThresholdWindowMin
+        ..adaptiveThreshWinSizeMax = profile.adaptiveThresholdWindowMax
+        ..adaptiveThreshWinSizeStep = profile.adaptiveThresholdWindowStep
+        ..adaptiveThreshConstant = profile.adaptiveThresholdConstant
+        ..minMarkerPerimeterRate = profile.minimumMarkerPerimeterRate
+        ..polygonalApproxAccuracyRate = profile.polygonApproximationAccuracyRate
+        ..cornerRefinementMethod = profile.cornerRefinement.index
+        ..cornerRefinementWinSize = profile.cornerRefinementWindowSize
+        ..cornerRefinementMaxIterations =
+            profile.cornerRefinementMaximumIterations
+        ..cornerRefinementMinAccuracy = profile.cornerRefinementMinimumAccuracy;
       final detector = cv.ArucoDetector.create(dictionary, parameters);
       _dictionary = dictionary;
       _parameters = parameters;

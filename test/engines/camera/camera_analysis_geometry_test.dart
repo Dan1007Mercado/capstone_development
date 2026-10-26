@@ -80,6 +80,66 @@ void main() {
     expect(image.pixels, [1, 2]);
   });
 
+  test(
+    'perspective ratio is normalized independently of page aspect ratio',
+    () {
+      final frontal = registrationPerspectiveRatio([
+        ImagePoint(0, 0),
+        ImagePoint(100, 0),
+        ImagePoint(100, 200),
+        ImagePoint(0, 200),
+      ]);
+      final moderate = registrationPerspectiveRatio([
+        ImagePoint(15, 0),
+        ImagePoint(85, 0),
+        ImagePoint(100, 200),
+        ImagePoint(0, 200),
+      ]);
+      final severe = registrationPerspectiveRatio([
+        ImagePoint(45, 0),
+        ImagePoint(55, 0),
+        ImagePoint(100, 200),
+        ImagePoint(0, 200),
+      ]);
+
+      expect(frontal, closeTo(1, 1e-12));
+      expect(moderate, lessThan(1.5));
+      expect(severe, greaterThan(6));
+    },
+  );
+
+  test('registered page metrics ignore a dark background and mild shadow', () {
+    const width = 20;
+    const height = 20;
+    final pixels = Uint8List(width * height);
+    for (var y = 5; y < 15; y++) {
+      for (var x = 5; x < 15; x++) {
+        pixels[y * width + x] = x < 10 ? 100 : 190;
+      }
+    }
+    pixels[9 * width + 9] = 20;
+
+    final metrics = measureAnalysisRegion(
+      pixels: pixels,
+      width: width,
+      height: height,
+      polygon: [
+        ImagePoint(5, 5),
+        ImagePoint(15, 5),
+        ImagePoint(15, 15),
+        ImagePoint(5, 15),
+      ],
+    );
+    final globalMean =
+        pixels.reduce((left, right) => left + right) / pixels.length;
+
+    expect(globalMean, lessThan(45));
+    expect(metrics.meanIntensity, greaterThan(100));
+    expect(metrics.sharpness, greaterThan(0));
+    // The former whole-frame 2x sampling visited 81 interior pixels here.
+    expect(metrics.sampleCount, 25);
+  });
+
   for (final maximumDimension in [960, 800, 720]) {
     test(
       'marker geometry and IDs survive remapping at $maximumDimension px',

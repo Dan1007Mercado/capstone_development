@@ -1,9 +1,32 @@
 import 'dart:io';
 
 import 'package:capstone_development/engines/aruco/infrastructure/opencv_aruco_detector.dart';
+import 'package:capstone_development/engines/aruco/domain/aruco_detector_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'production profile broadens illumination scale without extra passes',
+    () {
+      const profile = ArucoDetectorProfile();
+
+      expect(profile.adaptiveThresholdWindowMin, 3);
+      expect(profile.adaptiveThresholdWindowMax, 31);
+      expect(profile.adaptiveThresholdPassCount, 3);
+      expect(profile.cornerRefinement, ArucoCornerRefinement.subpixel);
+      expect(profile.cornerRefinementMaximumIterations, 15);
+      expect(profile.minimumMarkerPerimeterRate, 0.03);
+      expect(profile.polygonApproximationAccuracyRate, 0.03);
+      expect(profile.validate, returnsNormally);
+    },
+  );
+
+  test('invalid detector profiles fail before native initialization', () {
+    const invalid = ArucoDetectorProfile(adaptiveThresholdWindowMin: 4);
+
+    expect(() => OpenCvArucoDetector(profile: invalid), throwsArgumentError);
+  });
+
   test('uninitialized detector disposes idempotently without native work', () {
     final detector = OpenCvArucoDetector();
     expect(() {

@@ -66,6 +66,7 @@ final class CameraEngine {
   DateTime? _firstPageRecognizedAt;
   Duration? _firstRecognitionToReadyDuration;
   int _wrongIdentityStreak = 0;
+  int _consecutiveRegistrationMisses = 0;
   bool _wrongIdentityConfirmed = false;
   DateTime? _analysisStartedAt;
   Duration? _timeToFirstMarker;
@@ -529,9 +530,21 @@ final class CameraEngine {
         _previousPageId != null &&
         observation.resolvedPageId != _previousPageId;
     if (pageChanged) _resetStability();
-    if (failure != null || observation.registrationPoints.length != 4) {
-      _resetStability();
+    final hasRegistrationGeometry = observation.registrationPoints.length == 4;
+    final transientRegistrationMiss =
+        !hasRegistrationGeometry &&
+        _previousRegistrationPoints != null &&
+        (failure == CaptureReadinessStatus.markersMissing ||
+            failure == CaptureReadinessStatus.verifyingMarkers) &&
+        _consecutiveRegistrationMisses < config.maximumTransientMarkerMisses;
+    if (failure != null || !hasRegistrationGeometry) {
+      if (transientRegistrationMiss) {
+        _consecutiveRegistrationMisses++;
+      } else {
+        _resetStability();
+      }
     } else {
+      _consecutiveRegistrationMisses = 0;
       final previous = _previousRegistrationPoints;
       if (previous == null) {
         _stableFrameCount = 1;
@@ -755,6 +768,7 @@ final class CameraEngine {
     _previousAreaRatio = null;
     _previousPageId = null;
     _stableFrameCount = 0;
+    _consecutiveRegistrationMisses = 0;
   }
 
   CameraEngineState _copyState({

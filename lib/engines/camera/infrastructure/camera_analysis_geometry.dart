@@ -181,15 +181,7 @@ CameraMarkerGeometry calculateCameraMarkerGeometry({
     areaRatio =
         _polygonArea(registrationPoints).abs() /
         (sourceSize.width * sourceSize.height);
-    final spans = <double>[
-      for (var index = 0; index < 4; index++)
-        registrationPoints[index].distanceTo(
-          registrationPoints[(index + 1) % 4],
-        ),
-      registrationPoints[0].distanceTo(registrationPoints[2]),
-      registrationPoints[1].distanceTo(registrationPoints[3]),
-    ];
-    perspectiveRatio = spans.reduce(math.max) / spans.reduce(math.min);
+    perspectiveRatio = registrationPerspectiveRatio(registrationPoints);
     minimumMarkerSide = requiredMarkers
         .map((marker) => marker.minimumSideLength)
         .reduce(math.min);
@@ -201,6 +193,94 @@ CameraMarkerGeometry calculateCameraMarkerGeometry({
     perspectiveRatio: perspectiveRatio,
     minimumMarkerSidePixels: minimumMarkerSide,
   );
+}
+
+final class AnalysisRegionMetrics {
+  const AnalysisRegionMetrics({
+    required this.meanIntensity,
+    required this.sharpness,
+    required this.sampleCount,
+  });
+
+  final double meanIntensity;
+  final double sharpness;
+  final int sampleCount;
+}
+
+/// Measures only the registered page interior at a bounded 2x2 sampling rate.
+AnalysisRegionMetrics measureAnalysisRegion({
+  required Uint8List pixels,
+  required int width,
+  required int height,
+  required List<ImagePoint> polygon,
+}) {
+  if (pixels.length != width * height || polygon.length != 4) {
+    throw ArgumentError('A compact image and four region points are required.');
+  }
+  if (width < 3 || height < 3) {
+    return const AnalysisRegionMetrics(
+      meanIntensity: 0,
+      sharpness: 0,
+      sampleCount: 0,
+    );
+  }
+  final minX = math.max(
+    1,
+    polygon.map((point) => point.x).reduce(math.min).floor(),
+  );
+  final maxX = math.min(
+    width - 2,
+    polygon.map((point) => point.x).reduce(math.max).ceil(),
+  );
+  final minY = math.max(
+    1,
+    polygon.map((point) => point.y).reduce(math.min).floor(),
+  );
+  final maxY = math.min(
+    height - 2,
+    polygon.map((point) => point.y).reduce(math.max).ceil(),
+  );
+  var count = 0;
+  var intensityMean = 0.0;
+  var laplacianMean = 0.0;
+  var laplacianSquaredDifferenceSum = 0.0;
+  for (var y = minY; y <= maxY; y += 2) {
+    for (var x = minX; x <= maxX; x += 2) {
+      if (!_insideConvexPolygon(x + 0.5, y + 0.5, polygon)) continue;
+      final index = y * width + x;
+      final intensity = pixels[index];
+      final laplacian =
+          4 * intensity -
+          pixels[index - 1] -
+          pixels[index + 1] -
+          pixels[index - width] -
+          pixels[index + width];
+      count++;
+      intensityMean += (intensity - intensityMean) / count;
+      final delta = laplacian - laplacianMean;
+      laplacianMean += delta / count;
+      laplacianSquaredDifferenceSum += delta * (laplacian - laplacianMean);
+    }
+  }
+  return AnalysisRegionMetrics(
+    meanIntensity: count == 0 ? 0 : intensityMean,
+    sharpness: count > 1 ? laplacianSquaredDifferenceSum / (count - 1) : 0,
+    sampleCount: count,
+  );
+}
+
+bool _insideConvexPolygon(double x, double y, List<ImagePoint> polygon) {
+  double? sign;
+  for (var index = 0; index < polygon.length; index++) {
+    final start = polygon[index];
+    final end = polygon[(index + 1) % polygon.length];
+    final cross =
+        (end.x - start.x) * (y - start.y) - (end.y - start.y) * (x - start.x);
+    if (cross.abs() < 1e-9) continue;
+    sign ??= cross.sign;
+    if (cross.sign != sign) return false;
+  }
+  return sign != null;
 }
 
 double _polygonArea(List<ImagePoint> points) {

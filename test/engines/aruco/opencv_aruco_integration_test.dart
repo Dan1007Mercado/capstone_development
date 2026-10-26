@@ -87,6 +87,24 @@ void main() {
     expect(result.value.observations, hasLength(4));
   });
 
+  test('mild directional shadow preserves marker identity and alignment', () {
+    if (!backendAvailable) {
+      markTestSkipped(unavailableReason ?? 'Native OpenCV unavailable.');
+      return;
+    }
+    final shaded = _applyDirectionalShadow(frontal);
+    final result = _align(shaded, page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(result.value.diagnostics.detectedMarkerIds.toSet(), {
+      10,
+      11,
+      12,
+      13,
+    });
+    expect(result.value.diagnostics.maxReprojectionError, lessThan(0.01));
+  });
+
   test('translated complete page aligns inside a larger source image', () {
     if (!backendAvailable) {
       markTestSkipped(unavailableReason ?? 'Native OpenCV unavailable.');
@@ -228,6 +246,24 @@ image.Image _renderSyntheticPage(PageLayout page) {
     );
   }
   return output;
+}
+
+image.Image _applyDirectionalShadow(image.Image source) {
+  final shaded = image.Image.from(source);
+  for (var y = 0; y < shaded.height; y++) {
+    for (var x = 0; x < shaded.width; x++) {
+      final pixel = shaded.getPixel(x, y);
+      final factor = 0.58 + 0.42 * x / math.max(1, shaded.width - 1);
+      shaded.setPixelRgb(
+        x,
+        y,
+        (pixel.r * factor).round(),
+        (pixel.g * factor).round(),
+        (pixel.b * factor).round(),
+      );
+    }
+  }
+  return shaded;
 }
 
 void _drawMarker(
