@@ -106,11 +106,18 @@ final class ScannerDiagnosticSnapshot {
       'alignment': {
         'selectedHomographyMethod':
             result.diagnostics.alignment.selectedHomographyMethod.name,
+        'selectionReason': result.diagnostics.alignment.selectionReason,
+        'fallbackReason': result.diagnostics.alignment.fallbackReason,
         'meanReprojectionError':
             result.diagnostics.alignment.meanReprojectionError,
         'maxReprojectionError':
             result.diagnostics.alignment.maxReprojectionError,
         'reprojectionErrors': result.diagnostics.alignment.reprojectionErrors,
+        'fullCorrespondenceConsistency': {
+          'mean': result.diagnostics.alignment.meanReprojectionError,
+          'maximum': result.diagnostics.alignment.maxReprojectionError,
+          'errors': result.diagnostics.alignment.reprojectionErrors,
+        },
         'fourPointCandidate': _homographyCandidateJson(
           result.diagnostics.alignment.fourPointCandidate,
         ),
@@ -132,6 +139,18 @@ final class ScannerDiagnosticSnapshot {
         ),
         'validation': _milliseconds(
           result.diagnostics.stageDurations.validation,
+        ),
+        'homographyCandidateValidation': _milliseconds(
+          result.diagnostics.alignment.candidateValidationDuration,
+        ),
+        'fourPointHomography': _milliseconds(
+          result.diagnostics.alignment.fourPointHomographyDuration,
+        ),
+        'multiPointHomography': _milliseconds(
+          result.diagnostics.alignment.multiPointHomographyDuration,
+        ),
+        'canonicalWarp': _milliseconds(
+          result.diagnostics.alignment.warpDuration,
         ),
       },
       'preprocessingConfig': {
@@ -228,6 +247,27 @@ final class ScannerDiagnosticSnapshot {
           'totalPointCount': candidate.totalPointCount,
           'inlierRatio': candidate.inlierRatio,
           'durationMs': _milliseconds(candidate.duration),
+          'fittingResiduals': _reprojectionStatisticsJson(
+            candidate.fittingResiduals,
+          ),
+          'heldOutValidationResiduals': _reprojectionStatisticsJson(
+            candidate.heldOutValidationResiduals,
+          ),
+          'heldOutValidationMethod': candidate.heldOutValidationMethod?.name,
+          'inliersPerMarker': candidate.inliersPerMarker,
+          'rejectionReason': candidate.rejectionReason,
+        };
+
+  Map<String, Object?>? _reprojectionStatisticsJson(
+    ReprojectionStatistics? statistics,
+  ) => statistics == null
+      ? null
+      : {
+          'pointCount': statistics.errors.length,
+          'mean': statistics.mean,
+          'median': statistics.median,
+          'maximum': statistics.maximum,
+          'percentile95': statistics.percentile95,
         };
 
   Map<String, Object?> _measurementJson(

@@ -13,6 +13,10 @@ final class ArucoAlignmentConfig {
     double multipointRansacReprojectionThresholdPixels = 1.5,
     double minimumMultipointInlierRatio = 0.875,
     double minimumMultipointScoreImprovementPixels = 0.05,
+    double maximumHeldOutReprojectionErrorPixels = 4,
+    double maximumLocalScaleRatio = 20,
+    double maximumLocalAnisotropyRatio = 12,
+    double maximumPageBoundaryOvershootRatio = 0.15,
     int multipointMaximumIterations = 500,
     double multipointConfidence = 0.995,
     bool enableMultipointHomography = true,
@@ -27,6 +31,9 @@ final class ArucoAlignmentConfig {
       maximumReprojectionErrorPixels,
       maximumRejectedCornerErrorPixels,
       multipointRansacReprojectionThresholdPixels,
+      maximumHeldOutReprojectionErrorPixels,
+      maximumLocalScaleRatio,
+      maximumLocalAnisotropyRatio,
     ];
     if (positive.any((value) => !value.isFinite || value <= 0) ||
         minimumRegistrationAreaRatio >= 1 ||
@@ -37,6 +44,11 @@ final class ArucoAlignmentConfig {
         minimumMultipointInlierRatio > 1 ||
         !minimumMultipointScoreImprovementPixels.isFinite ||
         minimumMultipointScoreImprovementPixels < 0 ||
+        maximumLocalScaleRatio < 1 ||
+        maximumLocalAnisotropyRatio < 1 ||
+        !maximumPageBoundaryOvershootRatio.isFinite ||
+        maximumPageBoundaryOvershootRatio < 0 ||
+        maximumPageBoundaryOvershootRatio >= 1 ||
         multipointMaximumIterations < 1 ||
         !multipointConfidence.isFinite ||
         multipointConfidence <= 0 ||
@@ -62,6 +74,11 @@ final class ArucoAlignmentConfig {
       minimumMultipointInlierRatio: minimumMultipointInlierRatio,
       minimumMultipointScoreImprovementPixels:
           minimumMultipointScoreImprovementPixels,
+      maximumHeldOutReprojectionErrorPixels:
+          maximumHeldOutReprojectionErrorPixels,
+      maximumLocalScaleRatio: maximumLocalScaleRatio,
+      maximumLocalAnisotropyRatio: maximumLocalAnisotropyRatio,
+      maximumPageBoundaryOvershootRatio: maximumPageBoundaryOvershootRatio,
       multipointMaximumIterations: multipointMaximumIterations,
       multipointConfidence: multipointConfidence,
       enableMultipointHomography: enableMultipointHomography,
@@ -81,6 +98,10 @@ final class ArucoAlignmentConfig {
     required this.multipointRansacReprojectionThresholdPixels,
     required this.minimumMultipointInlierRatio,
     required this.minimumMultipointScoreImprovementPixels,
+    required this.maximumHeldOutReprojectionErrorPixels,
+    required this.maximumLocalScaleRatio,
+    required this.maximumLocalAnisotropyRatio,
+    required this.maximumPageBoundaryOvershootRatio,
     required this.multipointMaximumIterations,
     required this.multipointConfidence,
     required this.enableMultipointHomography,
@@ -101,6 +122,10 @@ final class ArucoAlignmentConfig {
   final double multipointRansacReprojectionThresholdPixels;
   final double minimumMultipointInlierRatio;
   final double minimumMultipointScoreImprovementPixels;
+  final double maximumHeldOutReprojectionErrorPixels;
+  final double maximumLocalScaleRatio;
+  final double maximumLocalAnisotropyRatio;
+  final double maximumPageBoundaryOvershootRatio;
   final int multipointMaximumIterations;
   final double multipointConfidence;
   final bool enableMultipointHomography;

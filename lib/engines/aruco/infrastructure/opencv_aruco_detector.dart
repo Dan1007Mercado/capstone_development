@@ -81,6 +81,10 @@ final class OpenCvArucoDetector {
         markers.add(
           DetectedMarker(
             id: idValues[index],
+            // OpenCV restores each ArUco marker's original rotation and
+            // returns its corners clockwise from that marker's canonical
+            // top-left. These indexes are marker-local semantics, not a sort
+            // by current image x/y, and must remain unchanged under rotation.
             topLeft: ImagePoint(points[0].x, points[0].y),
             topRight: ImagePoint(points[1].x, points[1].y),
             bottomRight: ImagePoint(points[2].x, points[2].y),

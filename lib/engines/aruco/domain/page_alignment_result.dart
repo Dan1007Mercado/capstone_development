@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'image_geometry.dart';
@@ -16,8 +17,11 @@ final class HomographyMatrix {
 
   final List<double> values;
 
+  double projectionDenominator(ImagePoint point) =>
+      values[6] * point.x + values[7] * point.y + values[8];
+
   ImagePoint project(ImagePoint point) {
-    final denominator = values[6] * point.x + values[7] * point.y + values[8];
+    final denominator = projectionDenominator(point);
     if (!denominator.isFinite || denominator.abs() < 1e-12) {
       throw StateError('Homography projection is degenerate.');
     }
@@ -25,6 +29,31 @@ final class HomographyMatrix {
       (values[0] * point.x + values[1] * point.y + values[2]) / denominator,
       (values[3] * point.x + values[4] * point.y + values[5]) / denominator,
     );
+  }
+
+  HomographyMatrix inverse() {
+    final h = values;
+    final scale = h.map((value) => value.abs()).reduce(math.max);
+    final determinant =
+        h[0] * (h[4] * h[8] - h[5] * h[7]) -
+        h[1] * (h[3] * h[8] - h[5] * h[6]) +
+        h[2] * (h[3] * h[7] - h[4] * h[6]);
+    if (scale == 0 ||
+        !determinant.isFinite ||
+        determinant.abs() / (scale * scale * scale) <= 1e-12) {
+      throw StateError('Homography is not invertible.');
+    }
+    return HomographyMatrix([
+      (h[4] * h[8] - h[5] * h[7]) / determinant,
+      (h[2] * h[7] - h[1] * h[8]) / determinant,
+      (h[1] * h[5] - h[2] * h[4]) / determinant,
+      (h[5] * h[6] - h[3] * h[8]) / determinant,
+      (h[0] * h[8] - h[2] * h[6]) / determinant,
+      (h[2] * h[3] - h[0] * h[5]) / determinant,
+      (h[3] * h[7] - h[4] * h[6]) / determinant,
+      (h[1] * h[6] - h[0] * h[7]) / determinant,
+      (h[0] * h[4] - h[1] * h[3]) / determinant,
+    ]);
   }
 }
 
@@ -60,6 +89,44 @@ final class CanonicalPageImage {
 
 enum AlignmentHomographyMethod { fourPoint, multiPoint }
 
+enum HomographyValidationMethod { unusedFittingCorners, leaveOneMarkerOut }
+
+final class ReprojectionStatistics {
+  ReprojectionStatistics(Iterable<double> values)
+    : errors = UnmodifiableListView(List.of(values)) {
+    if (errors.isEmpty) {
+      throw ArgumentError('Reprojection statistics require observations.');
+    }
+  }
+
+  final List<double> errors;
+
+  double get mean =>
+      errors.reduce((first, second) => first + second) / errors.length;
+
+  double get median {
+    final sorted = List<double>.of(errors)..sort();
+    final middle = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  double get maximum =>
+      errors.reduce((first, second) => first > second ? first : second);
+
+  double get percentile95 {
+    final sorted = List<double>.of(errors)..sort();
+    final index = ((sorted.length * 0.95).ceil() - 1).clamp(
+      0,
+      sorted.length - 1,
+    );
+    return sorted[index];
+  }
+
+  double get score => median + mean * 0.25 + maximum * 0.1;
+}
+
 final class HomographyCandidateDiagnostics {
   HomographyCandidateDiagnostics({
     required this.method,
@@ -71,9 +138,15 @@ final class HomographyCandidateDiagnostics {
     required this.totalPointCount,
     required this.accepted,
     required this.duration,
+    this.fittingResiduals,
+    this.heldOutValidationResiduals,
+    this.heldOutValidationMethod,
+    Iterable<int> inliersPerMarker = const [],
+    this.rejectionReason,
   }) : commonReprojectionErrors = UnmodifiableListView(
          List.of(commonReprojectionErrors),
-       );
+       ),
+       inliersPerMarker = UnmodifiableListView(List.of(inliersPerMarker));
 
   final AlignmentHomographyMethod method;
   final List<double> commonReprojectionErrors;
@@ -84,8 +157,17 @@ final class HomographyCandidateDiagnostics {
   final int totalPointCount;
   final bool accepted;
   final Duration duration;
+  final ReprojectionStatistics? fittingResiduals;
 
-  double get inlierRatio => totalPointCount == 0 ? 0 : inlierCount / totalPointCount;
+  /// Out-of-sample geometric consistency. For multi-point this is produced by
+  /// leave-one-marker-out estimates, never by the production fit itself.
+  final ReprojectionStatistics? heldOutValidationResiduals;
+  final HomographyValidationMethod? heldOutValidationMethod;
+  final List<int> inliersPerMarker;
+  final String? rejectionReason;
+
+  double get inlierRatio =>
+      totalPointCount == 0 ? 0 : inlierCount / totalPointCount;
 
   /// Shared score used only between candidates evaluated on the same 16
   /// published marker corners. It intentionally includes tail error.
@@ -93,6 +175,8 @@ final class HomographyCandidateDiagnostics {
       medianCommonReprojectionError +
       meanCommonReprojectionError * 0.25 +
       maxCommonReprojectionError * 0.1;
+
+  double? get heldOutValidationScore => heldOutValidationResiduals?.score;
 }
 
 final class PageAlignmentDiagnostics {
@@ -125,6 +209,9 @@ final class PageAlignmentDiagnostics {
     this.multiPointCandidate,
     this.fourPointHomographyDuration = Duration.zero,
     this.multiPointHomographyDuration = Duration.zero,
+    this.candidateValidationDuration = Duration.zero,
+    this.selectionReason,
+    this.fallbackReason,
   }) : expectedMarkerIds = UnmodifiableListView(List.of(expectedMarkerIds)),
        detectedMarkerIds = UnmodifiableListView(List.of(detectedMarkerIds)),
        sourceMarkerSideLengths = UnmodifiableListView(
@@ -166,6 +253,9 @@ final class PageAlignmentDiagnostics {
   final HomographyCandidateDiagnostics? multiPointCandidate;
   final Duration fourPointHomographyDuration;
   final Duration multiPointHomographyDuration;
+  final Duration candidateValidationDuration;
+  final String? selectionReason;
+  final String? fallbackReason;
 }
 
 final class PageAlignmentResult {

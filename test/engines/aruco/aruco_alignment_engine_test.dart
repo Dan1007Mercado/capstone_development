@@ -8,12 +8,59 @@ import 'package:capstone_development/engines/aruco/domain/aruco_vision_backend.d
 import 'package:capstone_development/engines/aruco/domain/detected_marker.dart';
 import 'package:capstone_development/engines/aruco/domain/image_geometry.dart';
 import 'package:capstone_development/engines/aruco/domain/page_alignment_result.dart';
+import 'package:capstone_development/engines/layout/domain/layout_regions.dart';
 import 'package:capstone_development/engines/layout/domain/page_layout.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../layout/layout_test_fixtures.dart';
 
 void main() {
+  test('homography inverse round-trips representative content points', () {
+    final matrix = HomographyMatrix([
+      0.8,
+      0.04,
+      25,
+      -0.02,
+      0.75,
+      40,
+      0.0001,
+      -0.00008,
+      1,
+    ]);
+    final inverse = matrix.inverse();
+
+    for (final point in [
+      ImagePoint(0, 0),
+      ImagePoint(500, 700),
+      ImagePoint(1000, 1400),
+    ]) {
+      expect(
+        inverse.project(matrix.project(point)).distanceTo(point),
+        lessThan(1e-8),
+      );
+    }
+  });
+
+  test('homography inverse is invariant to matrix representation scale', () {
+    final matrix = HomographyMatrix([
+      1e-10,
+      0,
+      2e-9,
+      0,
+      1e-10,
+      3e-9,
+      0,
+      0,
+      1e-10,
+    ]);
+    final point = ImagePoint(125, 250);
+
+    final projected = matrix.project(point);
+    final restored = matrix.inverse().project(projected);
+
+    expect(restored.distanceTo(point), lessThan(1e-6));
+  });
+
   test('empty encoded image returns a structured image failure', () {
     final backend = _FakeBackend(_detectionFor(_page()));
     final result = ArucoAlignmentEngine(
@@ -32,7 +79,7 @@ void main() {
       backend: backend,
     ).align(Uint8List.fromList([1, 2, 3]), page);
 
-    expect(result.isSuccess, isTrue);
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
     expect(
       result.value.canonicalPage.size.width,
       page.canonicalPageSpec.widthPixels,
@@ -53,6 +100,49 @@ void main() {
     expect(result.value.diagnostics.reprojectionErrors, everyElement(0));
     expect(result.value.diagnostics.meanReprojectionError, 0);
     expect(result.value.diagnostics.maxReprojectionError, 0);
+    expect(
+      result.value.diagnostics.fourPointCandidate!.fittingResiduals!.errors,
+      hasLength(4),
+    );
+    expect(
+      result
+          .value
+          .diagnostics
+          .fourPointCandidate!
+          .heldOutValidationResiduals!
+          .errors,
+      hasLength(12),
+    );
+    expect(
+      result.value.diagnostics.fourPointCandidate!.heldOutValidationMethod,
+      HomographyValidationMethod.unusedFittingCorners,
+    );
+    expect(
+      result.value.diagnostics.multiPointCandidate!.fittingResiduals!.errors,
+      hasLength(16),
+    );
+    expect(
+      result.value.diagnostics.multiPointCandidate!.heldOutValidationMethod,
+      HomographyValidationMethod.leaveOneMarkerOut,
+    );
+    expect(
+      result
+          .value
+          .diagnostics
+          .multiPointCandidate!
+          .heldOutValidationResiduals!
+          .errors,
+      hasLength(16),
+    );
+    expect(backend.session!.estimationMethods, [
+      HomographyEstimationMethod.fourPoint,
+      HomographyEstimationMethod.multiPointRansac,
+      HomographyEstimationMethod.multiPointRansac,
+      HomographyEstimationMethod.multiPointRansac,
+      HomographyEstimationMethod.multiPointRansac,
+      HomographyEstimationMethod.multiPointRansac,
+    ]);
+    expect(backend.session!.warpCount, 1);
     expect(backend.session!.disposed, isTrue);
   });
 
@@ -100,7 +190,7 @@ void main() {
     expect(backend.session!.disposed, isTrue);
   });
 
-  test('multi-point is selected only for a material common-score gain', () {
+  test('multi-point is selected only for a material held-out gain', () {
     final page = _page();
     final backend = _FakeBackend(
       _detectionFor(page),
@@ -118,8 +208,10 @@ void main() {
       AlignmentHomographyMethod.multiPoint,
     );
     expect(
-      result.value.diagnostics.multiPointCandidate!.commonScore,
-      lessThan(result.value.diagnostics.fourPointCandidate!.commonScore),
+      result.value.diagnostics.multiPointCandidate!.heldOutValidationScore,
+      lessThan(
+        result.value.diagnostics.fourPointCandidate!.heldOutValidationScore!,
+      ),
     );
     expect(backend.session!.warpCount, 1);
   });
@@ -142,6 +234,68 @@ void main() {
     );
     expect(backend.session!.warpCount, 1);
   });
+
+  test('multi-point fitting residual is not reported as held-out evidence', () {
+    final page = _page();
+    final backend = _FakeBackend(
+      _detectionFor(page),
+      crossValidationHomography: HomographyMatrix([1, 0, 5, 0, 1, 0, 0, 0, 1]),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    final multi = result.value.diagnostics.multiPointCandidate!;
+    expect(multi.fittingResiduals!.maximum, 0);
+    expect(multi.heldOutValidationResiduals!.maximum, closeTo(5, 1e-9));
+    expect(multi.accepted, isFalse);
+    expect(multi.rejectionReason, 'HELD_OUT_REPROJECTION_EXCEEDED');
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.fourPoint,
+    );
+    expect(
+      result.value.diagnostics.fallbackReason,
+      'HELD_OUT_REPROJECTION_EXCEEDED',
+    );
+  });
+
+  for (final fixture in <(String, HomographyMatrix)>[
+    ('uniform scale', HomographyMatrix([0.62, 0, 40, 0, 0.62, 55, 0, 0, 1])),
+    (
+      'mild nonuniform affine scale',
+      HomographyMatrix([0.70, 0.025, 35, 0.01, 0.61, 45, 0, 0, 1]),
+    ),
+  ]) {
+    test('${fixture.$1} preserves independent bubble landmarks', () {
+      final page = _page();
+      final canonicalToSource = fixture.$2;
+      final sourceToCanonical = canonicalToSource.inverse();
+      final detection = _transformedDetection(page, canonicalToSource);
+      final backend = _FakeBackend(detection, homography: sourceToCanonical);
+
+      final result = ArucoAlignmentEngine(
+        backend: backend,
+      ).align(Uint8List.fromList([1]), page);
+
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      final errors = [
+        for (final bubble in page.bubbleRegions)
+          _bubbleCanonicalPoint(bubble, page).distanceTo(
+            result.value.homography.project(
+              canonicalToSource.project(_bubbleCanonicalPoint(bubble, page)),
+            ),
+          ),
+      ];
+      expect(errors, everyElement(lessThan(1e-6)));
+      expect(
+        result.value.correspondences.map((item) => item.markerId).toSet(),
+        page.markerRegions.map((item) => item.markerId).toSet(),
+      );
+    });
+  }
 
   test('four-point remains operational when multi-point is disabled', () {
     final page = _page();
@@ -252,6 +406,70 @@ ArucoDetection _detectionFor(PageLayout page) {
   );
 }
 
+ArucoDetection _transformedDetection(
+  PageLayout page,
+  HomographyMatrix canonicalToSource,
+) {
+  const service = MarkerCorrespondenceService();
+  final markers = [
+    for (final region in page.markerRegions)
+      DetectedMarker(
+        id: region.markerId,
+        topLeft: canonicalToSource.project(
+          service.physicalMarkerCornerToCanonical(
+            region,
+            MarkerCorner.topLeft,
+            page,
+          ),
+        ),
+        topRight: canonicalToSource.project(
+          service.physicalMarkerCornerToCanonical(
+            region,
+            MarkerCorner.topRight,
+            page,
+          ),
+        ),
+        bottomRight: canonicalToSource.project(
+          service.physicalMarkerCornerToCanonical(
+            region,
+            MarkerCorner.bottomRight,
+            page,
+          ),
+        ),
+        bottomLeft: canonicalToSource.project(
+          service.physicalMarkerCornerToCanonical(
+            region,
+            MarkerCorner.bottomLeft,
+            page,
+          ),
+        ),
+      ),
+  ];
+  final transformedPageCorner = canonicalToSource.project(
+    ImagePoint(
+      page.canonicalPageSpec.widthPixels - 1,
+      page.canonicalPageSpec.heightPixels - 1,
+    ),
+  );
+  return ArucoDetection(
+    sourceSize: ImageSize(
+      width: transformedPageCorner.x.ceil() + 80,
+      height: transformedPageCorner.y.ceil() + 80,
+    ),
+    markers: markers,
+  );
+}
+
+ImagePoint _bubbleCanonicalPoint(BubbleRegion bubble, PageLayout page) =>
+    ImagePoint(
+      bubble.physicalCenter.x.millimeters /
+          page.pageSpec.size.width.millimeters *
+          page.canonicalPageSpec.widthPixels,
+      bubble.physicalCenter.y.millimeters /
+          page.pageSpec.size.height.millimeters *
+          page.canonicalPageSpec.heightPixels,
+    );
+
 DetectedMarker _identityMarker(int id, double left) => DetectedMarker(
   id: id,
   topLeft: ImagePoint(left, 30),
@@ -266,6 +484,7 @@ final class _FakeBackend implements ArucoVisionBackend {
     HomographyMatrix? homography,
     HomographyMatrix? fourPointHomography,
     HomographyMatrix? multiPointHomography,
+    this.crossValidationHomography,
   }) : fourPointHomography =
            fourPointHomography ??
            homography ??
@@ -278,6 +497,7 @@ final class _FakeBackend implements ArucoVisionBackend {
   final ArucoDetection detection;
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
+  final HomographyMatrix? crossValidationHomography;
   bool opened = false;
   _FakeSession? session;
 
@@ -291,6 +511,7 @@ final class _FakeBackend implements ArucoVisionBackend {
       detection,
       fourPointHomography,
       multiPointHomography,
+      crossValidationHomography,
     );
     return EngineResult.success(session!);
   }
@@ -301,21 +522,24 @@ final class _FakeSession implements ArucoImageSession {
     this.detection,
     this.fourPointHomography,
     this.multiPointHomography,
+    this.crossValidationHomography,
   );
 
   @override
   final ArucoDetection detection;
 
   @override
-  ImageSize get sourceSize => ImageSize(width: 1200, height: 1800);
+  ImageSize get sourceSize => detection.sourceSize;
 
   @override
   ArucoBackendOpenTimings get openTimings => const ArucoBackendOpenTimings();
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
+  final HomographyMatrix? crossValidationHomography;
   bool disposed = false;
   int warpCount = 0;
   final List<HomographyEstimationMethod> estimationMethods = [];
+  int _multiPointEstimateCount = 0;
 
   @override
   void dispose() => disposed = true;
@@ -330,11 +554,16 @@ final class _FakeSession implements ArucoImageSession {
     required double confidence,
   }) {
     estimationMethods.add(method);
+    final selectedHomography = switch (method) {
+      HomographyEstimationMethod.fourPoint => fourPointHomography,
+      HomographyEstimationMethod.multiPointRansac =>
+        _multiPointEstimateCount++ == 0
+            ? multiPointHomography
+            : crossValidationHomography ?? multiPointHomography,
+    };
     return EngineResult.success(
       BackendHomographyEstimate(
-        homography: method == HomographyEstimationMethod.fourPoint
-            ? fourPointHomography
-            : multiPointHomography,
+        homography: selectedHomography,
         inliers: List<bool>.filled(sourcePoints.length, true),
       ),
     );

@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../../core/errors/engine_error.dart';
@@ -9,6 +8,7 @@ import '../domain/aruco_vision_backend.dart';
 import '../domain/image_geometry.dart';
 import '../domain/marker_correspondence.dart';
 import '../domain/page_alignment_result.dart';
+import 'homography_geometry_validator.dart';
 import 'marker_correspondence_service.dart';
 import 'marker_role_splitter.dart';
 
@@ -16,12 +16,14 @@ final class ArucoAlignmentEngine {
   const ArucoAlignmentEngine({
     required this.backend,
     this.correspondenceService = const MarkerCorrespondenceService(),
+    this.geometryValidator = const HomographyGeometryValidator(),
     this.roleSplitter = const MarkerRoleSplitter(),
     this.config,
   });
 
   final ArucoVisionBackend backend;
   final MarkerCorrespondenceService correspondenceService;
+  final HomographyGeometryValidator geometryValidator;
   final MarkerRoleSplitter roleSplitter;
   final ArucoAlignmentConfig? config;
 
@@ -95,17 +97,26 @@ final class ArucoAlignmentEngine {
         maximumIterations: effectiveConfig.multipointMaximumIterations,
         confidence: effectiveConfig.multipointConfidence,
       );
+      final validationStopwatch = Stopwatch()..start();
       final fourPointCandidate = fourPointEstimate.isSuccess
           ? _evaluateCandidate(
               estimate: fourPointEstimate.value,
               method: AlignmentHomographyMethod.fourPoint,
-              correspondences: correspondenceSet.allCornerCorrespondences,
+              fittingCorrespondences: correspondenceSet.baselineCorrespondences,
+              fullCorrespondences: correspondenceSet.allCornerCorrespondences,
+              heldOutValidationResiduals: _residualStatistics(
+                fourPointEstimate.value.homography,
+                _fourPointHeldOutCorrespondences(correspondenceSet),
+              ),
+              page: page,
+              sourceSize: session.sourceSize,
               config: effectiveConfig,
             )
           : null;
 
       EngineResult<BackendHomographyEstimate>? multiPointEstimate;
       HomographyCandidateDiagnostics? multiPointCandidate;
+      _CrossValidationResult? multiPointCrossValidation;
       if (effectiveConfig.enableMultipointHomography) {
         multiPointEstimate = session.estimateHomography(
           sourcePoints: correspondenceSet.allSourcePoints,
@@ -117,24 +128,40 @@ final class ArucoAlignmentEngine {
           confidence: effectiveConfig.multipointConfidence,
         );
         if (multiPointEstimate.isSuccess) {
+          multiPointCrossValidation = _crossValidateMultipoint(
+            session: session,
+            correspondences: correspondenceSet.allCornerCorrespondences,
+            page: page,
+            config: effectiveConfig,
+          );
           multiPointCandidate = _evaluateCandidate(
             estimate: multiPointEstimate.value,
             method: AlignmentHomographyMethod.multiPoint,
-            correspondences: correspondenceSet.allCornerCorrespondences,
+            fittingCorrespondences: correspondenceSet.allCornerCorrespondences,
+            fullCorrespondences: correspondenceSet.allCornerCorrespondences,
+            heldOutValidationResiduals: multiPointCrossValidation.statistics,
+            heldOutValidationUnavailableReason:
+                multiPointCrossValidation.unavailableReason,
+            page: page,
+            sourceSize: session.sourceSize,
             config: effectiveConfig,
           );
         }
       }
+      validationStopwatch.stop();
 
-      final selectedMethod = _selectMethod(
+      final selection = _selectMethod(
         fourPointCandidate,
         multiPointCandidate,
         effectiveConfig,
       );
+      final selectedMethod = selection.method;
       if (selectedMethod == null) {
         return _failure(
           'ARUCO_REPROJECTION_FAILED',
-          'Neither homography candidate passed common marker-corner validation.',
+          'Neither homography candidate passed alignment validation '
+              '(fourPoint=${fourPointCandidate?.rejectionReason ?? fourPointEstimate.errorOrNull?.code}, '
+              'multiPoint=${multiPointCandidate?.rejectionReason ?? multiPointEstimate?.errorOrNull?.code}).',
           {
             'fourPointEstimateError': fourPointEstimate.errorOrNull?.code,
             'fourPointMaxError': fourPointCandidate?.maxCommonReprojectionError,
@@ -142,6 +169,8 @@ final class ArucoAlignmentEngine {
             'multiPointMaxError':
                 multiPointCandidate?.maxCommonReprojectionError,
             'multiPointInlierRatio': multiPointCandidate?.inlierRatio,
+            'fourPointRejectionReason': fourPointCandidate?.rejectionReason,
+            'multiPointRejectionReason': multiPointCandidate?.rejectionReason,
           },
         );
       }
@@ -196,7 +225,9 @@ final class ArucoAlignmentEngine {
             correspondenceDuration: correspondenceStopwatch.elapsed,
             homographyDuration:
                 (fourPointEstimate.valueOrNull?.duration ?? Duration.zero) +
-                (multiPointEstimate?.valueOrNull?.duration ?? Duration.zero),
+                (multiPointEstimate?.valueOrNull?.duration ?? Duration.zero) +
+                (multiPointCrossValidation?.estimationDuration ??
+                    Duration.zero),
             warpDuration: warp.value.duration,
             detectionSize: session.openTimings.detectionSize,
             detectionScaleX: session.openTimings.detectionScaleX,
@@ -208,6 +239,9 @@ final class ArucoAlignmentEngine {
                 fourPointEstimate.valueOrNull?.duration ?? Duration.zero,
             multiPointHomographyDuration:
                 multiPointEstimate?.valueOrNull?.duration ?? Duration.zero,
+            candidateValidationDuration: validationStopwatch.elapsed,
+            selectionReason: selection.selectionReason,
+            fallbackReason: selection.fallbackReason,
           ),
           detectedMarkers: session.detection.markers,
         ),
@@ -220,34 +254,24 @@ final class ArucoAlignmentEngine {
   HomographyCandidateDiagnostics _evaluateCandidate({
     required BackendHomographyEstimate estimate,
     required AlignmentHomographyMethod method,
-    required List<MarkerCorrespondence> correspondences,
+    required List<MarkerCorrespondence> fittingCorrespondences,
+    required List<MarkerCorrespondence> fullCorrespondences,
+    required ReprojectionStatistics? heldOutValidationResiduals,
+    String? heldOutValidationUnavailableReason,
+    required PageLayout page,
+    required ImageSize sourceSize,
     required ArucoAlignmentConfig config,
   }) {
-    final errors = <double>[];
-    var projectionFailed = false;
-    for (final correspondence in correspondences) {
-      try {
-        errors.add(
-          estimate.homography
-              .project(correspondence.sourcePoint)
-              .distanceTo(correspondence.destinationPoint),
-        );
-      } on Object {
-        projectionFailed = true;
-        errors.add(double.infinity);
-      }
-    }
-    final sorted = List<double>.of(errors)..sort();
-    final mean =
-        errors.reduce((first, second) => first + second) / errors.length;
-    final median =
-        (sorted[sorted.length ~/ 2 - 1] + sorted[sorted.length ~/ 2]) / 2;
-    final maxError = errors.reduce(math.max);
+    final fitting = _residualStatistics(
+      estimate.homography,
+      fittingCorrespondences,
+    );
+    final full = _residualStatistics(estimate.homography, fullCorrespondences);
     final maskIsValid =
         method == AlignmentHomographyMethod.fourPoint ||
-        estimate.inliers.length == errors.length;
+        estimate.inliers.length == fittingCorrespondences.length;
     final inlierCount = method == AlignmentHomographyMethod.fourPoint
-        ? errors.length
+        ? fittingCorrespondences.length
         : estimate.inliers.where((value) => value).length;
     final perMarkerInliersAreSafe =
         method == AlignmentHomographyMethod.fourPoint ||
@@ -256,53 +280,212 @@ final class ArucoAlignmentEngine {
         method == AlignmentHomographyMethod.fourPoint ||
         (maskIsValid &&
             [
-              for (var index = 0; index < errors.length; index++)
-                if (estimate.inliers[index]) errors[index],
+              for (var index = 0; index < fitting.errors.length; index++)
+                if (estimate.inliers[index]) fitting.errors[index],
             ].every((error) => error <= config.maximumReprojectionErrorPixels));
-    final accepted =
-        !projectionFailed &&
-        _isNumericallyStable(estimate.homography) &&
-        mean.isFinite &&
-        median.isFinite &&
-        maxError.isFinite &&
-        maskIsValid &&
-        perMarkerInliersAreSafe &&
-        inlierErrorsAreSafe &&
+    final stabilityFailure = geometryValidator.validationFailure(
+      matrix: estimate.homography,
+      page: page,
+      sourceSize: sourceSize,
+      config: config,
+    );
+    String? rejectionReason;
+    if (!fitting.mean.isFinite || !full.mean.isFinite) {
+      rejectionReason = 'NON_FINITE_REPROJECTION';
+    } else if (!maskIsValid) {
+      rejectionReason = 'INVALID_INLIER_MASK';
+    } else if (!perMarkerInliersAreSafe) {
+      rejectionReason = 'UNSAFE_INLIER_DISTRIBUTION';
+    } else if (!inlierErrorsAreSafe) {
+      rejectionReason = 'INLIER_REPROJECTION_EXCEEDED';
+    } else if (stabilityFailure != null) {
+      rejectionReason = stabilityFailure;
+    } else if (method == AlignmentHomographyMethod.fourPoint &&
+        full.maximum > config.maximumReprojectionErrorPixels) {
+      rejectionReason = 'FULL_CORNER_CONSISTENCY_EXCEEDED';
+    } else if (method == AlignmentHomographyMethod.multiPoint &&
+        inlierCount / fitting.errors.length <
+            config.minimumMultipointInlierRatio) {
+      rejectionReason = 'INSUFFICIENT_MULTIPOINT_INLIERS';
+    } else if (method == AlignmentHomographyMethod.multiPoint &&
+        full.maximum > config.maximumRejectedCornerErrorPixels) {
+      rejectionReason = 'REJECTED_CORNER_ERROR_EXCEEDED';
+    } else if (heldOutValidationResiduals == null) {
+      rejectionReason =
+          'HELD_OUT_VALIDATION_UNAVAILABLE${heldOutValidationUnavailableReason == null ? '' : ':$heldOutValidationUnavailableReason'}';
+    } else if (heldOutValidationResiduals.maximum >
         (method == AlignmentHomographyMethod.fourPoint
-            ? maxError <= config.maximumReprojectionErrorPixels
-            : inlierCount / errors.length >=
-                      config.minimumMultipointInlierRatio &&
-                  maxError <= config.maximumRejectedCornerErrorPixels);
+            ? config.maximumReprojectionErrorPixels
+            : config.maximumHeldOutReprojectionErrorPixels)) {
+      rejectionReason = 'HELD_OUT_REPROJECTION_EXCEEDED';
+    }
+    final inliersPerMarker = method == AlignmentHomographyMethod.fourPoint
+        ? const [1, 1, 1, 1]
+        : [
+            for (var marker = 0; marker < 4; marker++)
+              estimate.inliers
+                  .skip(marker * 4)
+                  .take(4)
+                  .where((value) => value)
+                  .length,
+          ];
     return HomographyCandidateDiagnostics(
       method: method,
-      commonReprojectionErrors: errors,
-      meanCommonReprojectionError: mean,
-      medianCommonReprojectionError: median,
-      maxCommonReprojectionError: maxError,
+      commonReprojectionErrors: full.errors,
+      meanCommonReprojectionError: full.mean,
+      medianCommonReprojectionError: full.median,
+      maxCommonReprojectionError: full.maximum,
       inlierCount: inlierCount,
-      totalPointCount: errors.length,
-      accepted: accepted,
+      totalPointCount: fittingCorrespondences.length,
+      accepted: rejectionReason == null,
       duration: estimate.duration,
+      fittingResiduals: fitting,
+      heldOutValidationResiduals: heldOutValidationResiduals,
+      heldOutValidationMethod: method == AlignmentHomographyMethod.fourPoint
+          ? HomographyValidationMethod.unusedFittingCorners
+          : HomographyValidationMethod.leaveOneMarkerOut,
+      inliersPerMarker: inliersPerMarker,
+      rejectionReason: rejectionReason,
     );
   }
 
-  AlignmentHomographyMethod? _selectMethod(
+  _SelectionDecision _selectMethod(
     HomographyCandidateDiagnostics? fourPoint,
     HomographyCandidateDiagnostics? multiPoint,
     ArucoAlignmentConfig config,
   ) {
-    if (multiPoint?.accepted == true &&
-        (fourPoint?.accepted != true ||
-            multiPoint!.commonScore +
-                    config.minimumMultipointScoreImprovementPixels <
-                fourPoint!.commonScore)) {
-      return AlignmentHomographyMethod.multiPoint;
+    if (multiPoint?.accepted == true && fourPoint?.accepted != true) {
+      return const _SelectionDecision(
+        method: AlignmentHomographyMethod.multiPoint,
+        selectionReason: 'FOUR_POINT_REJECTED_MULTIPOINT_VALIDATED',
+        fallbackReason: 'FOUR_POINT_REJECTED',
+      );
     }
-    if (fourPoint?.accepted == true) return AlignmentHomographyMethod.fourPoint;
-    if (multiPoint?.accepted == true) {
-      return AlignmentHomographyMethod.multiPoint;
+    if (multiPoint?.accepted == true && fourPoint?.accepted == true) {
+      final multiScore = multiPoint!.heldOutValidationScore;
+      final fourScore = fourPoint!.heldOutValidationScore;
+      if (multiScore != null &&
+          fourScore != null &&
+          multiScore + config.minimumMultipointScoreImprovementPixels <
+              fourScore) {
+        return const _SelectionDecision(
+          method: AlignmentHomographyMethod.multiPoint,
+          selectionReason: 'MULTIPOINT_HELD_OUT_IMPROVEMENT',
+        );
+      }
+      return const _SelectionDecision(
+        method: AlignmentHomographyMethod.fourPoint,
+        selectionReason: 'BASELINE_PRESERVED_WITHOUT_HELD_OUT_BENEFIT',
+        fallbackReason: 'MULTIPOINT_NO_VALIDATED_BENEFIT',
+      );
     }
-    return null;
+    if (fourPoint?.accepted == true) {
+      return _SelectionDecision(
+        method: AlignmentHomographyMethod.fourPoint,
+        selectionReason: 'FOUR_POINT_ONLY_TRUSTWORTHY_CANDIDATE',
+        fallbackReason: multiPoint?.rejectionReason ?? 'MULTIPOINT_UNAVAILABLE',
+      );
+    }
+    return const _SelectionDecision(
+      selectionReason: 'NO_TRUSTWORTHY_HOMOGRAPHY',
+    );
+  }
+
+  List<MarkerCorrespondence> _fourPointHeldOutCorrespondences(
+    MarkerCorrespondenceSet set,
+  ) => [
+    for (final correspondence in set.allCornerCorrespondences)
+      if (correspondence.sourceCorner !=
+          DetectedRegistrationCorner.forRole(correspondence.role))
+        correspondence,
+  ];
+
+  ReprojectionStatistics _residualStatistics(
+    HomographyMatrix homography,
+    List<MarkerCorrespondence> correspondences,
+  ) => ReprojectionStatistics([
+    for (final correspondence in correspondences)
+      _reprojectionError(homography, correspondence),
+  ]);
+
+  double _reprojectionError(
+    HomographyMatrix homography,
+    MarkerCorrespondence correspondence,
+  ) {
+    try {
+      return homography
+          .project(correspondence.sourcePoint)
+          .distanceTo(correspondence.destinationPoint);
+    } on Object {
+      return double.infinity;
+    }
+  }
+
+  _CrossValidationResult _crossValidateMultipoint({
+    required ArucoImageSession session,
+    required List<MarkerCorrespondence> correspondences,
+    required PageLayout page,
+    required ArucoAlignmentConfig config,
+  }) {
+    final errors = <double>[];
+    var estimationDuration = Duration.zero;
+    final markerIds = correspondences.map((item) => item.markerId).toSet();
+    if (markerIds.length != 4) {
+      return const _CrossValidationResult(
+        unavailableReason: 'EXPECTED_FOUR_MARKERS',
+      );
+    }
+    for (final heldOutMarkerId in markerIds) {
+      final training = correspondences
+          .where((item) => item.markerId != heldOutMarkerId)
+          .toList(growable: false);
+      final heldOut = correspondences
+          .where((item) => item.markerId == heldOutMarkerId)
+          .toList(growable: false);
+      if (training.length != 12 || heldOut.length != 4) {
+        return const _CrossValidationResult(
+          unavailableReason: 'INVALID_MARKER_PARTITION',
+        );
+      }
+      final estimate = session.estimateHomography(
+        sourcePoints: training.map((item) => item.sourcePoint).toList(),
+        destinationPoints: training
+            .map((item) => item.destinationPoint)
+            .toList(),
+        method: HomographyEstimationMethod.multiPointRansac,
+        ransacReprojectionThresholdPixels:
+            config.multipointRansacReprojectionThresholdPixels,
+        maximumIterations: config.multipointMaximumIterations,
+        confidence: config.multipointConfidence,
+      );
+      if (estimate.isFailure) {
+        return _CrossValidationResult(
+          unavailableReason: 'ESTIMATION_FAILED_${estimate.error.code}',
+          estimationDuration: estimationDuration,
+        );
+      }
+      estimationDuration += estimate.value.duration;
+      final stabilityFailure = geometryValidator.validationFailure(
+        matrix: estimate.value.homography,
+        page: page,
+        sourceSize: session.sourceSize,
+        config: config,
+      );
+      if (stabilityFailure != null) {
+        return _CrossValidationResult(
+          unavailableReason: 'VALIDATION_MODEL_$stabilityFailure',
+          estimationDuration: estimationDuration,
+        );
+      }
+      errors.addAll([
+        for (final correspondence in heldOut)
+          _reprojectionError(estimate.value.homography, correspondence),
+      ]);
+    }
+    return _CrossValidationResult(
+      statistics: ReprojectionStatistics(errors),
+      estimationDuration: estimationDuration,
+    );
   }
 
   bool _eachMarkerHasThreeInliers(List<bool> inliers) {
@@ -317,18 +500,6 @@ final class ArucoAlignmentEngine {
     return true;
   }
 
-  bool _isNumericallyStable(HomographyMatrix matrix) {
-    final h = matrix.values;
-    final scale = h.map((value) => value.abs()).reduce(math.max);
-    if (!scale.isFinite || scale == 0) return false;
-    final determinant =
-        h[0] * (h[4] * h[8] - h[5] * h[7]) -
-        h[1] * (h[3] * h[8] - h[5] * h[6]) +
-        h[2] * (h[3] * h[7] - h[4] * h[6]);
-    return determinant.isFinite &&
-        determinant.abs() / (scale * scale * scale) > 1e-12;
-  }
-
   EngineResult<PageAlignmentResult> _failure(
     String code,
     String message, [
@@ -336,4 +507,28 @@ final class ArucoAlignmentEngine {
   ]) => EngineResult.failure(
     EngineError(code: code, message: message, details: details),
   );
+}
+
+final class _CrossValidationResult {
+  const _CrossValidationResult({
+    this.statistics,
+    this.unavailableReason,
+    this.estimationDuration = Duration.zero,
+  });
+
+  final ReprojectionStatistics? statistics;
+  final String? unavailableReason;
+  final Duration estimationDuration;
+}
+
+final class _SelectionDecision {
+  const _SelectionDecision({
+    this.method,
+    required this.selectionReason,
+    this.fallbackReason,
+  });
+
+  final AlignmentHomographyMethod? method;
+  final String selectionReason;
+  final String? fallbackReason;
 }
