@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../../core/errors/engine_error.dart';
@@ -84,6 +85,19 @@ final class ArucoAlignmentEngine {
         return EngineResult.failure(correspondenceResult.error);
       }
       final correspondenceSet = correspondenceResult.value;
+      final reprojectionScaleFactor = _reprojectionScaleFactor(
+        page,
+        correspondenceSet,
+        effectiveConfig,
+      );
+      final effectiveReprojectionError =
+          effectiveConfig.maximumReprojectionErrorPixels *
+          reprojectionScaleFactor;
+      final effectiveRansacThreshold = math.min(
+        effectiveConfig.maximumRejectedCornerErrorPixels,
+        effectiveConfig.multipointRansacReprojectionThresholdPixels *
+            reprojectionScaleFactor,
+      );
       final outputSize = ImageSize(
         width: page.canonicalPageSpec.widthPixels,
         height: page.canonicalPageSpec.heightPixels,
@@ -92,8 +106,7 @@ final class ArucoAlignmentEngine {
         sourcePoints: correspondenceSet.baselineSourcePoints,
         destinationPoints: correspondenceSet.baselineDestinationPoints,
         method: HomographyEstimationMethod.fourPoint,
-        ransacReprojectionThresholdPixels:
-            effectiveConfig.multipointRansacReprojectionThresholdPixels,
+        ransacReprojectionThresholdPixels: effectiveRansacThreshold,
         maximumIterations: effectiveConfig.multipointMaximumIterations,
         confidence: effectiveConfig.multipointConfidence,
       );
@@ -111,6 +124,8 @@ final class ArucoAlignmentEngine {
               page: page,
               sourceSize: session.sourceSize,
               config: effectiveConfig,
+              effectiveReprojectionErrorPixels: effectiveReprojectionError,
+              effectiveInlierReprojectionErrorPixels: effectiveRansacThreshold,
             )
           : null;
 
@@ -121,8 +136,7 @@ final class ArucoAlignmentEngine {
           sourcePoints: correspondenceSet.allSourcePoints,
           destinationPoints: correspondenceSet.allDestinationPoints,
           method: HomographyEstimationMethod.multiPointRansac,
-          ransacReprojectionThresholdPixels:
-              effectiveConfig.multipointRansacReprojectionThresholdPixels,
+          ransacReprojectionThresholdPixels: effectiveRansacThreshold,
           maximumIterations: effectiveConfig.multipointMaximumIterations,
           confidence: effectiveConfig.multipointConfidence,
         );
@@ -137,6 +151,8 @@ final class ArucoAlignmentEngine {
             page: page,
             sourceSize: session.sourceSize,
             config: effectiveConfig,
+            effectiveReprojectionErrorPixels: effectiveReprojectionError,
+            effectiveInlierReprojectionErrorPixels: effectiveRansacThreshold,
           );
         }
       }
@@ -231,6 +247,10 @@ final class ArucoAlignmentEngine {
             multiPointHomographyDuration:
                 multiPointEstimate?.valueOrNull?.duration ?? Duration.zero,
             candidateValidationDuration: validationStopwatch.elapsed,
+            reprojectionScaleFactor: reprojectionScaleFactor,
+            effectiveReprojectionErrorPixels: effectiveReprojectionError,
+            effectiveRansacReprojectionThresholdPixels:
+                effectiveRansacThreshold,
             selectionReason: selection.selectionReason,
             fallbackReason: selection.fallbackReason,
           ),
@@ -253,6 +273,8 @@ final class ArucoAlignmentEngine {
     required PageLayout page,
     required ImageSize sourceSize,
     required ArucoAlignmentConfig config,
+    required double effectiveReprojectionErrorPixels,
+    required double effectiveInlierReprojectionErrorPixels,
   }) {
     final fitting = _residualStatistics(
       estimate.homography,
@@ -274,7 +296,9 @@ final class ArucoAlignmentEngine {
             [
               for (var index = 0; index < fitting.errors.length; index++)
                 if (estimate.inliers[index]) fitting.errors[index],
-            ].every((error) => error <= config.maximumReprojectionErrorPixels));
+            ].every(
+              (error) => error <= effectiveInlierReprojectionErrorPixels,
+            ));
     final stabilityFailure = geometryValidator.validationFailure(
       matrix: estimate.homography,
       page: page,
@@ -293,7 +317,7 @@ final class ArucoAlignmentEngine {
     } else if (stabilityFailure != null) {
       rejectionReason = stabilityFailure;
     } else if (method == AlignmentHomographyMethod.fourPoint &&
-        full.maximum > config.maximumReprojectionErrorPixels) {
+        full.maximum > effectiveReprojectionErrorPixels) {
       rejectionReason = 'FULL_CORNER_CONSISTENCY_EXCEEDED';
     } else if (method == AlignmentHomographyMethod.multiPoint &&
         inlierCount / fitting.errors.length <
@@ -304,8 +328,7 @@ final class ArucoAlignmentEngine {
       rejectionReason = 'REJECTED_CORNER_ERROR_EXCEEDED';
     } else if (method == AlignmentHomographyMethod.fourPoint &&
         heldOutValidationResiduals != null &&
-        heldOutValidationResiduals.maximum >
-            config.maximumReprojectionErrorPixels) {
+        heldOutValidationResiduals.maximum > effectiveReprojectionErrorPixels) {
       rejectionReason = 'HELD_OUT_REPROJECTION_EXCEEDED';
     }
     final inliersPerMarker = method == AlignmentHomographyMethod.fourPoint
@@ -410,6 +433,29 @@ final class ArucoAlignmentEngine {
       if (count < 3) return false;
     }
     return true;
+  }
+
+  double _reprojectionScaleFactor(
+    PageLayout page,
+    MarkerCorrespondenceSet correspondences,
+    ArucoAlignmentConfig config,
+  ) {
+    final canonicalWidth = page.canonicalPageSpec.widthPixels.toDouble();
+    final canonicalHeight = page.canonicalPageSpec.heightPixels.toDouble();
+    final scaleFactors = [
+      for (final observation in correspondences.observations)
+        math.max(
+              observation.expectedRegion.normalizedMarkerBounds.width.value *
+                  canonicalWidth,
+              observation.expectedRegion.normalizedMarkerBounds.height.value *
+                  canonicalHeight,
+            ) /
+            observation.detectedMarker.minimumSideLength,
+    ];
+    final maximumUsefulFactor =
+        config.maximumRejectedCornerErrorPixels /
+        config.maximumReprojectionErrorPixels;
+    return scaleFactors.reduce(math.max).clamp(1.0, maximumUsefulFactor);
   }
 
   EngineResult<PageAlignmentResult> _failure(

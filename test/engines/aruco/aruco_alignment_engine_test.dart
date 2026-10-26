@@ -93,11 +93,11 @@ void main() {
     expect(result.value.correspondences, hasLength(16));
     expect(
       result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.fourPoint,
+      AlignmentHomographyMethod.multiPoint,
     );
     expect(
       result.value.diagnostics.selectionPolicy,
-      HomographySelectionPolicy.fourPointBaseline,
+      HomographySelectionPolicy.validatedMultiPointPreference,
     );
     expect(result.value.diagnostics.fourPointCandidate, isNotNull);
     expect(result.value.diagnostics.multiPointCandidate, isNotNull);
@@ -197,6 +197,9 @@ void main() {
 
       final result = ArucoAlignmentEngine(
         backend: backend,
+        config: ArucoAlignmentConfig(
+          selectionPolicy: HomographySelectionPolicy.fourPointBaseline,
+        ),
       ).align(Uint8List.fromList([1]), page);
 
       expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
@@ -293,7 +296,7 @@ void main() {
     expect(backend.session!.warpCount, 1);
   });
 
-  test('four-point remains selected when multi-point is not better', () {
+  test('explicit rollback policy preserves four-point preference', () {
     final page = _page();
     final backend = _FakeBackend(
       _detectionFor(page),
@@ -302,6 +305,9 @@ void main() {
 
     final result = ArucoAlignmentEngine(
       backend: backend,
+      config: ArucoAlignmentConfig(
+        selectionPolicy: HomographySelectionPolicy.fourPointBaseline,
+      ),
     ).align(Uint8List.fromList([1]), page);
 
     expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
@@ -329,12 +335,9 @@ void main() {
     expect(multi.rejectionReason, isNull);
     expect(
       result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.fourPoint,
+      AlignmentHomographyMethod.multiPoint,
     );
-    expect(
-      result.value.diagnostics.fallbackReason,
-      'MULTIPOINT_RESERVED_FOR_UNSAFE_BASELINE',
-    );
+    expect(result.value.diagnostics.fallbackReason, isNull);
   });
 
   for (final fixture in <(String, HomographyMatrix)>[
@@ -371,6 +374,77 @@ void main() {
       );
     });
   }
+
+  test('reduced readable geometry scales localization tolerance', () {
+    final page = _page();
+    final canonicalToSource = HomographyMatrix([
+      0.62,
+      0,
+      40,
+      0,
+      0.62,
+      55,
+      0,
+      0,
+      1,
+    ]);
+    final detection = _perturbDetection(
+      _transformedDetection(page, canonicalToSource),
+      0.75,
+    );
+    final backend = _FakeBackend(
+      detection,
+      homography: canonicalToSource.inverse(),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(result.value.diagnostics.reprojectionScaleFactor, greaterThan(1));
+    expect(
+      result.value.diagnostics.effectiveReprojectionErrorPixels,
+      greaterThan(1),
+    );
+    expect(
+      result.value.diagnostics.maxReprojectionError,
+      lessThanOrEqualTo(
+        result.value.diagnostics.effectiveRansacReprojectionThresholdPixels!,
+      ),
+    );
+  });
+
+  test('scale-aware tolerance retains absolute gross-outlier ceiling', () {
+    final page = _page();
+    final canonicalToSource = HomographyMatrix([
+      0.62,
+      0,
+      40,
+      0,
+      0.62,
+      55,
+      0,
+      0,
+      1,
+    ]);
+    final detection = _perturbDetection(
+      _transformedDetection(page, canonicalToSource),
+      3.0,
+    );
+    final backend = _FakeBackend(
+      detection,
+      homography: canonicalToSource.inverse(),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isFailure, isTrue);
+    expect(result.error.code, 'ARUCO_REPROJECTION_FAILED');
+    expect(backend.session!.warpCount, 0);
+  });
 
   test('four-point remains operational when multi-point is disabled', () {
     final page = _page();
@@ -532,6 +606,54 @@ ArucoDetection _transformedDetection(
       height: transformedPageCorner.y.ceil() + 80,
     ),
     markers: markers,
+  );
+}
+
+ArucoDetection _perturbDetection(ArucoDetection detection, double pixels) =>
+    ArucoDetection(
+      sourceSize: detection.sourceSize,
+      markers: [
+        for (var index = 0; index < detection.markers.length; index++)
+          DetectedMarker(
+            id: detection.markers[index].id,
+            topLeft: _offsetCorner(
+              detection.markers[index].corner(MarkerCorner.topLeft),
+              pixels,
+              index,
+              0,
+            ),
+            topRight: _offsetCorner(
+              detection.markers[index].corner(MarkerCorner.topRight),
+              pixels,
+              index,
+              1,
+            ),
+            bottomRight: _offsetCorner(
+              detection.markers[index].corner(MarkerCorner.bottomRight),
+              pixels,
+              index,
+              2,
+            ),
+            bottomLeft: _offsetCorner(
+              detection.markers[index].corner(MarkerCorner.bottomLeft),
+              pixels,
+              index,
+              3,
+            ),
+          ),
+      ],
+    );
+
+ImagePoint _offsetCorner(
+  ImagePoint point,
+  double pixels,
+  int markerIndex,
+  int cornerIndex,
+) {
+  final phase = markerIndex * 4 + cornerIndex;
+  return ImagePoint(
+    point.x + (phase.isEven ? pixels : -pixels),
+    point.y + (phase % 3 == 0 ? -pixels : pixels),
   );
 }
 

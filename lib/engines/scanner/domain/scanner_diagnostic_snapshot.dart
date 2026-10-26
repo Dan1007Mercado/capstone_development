@@ -110,6 +110,14 @@ final class ScannerDiagnosticSnapshot {
             result.diagnostics.alignment.selectionPolicy.name,
         'selectionReason': result.diagnostics.alignment.selectionReason,
         'fallbackReason': result.diagnostics.alignment.fallbackReason,
+        'reprojectionScaleFactor':
+            result.diagnostics.alignment.reprojectionScaleFactor,
+        'effectiveReprojectionErrorPixels':
+            result.diagnostics.alignment.effectiveReprojectionErrorPixels,
+        'effectiveRansacReprojectionThresholdPixels': result
+            .diagnostics
+            .alignment
+            .effectiveRansacReprojectionThresholdPixels,
         'meanReprojectionError':
             result.diagnostics.alignment.meanReprojectionError,
         'maxReprojectionError':

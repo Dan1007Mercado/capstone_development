@@ -85,7 +85,18 @@ void main() {
       12,
       13,
     });
-    expect(result.value.diagnostics.maxReprojectionError, lessThan(0.01));
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.multiPoint,
+    );
+    expect(
+      result.value.diagnostics.maxReprojectionError,
+      result.value.diagnostics.multiPointCandidate!.maxCommonReprojectionError,
+    );
+    expect(
+      result.value.diagnostics.maxReprojectionError,
+      lessThan(ArucoAlignmentConfig().maximumRejectedCornerErrorPixels),
+    );
   });
 
   test('native detector corner order matches all 16 published corners', () {
@@ -473,7 +484,14 @@ void main() {
       12,
       13,
     });
-    expect(result.value.diagnostics.maxReprojectionError, lessThan(0.01));
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.multiPoint,
+    );
+    expect(
+      result.value.diagnostics.maxReprojectionError,
+      lessThan(ArucoAlignmentConfig().maximumRejectedCornerErrorPixels),
+    );
   });
 
   test('translated complete page aligns inside a larger source image', () {
@@ -506,6 +524,11 @@ void main() {
     final result = _align(scaled, page);
 
     expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(result.value.diagnostics.reprojectionScaleFactor, greaterThan(1));
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.multiPoint,
+    );
   });
 
   test(
@@ -601,7 +624,9 @@ void main() {
     final result = _align(missing, page);
 
     expect(result.isFailure, isTrue);
-    expect(result.error.code, 'ARUCO_REQUIRED_MARKER_MISSING');
+    // Final-still identity validation intentionally rejects the incomplete
+    // expected marker signature before correspondence construction.
+    expect(result.error.code, 'SCAN_UNKNOWN_PAGE_MARKERS');
   });
 
   test('duplicate required marker returns ambiguity failure', () {
@@ -620,7 +645,9 @@ void main() {
     final result = _align(duplicate, page);
 
     expect(result.isFailure, isTrue);
-    expect(result.error.code, 'ARUCO_REQUIRED_MARKER_DUPLICATE');
+    // Duplicate page IDs are rejected by final-still identity validation
+    // before the lower-level correspondence ambiguity check.
+    expect(result.error.code, 'SCAN_DUPLICATE_PAGE_MARKERS');
   });
 
   test('severe degenerate perspective fails safely', () {

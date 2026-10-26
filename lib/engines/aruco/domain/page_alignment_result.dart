@@ -209,12 +209,16 @@ final class PageAlignmentDiagnostics {
     this.detectionScaleX = 1,
     this.detectionScaleY = 1,
     this.selectedHomographyMethod = AlignmentHomographyMethod.fourPoint,
-    this.selectionPolicy = HomographySelectionPolicy.fourPointBaseline,
+    this.selectionPolicy =
+        HomographySelectionPolicy.validatedMultiPointPreference,
     this.fourPointCandidate,
     this.multiPointCandidate,
     this.fourPointHomographyDuration = Duration.zero,
     this.multiPointHomographyDuration = Duration.zero,
     this.candidateValidationDuration = Duration.zero,
+    this.reprojectionScaleFactor = 1,
+    this.effectiveReprojectionErrorPixels,
+    this.effectiveRansacReprojectionThresholdPixels,
     this.selectionReason,
     this.fallbackReason,
   }) : expectedMarkerIds = UnmodifiableListView(List.of(expectedMarkerIds)),
@@ -260,6 +264,9 @@ final class PageAlignmentDiagnostics {
   final Duration fourPointHomographyDuration;
   final Duration multiPointHomographyDuration;
   final Duration candidateValidationDuration;
+  final double reprojectionScaleFactor;
+  final double? effectiveReprojectionErrorPixels;
+  final double? effectiveRansacReprojectionThresholdPixels;
   final String? selectionReason;
   final String? fallbackReason;
 }
