@@ -273,6 +273,12 @@ final class ScannerDebugReportBuilder {
       )
       ..writeln(
         'Fallback reason: ${alignment?.fallbackReason ?? 'unavailable'}',
+      )
+      ..writeln(
+        'Compact alignment summary: ${_alignmentSummary(alignment, error)}',
+      )
+      ..writeln(
+        'Worst corners: ${_worstCorners(alignment)}',
       );
     _writeCandidate(buffer, 'Four-point', alignment?.fourPointCandidate);
     _writeCandidate(buffer, 'Multi-point', alignment?.multiPointCandidate);
@@ -472,6 +478,43 @@ final class ScannerDebugReportBuilder {
         '$label geometry validation: '
         '${candidate == null ? 'unavailable' : candidate.geometryValidationFailure ?? 'passed'}',
       );
+  }
+
+  static String _alignmentSummary(
+    PageAlignmentDiagnostics? alignment,
+    EngineError? error,
+  ) {
+    if (alignment != null) {
+      final allMarkers = alignment.expectedMarkerIds.toSet().difference(
+        alignment.detectedMarkerIds.toSet(),
+      ).isEmpty;
+      final multi = alignment.multiPointCandidate;
+      return 'markers=${allMarkers ? 'all detected' : 'missing'}; '
+          'selected=${alignment.selectedHomographyMethod.name}; '
+          'multi=${multi == null ? 'not run' : multi.accepted ? 'accepted' : 'rejected (${multi.rejectionReason})'}';
+    }
+    final four = _deepestDetail(error, 'fourPointRejectionReason');
+    final multi = _deepestDetail(error, 'multiPointRejectionReason');
+    return 'alignment failed; four=${four ?? 'unavailable'}; '
+        'multi=${multi ?? 'unavailable'}';
+  }
+
+  static String _worstCorners(PageAlignmentDiagnostics? alignment) {
+    if (alignment == null || alignment.reprojectionErrors.isEmpty) {
+      return 'unavailable';
+    }
+    final indexed = [
+      for (var index = 0; index < alignment.reprojectionErrors.length; index++)
+        (index: index, error: alignment.reprojectionErrors[index]),
+    ]..sort((left, right) => right.error.compareTo(left.error));
+    return indexed.take(4).map((entry) {
+      final markerIndex = entry.index ~/ 4;
+      final marker = markerIndex < alignment.expectedMarkerIds.length
+          ? alignment.expectedMarkerIds[markerIndex]
+          : '?';
+      const corners = ['TL', 'TR', 'BR', 'BL'];
+      return 'marker $marker ${corners[entry.index % 4]}=${_fixed(entry.error)}px';
+    }).join(', ');
   }
 }
 

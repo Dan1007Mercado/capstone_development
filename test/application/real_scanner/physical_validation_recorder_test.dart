@@ -1,4 +1,5 @@
 import 'package:capstone_development/application/real_scanner/physical_validation_recorder.dart';
+import 'package:capstone_development/application/real_scanner/android_omr_acceptance.dart';
 import 'package:capstone_development/application/real_scanner/published_scanner_resolver.dart';
 import 'package:capstone_development/application/real_scanner/scanner_validation_session.dart';
 import 'package:capstone_development/core/ids/identifiers.dart';
@@ -112,6 +113,51 @@ void main() {
     expect(continued.value.validationPlan, same(plan));
     expect(continued.value.validationReport?.summary.correct, 40);
   });
+
+  test('known-answer plans round trip for local import', () {
+    final inputs = buildP13_6DenseValidationInputs();
+    final plan = buildP13_8DenseKnownAnswerPlan(inputs.template)!;
+
+    final restored = PhysicalValidationPlan.fromJson(plan.toJson());
+
+    expect(restored.templateId, plan.templateId);
+    expect(restored.templateVersion, plan.templateVersion);
+    expect(restored.answersByQuestion.length, plan.answersByQuestion.length);
+    expect(restored.answersByQuestion[QuestionId('dense-q01')]!.optionIds, [
+      OptionId('dense-q01-2'),
+    ]);
+  });
+
+  test(
+    'Android acceptance summary requires the complete 25-attempt matrix',
+    () {
+      final inputs = buildP13_6DenseValidationInputs();
+      final plan = buildP13_8DenseKnownAnswerPlan(inputs.template)!;
+      final result = _result(plan, inputs.layout.pages.single);
+      final attempts = [
+        for (final scenario in AndroidOmrScenario.values)
+          for (var attempt = 1; attempt <= 5; attempt++)
+            AndroidOmrAcceptanceAttempt(
+              scenario: scenario,
+              attemptNumber: attempt,
+              deviceModel: 'Infinix X6711',
+              startedAtUtc: DateTime.utc(2026, 10, 27),
+              cameraCaptureDuration: const Duration(milliseconds: 35),
+              duration: Duration(milliseconds: 100 + attempt),
+              expectedPlan: plan,
+              result: result,
+            ),
+      ];
+
+      final report = AndroidOmrAcceptanceReport.build(attempts);
+
+      expect(report.summary['matrixComplete'], isTrue);
+      expect(report.summary['acceptedAttempts'], 25);
+      expect(report.summary['acceptedQuestionAccuracy'], 1);
+      expect(report.summary['latencyP95Ms'], 105);
+      expect(report.summary['rejectedAttempts'], 0);
+    },
+  );
 }
 
 ScanResult _result(

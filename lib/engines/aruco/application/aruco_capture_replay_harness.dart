@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../../../core/errors/engine_error.dart';
 import '../../../core/result/engine_result.dart';
 import '../../layout/domain/page_layout.dart';
+import '../../recognition/application/bubble_alignment_evidence.dart';
 import '../domain/aruco_alignment_config.dart';
 import '../domain/aruco_vision_backend.dart';
 import '../domain/detected_marker.dart';
@@ -24,12 +25,14 @@ final class ArucoCaptureReplayHarness {
     this.disposeBackend,
     this.correspondenceService = const MarkerCorrespondenceService(),
     this.geometryValidator = const HomographyGeometryValidator(),
+    this.bubbleEvidenceEvaluator = const BubbleAlignmentEvidenceEvaluator(),
   });
 
   final ArucoVisionBackendFactory backendFactory;
   final ArucoVisionBackendDisposer? disposeBackend;
   final MarkerCorrespondenceService correspondenceService;
   final HomographyGeometryValidator geometryValidator;
+  final BubbleAlignmentEvidenceEvaluator bubbleEvidenceEvaluator;
 
   ArucoCaptureReplayResult run(
     Uint8List encodedImage,
@@ -53,17 +56,73 @@ final class ArucoCaptureReplayHarness {
           ArucoAlignmentConfig(enableMultipointHomography: false),
     );
     final multiBackend = backendFactory();
-    final multi = _runCurrent(
+    final multiRun = _runCurrent(
       backend: multiBackend,
+      encodedImage: encodedImage,
+      page: page,
+      config: currentMultiPointConfig ?? ArucoAlignmentConfig(),
+    );
+    final productionBackend = backendFactory();
+    final production = _runCurrent(
+      backend: productionBackend,
       encodedImage: encodedImage,
       page: page,
       config: currentMultiPointConfig ?? ArucoAlignmentConfig(),
     );
     return ArucoCaptureReplayResult(
       legacyFourPoint: legacy,
-      currentFourPoint: four,
-      currentMultiPoint: multi,
+      currentFourPointCandidate: _candidateReplay(
+        four,
+        AlignmentHomographyMethod.fourPoint,
+        page,
+      ),
+      currentMultiPointCandidate: _candidateReplay(
+        multiRun,
+        AlignmentHomographyMethod.multiPoint,
+        page,
+      ),
+      productionSelection: production,
+      productionBubbleEvidence: production.isSuccess
+          ? bubbleEvidenceEvaluator.evaluate(
+              production.value.canonicalPage,
+              page,
+            )
+          : null,
       canonicalBubbleCenters: _canonicalBubbleCenters(page),
+    );
+  }
+
+  EngineResult<HomographyCandidateReplay> _candidateReplay(
+    EngineResult<PageAlignmentResult> result,
+    AlignmentHomographyMethod method,
+    PageLayout page,
+  ) {
+    if (result.isFailure) return EngineResult.failure(result.error);
+    final alignment = result.value;
+    final candidate = method == AlignmentHomographyMethod.fourPoint
+        ? alignment.diagnostics.fourPointCandidate
+        : alignment.diagnostics.multiPointCandidate;
+    if (candidate == null) {
+      return EngineResult.failure(
+        EngineError(
+          code: 'ARUCO_REPLAY_CANDIDATE_UNAVAILABLE',
+          message: 'The requested ${method.name} candidate was not estimated.',
+        ),
+      );
+    }
+    final selected = alignment.diagnostics.selectedHomographyMethod == method;
+    return EngineResult.success(
+      HomographyCandidateReplay(
+        candidate: candidate,
+        selectedForWarp: selected,
+        homography: selected ? alignment.homography : null,
+        canonicalPage: selected ? alignment.canonicalPage : null,
+        bubbleEvidence: selected
+            ? bubbleEvidenceEvaluator.evaluate(alignment.canonicalPage, page)
+            : null,
+        actualSelectionReason: alignment.diagnostics.selectionReason,
+        actualFallbackReason: alignment.diagnostics.fallbackReason,
+      ),
     );
   }
 
@@ -127,11 +186,13 @@ final class ArucoCaptureReplayHarness {
           detectedMarkers: session.detection.markers,
           fittingResiduals: fittingErrors,
           allCornerResiduals: allCornerErrors,
-          acceptedByPreMultipointFittingGate:
-              fittingErrors.every(
-                (error) => error <= config.maximumReprojectionErrorPixels,
-              ) &&
-              geometryFailure == null,
+          bubbleEvidence: bubbleEvidenceEvaluator.evaluate(
+            warp.value.canonicalPage,
+            page,
+          ),
+          acceptedByLegacyFittingGate: fittingErrors.every(
+            (error) => error <= config.maximumReprojectionErrorPixels,
+          ),
           geometryValidationFailure: geometryFailure,
         ),
       );
@@ -191,17 +252,41 @@ final class ArucoCaptureReplayHarness {
 final class ArucoCaptureReplayResult {
   ArucoCaptureReplayResult({
     required this.legacyFourPoint,
-    required this.currentFourPoint,
-    required this.currentMultiPoint,
+    required this.currentFourPointCandidate,
+    required this.currentMultiPointCandidate,
+    required this.productionSelection,
+    required this.productionBubbleEvidence,
     required Iterable<ImagePoint> canonicalBubbleCenters,
   }) : canonicalBubbleCenters = UnmodifiableListView(
          List.of(canonicalBubbleCenters),
        );
 
   final EngineResult<LegacyFourPointReplay> legacyFourPoint;
-  final EngineResult<PageAlignmentResult> currentFourPoint;
-  final EngineResult<PageAlignmentResult> currentMultiPoint;
+  final EngineResult<HomographyCandidateReplay> currentFourPointCandidate;
+  final EngineResult<HomographyCandidateReplay> currentMultiPointCandidate;
+  final EngineResult<PageAlignmentResult> productionSelection;
+  final BubbleAlignmentEvidence? productionBubbleEvidence;
   final List<ImagePoint> canonicalBubbleCenters;
+}
+
+final class HomographyCandidateReplay {
+  const HomographyCandidateReplay({
+    required this.candidate,
+    required this.selectedForWarp,
+    required this.homography,
+    required this.canonicalPage,
+    required this.bubbleEvidence,
+    required this.actualSelectionReason,
+    required this.actualFallbackReason,
+  });
+
+  final HomographyCandidateDiagnostics candidate;
+  final bool selectedForWarp;
+  final HomographyMatrix? homography;
+  final CanonicalPageImage? canonicalPage;
+  final BubbleAlignmentEvidence? bubbleEvidence;
+  final String? actualSelectionReason;
+  final String? actualFallbackReason;
 }
 
 final class LegacyFourPointReplay {
@@ -211,7 +296,8 @@ final class LegacyFourPointReplay {
     required Iterable<DetectedMarker> detectedMarkers,
     required Iterable<double> fittingResiduals,
     required Iterable<double> allCornerResiduals,
-    required this.acceptedByPreMultipointFittingGate,
+    required this.bubbleEvidence,
+    required this.acceptedByLegacyFittingGate,
     required this.geometryValidationFailure,
   }) : detectedMarkers = UnmodifiableListView(List.of(detectedMarkers)),
        fittingResiduals = UnmodifiableListView(List.of(fittingResiduals)),
@@ -222,6 +308,7 @@ final class LegacyFourPointReplay {
   final List<DetectedMarker> detectedMarkers;
   final List<double> fittingResiduals;
   final List<double> allCornerResiduals;
-  final bool acceptedByPreMultipointFittingGate;
+  final BubbleAlignmentEvidence bubbleEvidence;
+  final bool acceptedByLegacyFittingGate;
   final String? geometryValidationFailure;
 }

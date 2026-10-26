@@ -38,6 +38,40 @@ final class PhysicalValidationPlan {
   final TemplateId templateId;
   final TemplateVersion templateVersion;
   final Map<QuestionId, PhysicalValidationExpectedAnswer> answersByQuestion;
+
+  factory PhysicalValidationPlan.fromJson(Map<String, Object?> value) =>
+      PhysicalValidationPlan(
+        templateId: TemplateId(value['templateId'] as String),
+        templateVersion: TemplateVersion(
+          (value['templateVersion'] as num).toInt(),
+        ),
+        answers: [
+          for (final raw in value['answers'] as List)
+            PhysicalValidationExpectedAnswer(
+              questionId: QuestionId((raw as Map)['questionId'] as String),
+              state: MarkState.values.byName(raw['state'] as String),
+              optionIds: [
+                for (final id in (raw['optionIds'] as List? ?? const []))
+                  OptionId(id as String),
+              ],
+              numericAnswer: raw['numericAnswer'] as String?,
+            ),
+        ],
+      );
+
+  Map<String, Object?> toJson() => {
+    'templateId': templateId.value,
+    'templateVersion': templateVersion.value,
+    'answers': [
+      for (final answer in answersByQuestion.values)
+        {
+          'questionId': answer.questionId.value,
+          'state': answer.state.name,
+          'optionIds': answer.optionIds.map((id) => id.value).toList(),
+          'numericAnswer': answer.numericAnswer,
+        },
+    ],
+  };
 }
 
 /// P13.8's repeatable printed-paper protocol: mark B on Q01 and C on Q21;

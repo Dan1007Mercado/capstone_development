@@ -1,14 +1,13 @@
-import 'dart:convert';
-
-import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/errors/engine_error.dart';
-import '../../core/geometry/physical_geometry.dart';
 import '../../core/result/engine_result.dart';
+import '../../engines/layout/domain/layout_config.dart';
+import '../../engines/layout/domain/page_layout.dart';
 import '../camera_scanner/domain/camera_scan_context.dart';
 import '../camera_scanner/domain/camera_scan_ports.dart';
+import 'failed_scan_replay_bundle.dart';
 
 /// Disabled unless a debug build explicitly supplies
 /// `--dart-define=ENABLE_FAILED_SCAN_CAPTURE_EXPORT=true`.
@@ -95,92 +94,35 @@ final class FailedScanCaptureExporter {
   }
 
   Uint8List buildBundle(FailedScanCapture capture) {
-    final extension = _imageExtension(capture.encodedImage);
-    final manifestBytes = utf8.encode(
-      const JsonEncoder.withIndent('  ').convert(_manifest(capture)),
-    );
-    final archive = Archive()
-      ..addFile(
-        ArchiveFile(
-          'captured_still.$extension',
-          capture.encodedImage.length,
-          capture.encodedImage,
-        ),
-      )
-      ..addFile(
-        ArchiveFile(
-          'replay_manifest.json',
-          manifestBytes.length,
-          manifestBytes,
-        ),
-      );
-    return Uint8List.fromList(ZipEncoder().encode(archive)!);
-  }
-
-  Map<String, Object?> _manifest(FailedScanCapture capture) {
     final context = capture.context;
-    final page = context.pageLayout;
-    final alignment = context.scannerConfig.alignment;
-    Map<String, double> rect(PhysicalRect value) => {
-      'leftMm': value.left.millimeters,
-      'topMm': value.top.millimeters,
-      'widthMm': value.width.millimeters,
-      'heightMm': value.height.millimeters,
-    };
-
-    return {
-      'formatVersion': 1,
-      'capturedAtUtc': capture.timestamp.toIso8601String(),
-      'failureCode': capture.error.code,
-      'templateId': context.templateId.value,
-      'templateVersion': context.templateVersion.value,
-      'pageId': context.pageId.value,
-      'pageIndex': page.pageIndex,
-      'pageSizeMm': {
-        'width': page.pageSpec.size.width.millimeters,
-        'height': page.pageSpec.size.height.millimeters,
-      },
-      'canonicalSize': {
-        'width': page.canonicalPageSpec.widthPixels,
-        'height': page.canonicalPageSpec.heightPixels,
-      },
-      'markers': [
-        for (final marker in page.markerRegions)
-          {
-            'id': marker.markerId,
-            'role': marker.role.name,
-            'printBounds': rect(marker.physicalBounds),
-            'detectableBounds': rect(marker.physicalMarkerBounds),
-          },
-      ],
-      'bubbleBounds': [
-        for (final bubble in page.bubbleRegions) rect(bubble.physicalBounds),
-      ],
-      'alignmentConfig': {
-        'dictionary': alignment.dictionary.name,
-        'finalMarkerDetectionMaxDimension':
-            alignment.finalMarkerDetectionMaxDimension,
-        'maximumReprojectionErrorPixels':
-            alignment.maximumReprojectionErrorPixels,
-        'multipointRansacReprojectionThresholdPixels':
-            alignment.multipointRansacReprojectionThresholdPixels,
-        'minimumMultipointInlierRatio': alignment.minimumMultipointInlierRatio,
-        'maximumRejectedCornerErrorPixels':
-            alignment.maximumRejectedCornerErrorPixels,
-        'maximumLocalizationScaleFactor':
-            alignment.maximumLocalizationScaleFactor,
-      },
-    };
+    final pages = context.availablePages.toList()
+      ..sort((left, right) => left.pageIndex.compareTo(right.pageIndex));
+    final layout = LayoutDocument(
+      templateId: context.templateId,
+      templateVersion: context.templateVersion,
+      pages: pages,
+    );
+    return const FailedScanReplayBundleCodec().encode(
+      FailedScanReplayBundle(
+        encodedImage: capture.encodedImage,
+        template: context.template,
+        layout: layout,
+        layoutProfile: _inferProfile(pages),
+        pageId: context.pageId,
+        scannerConfig: context.scannerConfig,
+        failure: capture.error,
+        capturedAtUtc: capture.timestamp,
+      ),
+    );
   }
 
-  String _imageExtension(Uint8List bytes) {
-    if (bytes.length >= 8 &&
-        bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4e &&
-        bytes[3] == 0x47) {
-      return 'png';
-    }
-    return 'jpg';
+  LayoutProfile _inferProfile(List<PageLayout> pages) {
+    final columns = pages.fold<int>(
+      0,
+      (maximum, page) => page.contentColumnRegions.length > maximum
+          ? page.contentColumnRegions.length
+          : maximum,
+    );
+    return columns > 1 ? LayoutProfile.dense : LayoutProfile.comfortable;
   }
 }

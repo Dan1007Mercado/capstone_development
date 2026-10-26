@@ -580,23 +580,25 @@ void main() {
       ).run(Uint8List.fromList([1, 2, 3]), page);
 
       expect(replay.legacyFourPoint.isSuccess, isTrue);
-      expect(
-        replay.legacyFourPoint.value.acceptedByPreMultipointFittingGate,
-        isTrue,
-      );
+      expect(replay.legacyFourPoint.value.acceptedByLegacyFittingGate, isTrue);
       expect(replay.legacyFourPoint.value.fittingResiduals, hasLength(4));
       expect(replay.legacyFourPoint.value.allCornerResiduals, hasLength(16));
-      expect(replay.currentFourPoint.isSuccess, isTrue);
-      expect(replay.currentMultiPoint.isSuccess, isTrue);
+      expect(replay.currentFourPointCandidate.isSuccess, isTrue);
+      expect(replay.currentMultiPointCandidate.isSuccess, isTrue);
       expect(
-        replay.currentMultiPoint.value.diagnostics.selectedHomographyMethod,
+        replay.currentMultiPointCandidate.value.candidate.method,
+        AlignmentHomographyMethod.multiPoint,
+      );
+      expect(replay.productionSelection.isSuccess, isTrue);
+      expect(
+        replay.productionSelection.value.diagnostics.selectedHomographyMethod,
         AlignmentHomographyMethod.multiPoint,
       );
       expect(
         replay.canonicalBubbleCenters,
         hasLength(page.bubbleRegions.length),
       );
-      expect(disposedBackends, 3);
+      expect(disposedBackends, 4);
     },
   );
 
