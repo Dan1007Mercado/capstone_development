@@ -95,6 +95,10 @@ void main() {
       result.value.diagnostics.selectedHomographyMethod,
       AlignmentHomographyMethod.fourPoint,
     );
+    expect(
+      result.value.diagnostics.selectionPolicy,
+      HomographySelectionPolicy.fourPointBaseline,
+    );
     expect(result.value.diagnostics.fourPointCandidate, isNotNull);
     expect(result.value.diagnostics.multiPointCandidate, isNotNull);
     expect(result.value.diagnostics.reprojectionErrors, everyElement(0));
@@ -234,6 +238,58 @@ void main() {
       'FULL_CORNER_CONSISTENCY_EXCEEDED',
     );
     expect(backend.session!.estimationMethods, hasLength(2));
+    expect(backend.session!.warpCount, 1);
+  });
+
+  test('validated accuracy policy can prefer a safe multi-point estimate', () {
+    final page = _page();
+    final backend = _FakeBackend(_detectionFor(page));
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+      config: ArucoAlignmentConfig(
+        selectionPolicy:
+            HomographySelectionPolicy.validatedMultiPointPreference,
+      ),
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.multiPoint,
+    );
+    expect(
+      result.value.diagnostics.selectionReason,
+      'EMPIRICALLY_VALIDATED_MULTIPOINT_PREFERENCE',
+    );
+    expect(backend.session!.estimationMethods, hasLength(2));
+    expect(backend.session!.warpCount, 1);
+  });
+
+  test('validated accuracy policy falls back from unsafe multi-point', () {
+    final page = _page();
+    final backend = _FakeBackend(
+      _detectionFor(page),
+      multiPointHomography: HomographyMatrix([1, 0, 5, 0, 1, 0, 0, 0, 1]),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+      config: ArucoAlignmentConfig(
+        selectionPolicy:
+            HomographySelectionPolicy.validatedMultiPointPreference,
+      ),
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.fourPoint,
+    );
+    expect(
+      result.value.diagnostics.fallbackReason,
+      'INLIER_REPROJECTION_EXCEEDED',
+    );
     expect(backend.session!.warpCount, 1);
   });
 

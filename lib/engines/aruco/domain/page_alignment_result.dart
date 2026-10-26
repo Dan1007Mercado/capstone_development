@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'image_geometry.dart';
+import 'aruco_alignment_config.dart';
 import 'detected_marker.dart';
 import 'marker_correspondence.dart';
 
@@ -208,6 +209,7 @@ final class PageAlignmentDiagnostics {
     this.detectionScaleX = 1,
     this.detectionScaleY = 1,
     this.selectedHomographyMethod = AlignmentHomographyMethod.fourPoint,
+    this.selectionPolicy = HomographySelectionPolicy.fourPointBaseline,
     this.fourPointCandidate,
     this.multiPointCandidate,
     this.fourPointHomographyDuration = Duration.zero,
@@ -252,6 +254,7 @@ final class PageAlignmentDiagnostics {
   final double detectionScaleX;
   final double detectionScaleY;
   final AlignmentHomographyMethod selectedHomographyMethod;
+  final HomographySelectionPolicy selectionPolicy;
   final HomographyCandidateDiagnostics? fourPointCandidate;
   final HomographyCandidateDiagnostics? multiPointCandidate;
   final Duration fourPointHomographyDuration;

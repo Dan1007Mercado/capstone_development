@@ -140,6 +140,8 @@ void main() {
     final preprocessingConfig =
         json['preprocessingConfig']! as Map<String, Object?>;
     expect(preprocessingConfig['adaptiveThresholdBlockSize'], 15);
+    final alignment = json['alignment']! as Map<String, Object?>;
+    expect(alignment['homographySelectionPolicy'], 'fourPointBaseline');
     final questions = json['questions']! as List<Object?>;
     final question = questions.single! as Map<String, Object?>;
     expect(question['questionNumber'], 1);

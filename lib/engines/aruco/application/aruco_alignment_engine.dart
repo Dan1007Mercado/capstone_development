@@ -142,7 +142,11 @@ final class ArucoAlignmentEngine {
       }
       validationStopwatch.stop();
 
-      final selection = _selectMethod(fourPointCandidate, multiPointCandidate);
+      final selection = _selectMethod(
+        fourPointCandidate,
+        multiPointCandidate,
+        effectiveConfig.selectionPolicy,
+      );
       final selectedMethod = selection.method;
       if (selectedMethod == null) {
         return _failure(
@@ -219,6 +223,7 @@ final class ArucoAlignmentEngine {
             detectionScaleX: session.openTimings.detectionScaleX,
             detectionScaleY: session.openTimings.detectionScaleY,
             selectedHomographyMethod: selectedMethod,
+            selectionPolicy: effectiveConfig.selectionPolicy,
             fourPointCandidate: fourPointCandidate,
             multiPointCandidate: multiPointCandidate,
             fourPointHomographyDuration:
@@ -334,7 +339,16 @@ final class ArucoAlignmentEngine {
   _SelectionDecision _selectMethod(
     HomographyCandidateDiagnostics? fourPoint,
     HomographyCandidateDiagnostics? multiPoint,
+    HomographySelectionPolicy policy,
   ) {
+    if (fourPoint?.accepted == true &&
+        multiPoint?.accepted == true &&
+        policy == HomographySelectionPolicy.validatedMultiPointPreference) {
+      return const _SelectionDecision(
+        method: AlignmentHomographyMethod.multiPoint,
+        selectionReason: 'EMPIRICALLY_VALIDATED_MULTIPOINT_PREFERENCE',
+      );
+    }
     if (fourPoint?.accepted == true) {
       return _SelectionDecision(
         method: AlignmentHomographyMethod.fourPoint,

@@ -329,6 +329,105 @@ void main() {
     }
   });
 
+  test('native accuracy matrix compares both estimators and OMR outcomes', () {
+    if (!backendAvailable) {
+      markTestSkipped(unavailableReason ?? 'Native OpenCV unavailable.');
+      return;
+    }
+    final firstQuestion = page.questionRegions.first;
+    final likertQuestion = page.questionRegions.singleWhere(
+      (question) => question.questionType == QuestionType.likert,
+    );
+    final numericQuestion = page.questionRegions.singleWhere(
+      (question) => question.questionType == QuestionType.numericGrid,
+    );
+    final filled = <int>{
+      page.bubbleRegions.indexWhere(
+        (bubble) =>
+            bubble.questionId == firstQuestion.questionId &&
+            bubble.optionId == firstQuestion.bubbleRegions.first.optionId,
+      ),
+      for (final bubble in likertQuestion.bubbleRegions.take(2))
+        page.bubbleRegions.indexOf(bubble),
+      for (var index = 0; index < page.bubbleRegions.length; index++)
+        if (page.bubbleRegions[index].questionId ==
+                numericQuestion.questionId &&
+            page.bubbleRegions[index].numericDigitValue == 2)
+          index,
+    };
+    final marked = _renderSyntheticPage(page, filledBubbleIndexes: filled);
+    final fixtures = _accuracyFixtures(marked);
+    var multiWins = 0;
+    var fourWins = 0;
+    var ties = 0;
+
+    for (final fixture in fixtures) {
+      final comparison = _compareNativeEstimators(
+        fixture: fixture,
+        template: template,
+        page: page,
+      );
+      expect(
+        comparison.fourAccuracy.maximum,
+        lessThan(6),
+        reason: '${fixture.name}: four-point landmark accuracy',
+      );
+      expect(
+        comparison.multiAccuracy.maximum,
+        lessThan(6),
+        reason: '${fixture.name}: multi-point landmark accuracy',
+      );
+      expect(
+        comparison.multiClassificationSignature,
+        comparison.fourClassificationSignature,
+        reason: '${fixture.name}: estimator OMR mismatch',
+      );
+      expect(
+        comparison.fourClassificationSignature,
+        contains('single:marked:single-option-0'),
+        reason: fixture.name,
+      );
+      expect(
+        comparison.fourClassificationSignature,
+        anyElement(startsWith('likert:multiple:')),
+        reason: fixture.name,
+      );
+      expect(
+        comparison.fourClassificationSignature,
+        contains('numeric:marked:2222'),
+        reason: fixture.name,
+      );
+      final difference =
+          comparison.multiAccuracy.mean - comparison.fourAccuracy.mean;
+      if (difference.abs() < 1e-6) {
+        ties++;
+      } else if (difference < 0) {
+        multiWins++;
+      } else {
+        fourWins++;
+      }
+      // ignore: avoid_print
+      print(
+        'P15_2_3_ACCURACY fixture=${fixture.name} '
+        'fourMean=${comparison.fourAccuracy.mean} '
+        'fourP95=${comparison.fourAccuracy.percentile95} '
+        'fourMax=${comparison.fourAccuracy.maximum} '
+        'multiMean=${comparison.multiAccuracy.mean} '
+        'multiP95=${comparison.multiAccuracy.percentile95} '
+        'multiMax=${comparison.multiAccuracy.maximum} '
+        'meanDifference=$difference '
+        'fourEstimateUs=${comparison.fourEstimateDuration.inMicroseconds} '
+        'multiEstimateUs=${comparison.multiEstimateDuration.inMicroseconds}',
+      );
+    }
+    // This is evidence output, not a rule that assumes either estimator wins.
+    // ignore: avoid_print
+    print(
+      'P15_2_3_ACCURACY_SUMMARY fixtures=${fixtures.length} '
+      'multiWins=$multiWins fourWins=$fourWins ties=$ties',
+    );
+  });
+
   test('rotated detector corners retain marker-local published ordering', () {
     if (!backendAvailable) {
       markTestSkipped(unavailableReason ?? 'Native OpenCV unavailable.');
@@ -900,6 +999,252 @@ final class _CrossValidationMetrics {
   final ReprojectionStatistics statistics;
   final Duration estimationDuration;
   final Duration wallDuration;
+}
+
+List<_AccuracyFixture> _accuracyFixtures(image.Image canonical) {
+  final identity = HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  final perspective = _perspectiveFixture(canonical, [
+    ImagePoint(45, 70),
+    ImagePoint(canonical.width - 75, 25),
+    ImagePoint(canonical.width - 25, canonical.height - 65),
+    ImagePoint(70, canonical.height - 20),
+  ]);
+  return [
+    _AccuracyFixture(
+      name: 'frontal',
+      raster: canonical,
+      canonicalToSource: identity,
+    ),
+    _AccuracyFixture(
+      name: 'moderatePerspective',
+      raster: perspective.raster,
+      canonicalToSource: perspective.canonicalToSource,
+    ),
+    _AccuracyFixture(
+      name: 'rotation90',
+      raster: image.copyRotate(canonical, angle: 90),
+      canonicalToSource: HomographyMatrix([
+        0,
+        -1,
+        canonical.height - 1.0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+      ]),
+    ),
+    _scaledAccuracyFixture('uniformScale', canonical, 0.72, 0.72),
+    _scaledAccuracyFixture('nonuniformScale', canonical, 0.78, 0.68),
+    _AccuracyFixture(
+      name: 'directionalShadow',
+      raster: _applyDirectionalShadow(canonical),
+      canonicalToSource: identity,
+    ),
+    _scaledAccuracyFixture('lowerResolution', canonical, 0.58, 0.58),
+    _scaledAccuracyFixture('higherResolution', canonical, 1.20, 1.20),
+    _AccuracyFixture(
+      name: 'mildCornerLocalizationNoise',
+      raster: canonical,
+      canonicalToSource: identity,
+      cornerNoisePixels: 0.65,
+    ),
+  ];
+}
+
+_AccuracyFixture _scaledAccuracyFixture(
+  String name,
+  image.Image canonical,
+  double scaleX,
+  double scaleY,
+) {
+  final width = (canonical.width * scaleX).round();
+  final height = (canonical.height * scaleY).round();
+  return _AccuracyFixture(
+    name: name,
+    raster: image.copyResize(
+      canonical,
+      width: width,
+      height: height,
+      interpolation: image.Interpolation.linear,
+    ),
+    canonicalToSource: HomographyMatrix([
+      (width - 1) / (canonical.width - 1),
+      0,
+      0,
+      0,
+      (height - 1) / (canonical.height - 1),
+      0,
+      0,
+      0,
+      1,
+    ]),
+  );
+}
+
+_EstimatorComparison _compareNativeEstimators({
+  required _AccuracyFixture fixture,
+  required TemplateDefinition template,
+  required PageLayout page,
+}) {
+  final config = ArucoAlignmentConfig(finalMarkerDetectionMaxDimension: null);
+  final backend = OpenCvArucoVisionBackend();
+  final opened = backend.open(
+    Uint8List.fromList(image.encodePng(fixture.raster)),
+    config,
+  );
+  if (opened.isFailure) {
+    backend.dispose();
+    throw StateError('${fixture.name}: ${opened.error}');
+  }
+  final session = opened.value;
+  try {
+    final correspondenceResult = const MarkerCorrespondenceService().build(
+      detection: session.detection,
+      page: page,
+      config: config,
+    );
+    if (correspondenceResult.isFailure) {
+      throw StateError('${fixture.name}: ${correspondenceResult.error}');
+    }
+    final set = correspondenceResult.value;
+    ImagePoint sourcePoint(MarkerCorrespondence correspondence) {
+      if (fixture.cornerNoisePixels == 0) return correspondence.sourcePoint;
+      final phase =
+          correspondence.markerId * 4 + correspondence.sourceCorner.index;
+      return ImagePoint(
+        correspondence.sourcePoint.x +
+            math.sin(phase * 1.7) * fixture.cornerNoisePixels,
+        correspondence.sourcePoint.y +
+            math.cos(phase * 1.3) * fixture.cornerNoisePixels,
+      );
+    }
+
+    EngineResult<BackendHomographyEstimate> estimate(
+      List<MarkerCorrespondence> correspondences,
+      HomographyEstimationMethod method,
+    ) => session.estimateHomography(
+      sourcePoints: correspondences.map(sourcePoint).toList(),
+      destinationPoints: correspondences
+          .map((item) => item.destinationPoint)
+          .toList(),
+      method: method,
+      ransacReprojectionThresholdPixels:
+          config.multipointRansacReprojectionThresholdPixels,
+      maximumIterations: config.multipointMaximumIterations,
+      confidence: config.multipointConfidence,
+    );
+
+    final four = estimate(
+      set.baselineCorrespondences,
+      HomographyEstimationMethod.fourPoint,
+    );
+    final multi = estimate(
+      set.allCornerCorrespondences,
+      HomographyEstimationMethod.multiPointRansac,
+    );
+    if (four.isFailure || multi.isFailure) {
+      throw StateError(
+        '${fixture.name}: four=${four.errorOrNull}, multi=${multi.errorOrNull}',
+      );
+    }
+    final outputSize = ImageSize(
+      width: page.canonicalPageSpec.widthPixels,
+      height: page.canonicalPageSpec.heightPixels,
+    );
+    final fourWarp = session.warp(
+      homography: four.value.homography,
+      outputSize: outputSize,
+    );
+    final multiWarp = session.warp(
+      homography: multi.value.homography,
+      outputSize: outputSize,
+    );
+    if (fourWarp.isFailure || multiWarp.isFailure) {
+      throw StateError(
+        '${fixture.name}: fourWarp=${fourWarp.errorOrNull}, '
+        'multiWarp=${multiWarp.errorOrNull}',
+      );
+    }
+    final fourClassification = _classifyCanonical(
+      fourWarp.value.canonicalPage,
+      template,
+      page,
+    );
+    final multiClassification = _classifyCanonical(
+      multiWarp.value.canonicalPage,
+      template,
+      page,
+    );
+    if (fourClassification.isFailure || multiClassification.isFailure) {
+      throw StateError(
+        '${fixture.name}: fourOMR=${fourClassification.errorOrNull}, '
+        'multiOMR=${multiClassification.errorOrNull}',
+      );
+    }
+    return _EstimatorComparison(
+      fourAccuracy: ReprojectionStatistics(
+        _landmarkErrors(page, fixture.canonicalToSource, four.value.homography),
+      ),
+      multiAccuracy: ReprojectionStatistics(
+        _landmarkErrors(
+          page,
+          fixture.canonicalToSource,
+          multi.value.homography,
+        ),
+      ),
+      fourClassificationSignature: _classificationSignature(
+        fourClassification.value,
+      ),
+      multiClassificationSignature: _classificationSignature(
+        multiClassification.value,
+      ),
+      fourEstimateDuration: four.value.duration,
+      multiEstimateDuration: multi.value.duration,
+    );
+  } finally {
+    session.dispose();
+    backend.dispose();
+  }
+}
+
+List<String> _classificationSignature(PageClassificationResult result) => [
+  for (final question in result.questions)
+    '${question.questionId.value}:${question.state.name}:'
+        '${question.numericSelection?.completeDigitString ?? question.selectedOptionIds.map((id) => id.value).join(',')}',
+];
+
+final class _AccuracyFixture {
+  const _AccuracyFixture({
+    required this.name,
+    required this.raster,
+    required this.canonicalToSource,
+    this.cornerNoisePixels = 0,
+  });
+
+  final String name;
+  final image.Image raster;
+  final HomographyMatrix canonicalToSource;
+  final double cornerNoisePixels;
+}
+
+final class _EstimatorComparison {
+  const _EstimatorComparison({
+    required this.fourAccuracy,
+    required this.multiAccuracy,
+    required this.fourClassificationSignature,
+    required this.multiClassificationSignature,
+    required this.fourEstimateDuration,
+    required this.multiEstimateDuration,
+  });
+
+  final ReprojectionStatistics fourAccuracy;
+  final ReprojectionStatistics multiAccuracy;
+  final List<String> fourClassificationSignature;
+  final List<String> multiClassificationSignature;
+  final Duration fourEstimateDuration;
+  final Duration multiEstimateDuration;
 }
 
 final class _PerspectiveFixture {

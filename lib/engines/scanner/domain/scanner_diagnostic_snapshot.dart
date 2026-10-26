@@ -106,6 +106,8 @@ final class ScannerDiagnosticSnapshot {
       'alignment': {
         'selectedHomographyMethod':
             result.diagnostics.alignment.selectedHomographyMethod.name,
+        'homographySelectionPolicy':
+            result.diagnostics.alignment.selectionPolicy.name,
         'selectionReason': result.diagnostics.alignment.selectionReason,
         'fallbackReason': result.diagnostics.alignment.fallbackReason,
         'meanReprojectionError':

@@ -1,5 +1,14 @@
 import '../../../core/protocol/aruco_dictionary.dart';
 
+enum HomographySelectionPolicy {
+  /// Preserve the established four-point transform whenever it is safe.
+  fourPointBaseline,
+
+  /// Prefer a fully validated 16-point estimate when external ground-truth
+  /// benchmarks have established that preference for the deployed backend.
+  validatedMultiPointPreference,
+}
+
 /// Provisional deterministic thresholds for static-image registration.
 final class ArucoAlignmentConfig {
   factory ArucoAlignmentConfig({
@@ -18,6 +27,8 @@ final class ArucoAlignmentConfig {
     int multipointMaximumIterations = 500,
     double multipointConfidence = 0.995,
     bool enableMultipointHomography = true,
+    HomographySelectionPolicy selectionPolicy =
+        HomographySelectionPolicy.fourPointBaseline,
     bool allowAdditionalUnrelatedMarkers = true,
     int? finalMarkerDetectionMaxDimension = 1400,
   }) {
@@ -73,6 +84,7 @@ final class ArucoAlignmentConfig {
       multipointMaximumIterations: multipointMaximumIterations,
       multipointConfidence: multipointConfidence,
       enableMultipointHomography: enableMultipointHomography,
+      selectionPolicy: selectionPolicy,
       allowAdditionalUnrelatedMarkers: allowAdditionalUnrelatedMarkers,
       finalMarkerDetectionMaxDimension: finalMarkerDetectionMaxDimension,
     );
@@ -94,6 +106,7 @@ final class ArucoAlignmentConfig {
     required this.multipointMaximumIterations,
     required this.multipointConfidence,
     required this.enableMultipointHomography,
+    required this.selectionPolicy,
     required this.allowAdditionalUnrelatedMarkers,
     required this.finalMarkerDetectionMaxDimension,
   });
@@ -116,6 +129,7 @@ final class ArucoAlignmentConfig {
   final int multipointMaximumIterations;
   final double multipointConfidence;
   final bool enableMultipointHomography;
+  final HomographySelectionPolicy selectionPolicy;
   final bool allowAdditionalUnrelatedMarkers;
 
   /// Maximum long edge used only for final-still ArUco detection.
