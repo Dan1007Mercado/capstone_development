@@ -1,0 +1,68 @@
+[
+  {
+    "file": "Tilted_mix_strokes.jpg",
+    "sha256": "9dd88b710429a1d4b70c5111c94d04c815cbf091bc291e30e1a4680c788b29dc",
+    "width": 2976,
+    "height": 3968,
+    "captureTimestamp": "2026:10:27 23:34:41",
+    "captureOffset": "+08:00",
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  },
+  {
+    "file": "all_marked.jpg",
+    "sha256": "c7d3a0775e2e82421f20626e3ed5426f7fd6169bdcc2f781f177e83156dd93ee",
+    "width": 3392,
+    "height": 2368,
+    "captureTimestamp": "2026:10:27 23:33:22",
+    "captureOffset": null,
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  },
+  {
+    "file": "blank_tilted.jpg",
+    "sha256": "3659560cc40568a6ddef9eab7b683f8049b9b749a9460bddbd47139d54316b16",
+    "width": 2976,
+    "height": 3968,
+    "captureTimestamp": "2026:10:27 23:34:08",
+    "captureOffset": "+08:00",
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  },
+  {
+    "file": "mixstroke_mark.jpg",
+    "sha256": "154fc25330bafdd53d654179698e462736eafff990fa5b6016f624c4493b4eda",
+    "width": 2496,
+    "height": 3648,
+    "captureTimestamp": "2026:10:27 23:32:46",
+    "captureOffset": null,
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  },
+  {
+    "file": "tilted_allmarked_fullmarked.jpg",
+    "sha256": "d89a25de09ee94b4fb3732500c2c3fcdf53e7a3d8cf96555cc95834538362311",
+    "width": 2976,
+    "height": 3968,
+    "captureTimestamp": "2026:10:27 23:34:30",
+    "captureOffset": "+08:00",
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  },
+  {
+    "file": "unmarked.jpg",
+    "sha256": "3aae6bc4d692c0d64ea01b1131b0984981e44acc8599b80aaa0fe57ebdd18f0b",
+    "width": 2384,
+    "height": 3408,
+    "captureTimestamp": "2026:10:27 23:33:34",
+    "captureOffset": null,
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  }
+]

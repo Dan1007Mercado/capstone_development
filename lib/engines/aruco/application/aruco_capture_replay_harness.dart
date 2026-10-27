@@ -78,6 +78,8 @@ final class ArucoCaptureReplayHarness {
           productionConfig ?? currentMultiPointConfig ?? ArucoAlignmentConfig(),
     );
     return ArucoCaptureReplayResult(
+      currentFourPointSelection: four,
+      currentMultiPointSelection: multiRun,
       legacyFourPoint: legacy,
       currentFourPointCandidate: _candidateReplay(
         four,
@@ -332,6 +334,8 @@ final class ArucoCaptureReplayHarness {
 
 final class ArucoCaptureReplayResult {
   ArucoCaptureReplayResult({
+    required this.currentFourPointSelection,
+    required this.currentMultiPointSelection,
     required this.legacyFourPoint,
     required this.currentFourPointCandidate,
     required this.currentMultiPointCandidate,
@@ -343,6 +347,11 @@ final class ArucoCaptureReplayResult {
        );
 
   final EngineResult<LegacyFourPointReplay> legacyFourPoint;
+
+  /// Full replay results allow downstream experiments to reuse the actual
+  /// selected warp instead of decoding and aligning the same image again.
+  final EngineResult<PageAlignmentResult> currentFourPointSelection;
+  final EngineResult<PageAlignmentResult> currentMultiPointSelection;
   final EngineResult<HomographyCandidateReplay> currentFourPointCandidate;
   final EngineResult<HomographyCandidateReplay> currentMultiPointCandidate;
   final EngineResult<PageAlignmentResult> productionSelection;

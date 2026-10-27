@@ -31,15 +31,24 @@ final class OpenCvPreprocessingBackend implements PreprocessingBackend {
     cv.Mat? thresholdBoundary32;
     cv.Mat? binaryMask;
     cv.Mat? binaryOne;
+    cv.VecU8? inputBytes;
     try {
-      source = page.grayscaleBytes.isNotEmpty
-          ? cv.Mat.fromList(
-              page.size.height,
-              page.size.width,
-              cv.MatType.CV_8UC1,
-              page.grayscaleBytes,
-            )
-          : cv.imdecode(page.pngBytes, cv.IMREAD_GRAYSCALE);
+      if (page.grayscaleBytes.isNotEmpty) {
+        // Mat.fromList casts the typed bytes to a generic list in opencv_dart
+        // 1.2.5, preventing the bulk copy. The typed vector reaches the same
+        // copying native constructor without that per-byte Dart traversal.
+        inputBytes = cv.VecU8.fromList(page.grayscaleBytes);
+        source = cv.Mat.fromVec(
+          inputBytes,
+          rows: page.size.height,
+          cols: page.size.width,
+          type: cv.MatType.CV_8UC1,
+        );
+        inputBytes.dispose();
+        inputBytes = null;
+      } else {
+        source = cv.imdecode(page.pngBytes, cv.IMREAD_GRAYSCALE);
+      }
       if (source.isEmpty || source.width <= 0 || source.height <= 0) {
         return _failure(
           'PREPROCESS_IMAGE_INVALID',
@@ -144,6 +153,7 @@ final class OpenCvPreprocessingBackend implements PreprocessingBackend {
       normalized?.dispose();
       working?.dispose();
       source?.dispose();
+      inputBytes?.dispose();
     }
   }
 

@@ -90,6 +90,74 @@ void main() {
     expect(result.state, MarkState.multiple);
   });
 
+  for (final style in [
+    'half',
+    'crescent',
+    'distributed dots',
+    'X',
+    'light fill',
+  ]) {
+    test('controlled labeled $style retains a selected answer', () {
+      final fixture = _fixture(page);
+      final roi = _roi(page, 1);
+      _paint(fixture, roi, (x, y) {
+        if (!roi.containsPrintedPixel(x, y)) return false;
+        final dx = (x + 0.5 - roi.center.x) / roi.printedRadius;
+        final dy = (y + 0.5 - roi.center.y) / roi.printedRadius;
+        return switch (style) {
+          'half' => dx < 0,
+          'crescent' => dx < -0.2,
+          'distributed dots' =>
+            (dx.abs() - 0.55).abs() < 0.2 && dy.abs() < 0.2 ||
+                (dy.abs() - 0.55).abs() < 0.2 && dx.abs() < 0.2,
+          'X' => (dx - dy).abs() < 0.22 || (dx + dy).abs() < 0.22,
+          _ => true,
+        };
+      });
+      // These fixtures start at measurement-ready buffers. They establish
+      // classification requirements, not preprocessing or physical accuracy.
+      if (style == 'light fill') {
+        for (var i = 0; i < fixture.normalized.length; i++) {
+          if (fixture.binary[i] == 1) fixture.normalized[i] = 150;
+        }
+        fixture.page = _page(
+          fixture.page.size,
+          fixture.normalized,
+          fixture.binary,
+        );
+      }
+      final result = _classify(
+        classifier,
+        template,
+        page,
+        _measure(measurementEngine, page, fixture),
+      );
+      expect(result.state, MarkState.marked);
+      expect(result.selectedOptionIds.single, page.bubbleRegions[1].optionId);
+    });
+  }
+
+  test(
+    'a centered dot hidden by label exclusion supplies no mark evidence',
+    () {
+      final fixture = _fixture(page);
+      final roi = _roi(page, 1);
+      _paint(fixture, roi, (x, y) {
+        final dx = x + 0.5 - roi.center.x;
+        final dy = y + 0.5 - roi.center.y;
+        return dx * dx + dy * dy <
+            roi.centerExclusionRadius * roi.centerExclusionRadius;
+      });
+      expect(fixture.binary.any((v) => v == 1), isTrue);
+      final measured = _measure(measurementEngine, page, fixture);
+      expect(measured.measurements[1].foregroundPixelCount, 0);
+      expect(
+        _classify(classifier, template, page, measured).state,
+        MarkState.blank,
+      );
+    },
+  );
+
   test('similar partial marks in labeled bubbles remain AMBIGUOUS', () {
     final fixture = _fixture(page);
     _paintPartialMeasuredPixels(fixture, _roi(page, 0));

@@ -1,0 +1,56 @@
+{
+  "input": {
+    "file": "all_marked.jpg",
+    "sha256": "c7d3a0775e2e82421f20626e3ed5426f7fd6169bdcc2f781f177e83156dd93ee",
+    "width": 3392,
+    "height": 2368,
+    "captureTimestamp": "2026:10:27 23:33:22",
+    "captureOffset": null,
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  },
+  "artifactSha256": "422052171b90f79e1d3c19060e41975cece2a9daa07e872ef7e330b06637c392",
+  "fullResolutionDetection": false,
+  "noCornerRefinement": false,
+  "multiPointEstimate": {
+    "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)"
+  },
+  "fourPoint": {
+    "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)",
+    "details": {
+      "expectedMarkerIds": [
+        10,
+        11,
+        12,
+        13
+      ],
+      "detectedMarkerIds": [
+        3,
+        10,
+        11,
+        13
+      ]
+    }
+  },
+  "multiPointPreference": {
+    "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)",
+    "details": {
+      "expectedMarkerIds": [
+        10,
+        11,
+        12,
+        13
+      ],
+      "detectedMarkerIds": [
+        3,
+        10,
+        11,
+        13
+      ]
+    }
+  },
+  "production": {
+    "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)"
+  }
+}

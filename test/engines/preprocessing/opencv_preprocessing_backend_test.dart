@@ -20,6 +20,32 @@ void main() {
   const nativeBackend = OpenCvPreprocessingBackend();
   const config = PreprocessingConfig(minimumIntensityStdDev: 0);
 
+  test('native transfer preserves a strided-owner byte view and dimensions', () {
+    final backing = Uint8List.fromList(List.generate(90, (i) => i * 17 % 256));
+    final pixels = Uint8List.sublistView(backing, 3, 80);
+    final page = CanonicalPageImage.ownedGrayscale(
+      size: ImageSize(width: 7, height: 11),
+      grayscaleBytes: pixels,
+    );
+    const untouched = PreprocessingConfig(
+      enableDenoise: false,
+      enableIlluminationNormalization: false,
+      minimumIntensityStdDev: 0,
+    );
+    final native = nativeBackend.process(page, untouched);
+    if (_nativeUnavailable(native.errorOrNull)) {
+      markTestSkipped('Native OpenCV is unavailable on this host.');
+      return;
+    }
+    expect(native.isSuccess, isTrue, reason: native.errorOrNull?.toString());
+    expect(native.value.normalizedGrayscale.size, page.size);
+    expect(native.value.normalizedGrayscale.pixels, pixels);
+    expect(native.value.binary.pixels, everyElement(anyOf(0, 1)));
+    // A later allocation/process must not invalidate the returned detached data.
+    expect(nativeBackend.process(page, config).isSuccess, isTrue);
+    expect(native.value.normalizedGrayscale.pixels, pixels);
+  });
+
   for (final fixture in <String, Uint8List>{
     'uniform bright': Uint8List.fromList(List.filled(49, 255)),
     'uniform dark': Uint8List.fromList(List.filled(49, 0)),

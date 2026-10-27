@@ -1005,6 +1005,15 @@ void main() {
       expect(replay.currentMultiPointCandidate.value.homography, isNotNull);
       expect(replay.currentMultiPointCandidate.value.selectedForWarp, isTrue);
       expect(replay.currentMultiPointCandidate.value.canonicalPage, isNotNull);
+      expect(replay.currentFourPointSelection.isSuccess, isTrue);
+      expect(
+        replay.currentFourPointSelection.value.canonicalPage,
+        same(replay.currentFourPointCandidate.value.canonicalPage),
+      );
+      expect(
+        replay.currentMultiPointSelection.value.canonicalPage,
+        same(replay.currentMultiPointCandidate.value.canonicalPage),
+      );
       expect(
         replay
             .currentMultiPointCandidate

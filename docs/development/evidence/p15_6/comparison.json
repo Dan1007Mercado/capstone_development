@@ -1,0 +1,304 @@
+{
+  "answerKeyProvenance": "User supplied Q1-Q11 keys for these photographs during P15.6.",
+  "results": [
+    {
+      "config": "baseline",
+      "capture": "all_marked.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)",
+      "captureTimestamp": "2026:10:27 23:33:22",
+      "sha256": "c7d3a0775e2e82421f20626e3ed5426f7fd6169bdcc2f781f177e83156dd93ee"
+    },
+    {
+      "config": "baseline",
+      "capture": "blank_tilted.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_DUPLICATE_PAGE_MARKERS, message: A page marker ID was detected more than once.)",
+      "captureTimestamp": "2026:10:27 23:34:08",
+      "sha256": "3659560cc40568a6ddef9eab7b683f8049b9b749a9460bddbd47139d54316b16"
+    },
+    {
+      "config": "baseline",
+      "capture": "mixstroke_mark.jpg",
+      "completed": true,
+      "correct": 3,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:32:46",
+      "sha256": "154fc25330bafdd53d654179698e462736eafff990fa5b6016f624c4493b4eda"
+    },
+    {
+      "config": "baseline",
+      "capture": "tilted_allmarked_fullmarked.jpg",
+      "completed": true,
+      "correct": 3,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:34:30",
+      "sha256": "d89a25de09ee94b4fb3732500c2c3fcdf53e7a3d8cf96555cc95834538362311"
+    },
+    {
+      "config": "baseline",
+      "capture": "Tilted_mix_strokes.jpg",
+      "completed": true,
+      "correct": 6,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:34:41",
+      "sha256": "9dd88b710429a1d4b70c5111c94d04c815cbf091bc291e30e1a4680c788b29dc"
+    },
+    {
+      "config": "baseline",
+      "capture": "unmarked.jpg",
+      "completed": true,
+      "correct": 1,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:33:34",
+      "sha256": "3aae6bc4d692c0d64ea01b1131b0984981e44acc8599b80aaa0fe57ebdd18f0b"
+    },
+    {
+      "config": "full-resolution",
+      "capture": "all_marked.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)",
+      "captureTimestamp": "2026:10:27 23:33:22",
+      "sha256": "c7d3a0775e2e82421f20626e3ed5426f7fd6169bdcc2f781f177e83156dd93ee"
+    },
+    {
+      "config": "full-resolution",
+      "capture": "blank_tilted.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_DUPLICATE_PAGE_MARKERS, message: A page marker ID was detected more than once.)",
+      "captureTimestamp": "2026:10:27 23:34:08",
+      "sha256": "3659560cc40568a6ddef9eab7b683f8049b9b749a9460bddbd47139d54316b16"
+    },
+    {
+      "config": "full-resolution",
+      "capture": "mixstroke_mark.jpg",
+      "completed": true,
+      "correct": 3,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:32:46",
+      "sha256": "154fc25330bafdd53d654179698e462736eafff990fa5b6016f624c4493b4eda"
+    },
+    {
+      "config": "full-resolution",
+      "capture": "tilted_allmarked_fullmarked.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)",
+      "captureTimestamp": "2026:10:27 23:34:30",
+      "sha256": "d89a25de09ee94b4fb3732500c2c3fcdf53e7a3d8cf96555cc95834538362311"
+    },
+    {
+      "config": "full-resolution",
+      "capture": "Tilted_mix_strokes.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)",
+      "captureTimestamp": "2026:10:27 23:34:41",
+      "sha256": "9dd88b710429a1d4b70c5111c94d04c815cbf091bc291e30e1a4680c788b29dc"
+    },
+    {
+      "config": "full-resolution",
+      "capture": "unmarked.jpg",
+      "completed": true,
+      "correct": 2,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:33:34",
+      "sha256": "3aae6bc4d692c0d64ea01b1131b0984981e44acc8599b80aaa0fe57ebdd18f0b"
+    },
+    {
+      "config": "no-refinement",
+      "capture": "all_marked.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_UNKNOWN_PAGE_MARKERS, message: The captured still does not match the live-resolved page markers.)",
+      "captureTimestamp": "2026:10:27 23:33:22",
+      "sha256": "c7d3a0775e2e82421f20626e3ed5426f7fd6169bdcc2f781f177e83156dd93ee"
+    },
+    {
+      "config": "no-refinement",
+      "capture": "blank_tilted.jpg",
+      "completed": false,
+      "correct": 0,
+      "evaluated": 0,
+      "applicationAcceptance": null,
+      "error": "EngineError(code: SCAN_DUPLICATE_PAGE_MARKERS, message: A page marker ID was detected more than once.)",
+      "captureTimestamp": "2026:10:27 23:34:08",
+      "sha256": "3659560cc40568a6ddef9eab7b683f8049b9b749a9460bddbd47139d54316b16"
+    },
+    {
+      "config": "no-refinement",
+      "capture": "mixstroke_mark.jpg",
+      "completed": true,
+      "correct": 1,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:32:46",
+      "sha256": "154fc25330bafdd53d654179698e462736eafff990fa5b6016f624c4493b4eda"
+    },
+    {
+      "config": "no-refinement",
+      "capture": "tilted_allmarked_fullmarked.jpg",
+      "completed": true,
+      "correct": 4,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:34:30",
+      "sha256": "d89a25de09ee94b4fb3732500c2c3fcdf53e7a3d8cf96555cc95834538362311"
+    },
+    {
+      "config": "no-refinement",
+      "capture": "Tilted_mix_strokes.jpg",
+      "completed": true,
+      "correct": 5,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:34:41",
+      "sha256": "9dd88b710429a1d4b70c5111c94d04c815cbf091bc291e30e1a4680c788b29dc"
+    },
+    {
+      "config": "no-refinement",
+      "capture": "unmarked.jpg",
+      "completed": true,
+      "correct": 1,
+      "evaluated": 11,
+      "applicationAcceptance": "rescanAmbiguous",
+      "error": null,
+      "captureTimestamp": "2026:10:27 23:33:34",
+      "sha256": "3aae6bc4d692c0d64ea01b1131b0984981e44acc8599b80aaa0fe57ebdd18f0b"
+    }
+  ],
+  "beforeAfter": [
+    {
+      "capture": "mixstroke_mark.jpg",
+      "beforePreprocessingMs": 536.657,
+      "afterPreprocessingMs": 453.292,
+      "byteIdenticalPngs": {
+        "canonical": {
+          "beforeSha256": "9554a93be5b3425b66c46148657fafa99f318d6334584a8e214dc55e3790df5d",
+          "afterSha256": "9554a93be5b3425b66c46148657fafa99f318d6334584a8e214dc55e3790df5d",
+          "equal": true
+        },
+        "normalized": {
+          "beforeSha256": "58f0e2717600b04284475ef59362c2883091a9d284d1d3f7638dc6f9b2ba5824",
+          "afterSha256": "58f0e2717600b04284475ef59362c2883091a9d284d1d3f7638dc6f9b2ba5824",
+          "equal": true
+        },
+        "binary": {
+          "beforeSha256": "d3e16b0de0a0bd9aeac4e68d3cf9f49d83bfdeb401f060ff76bfeaec07e01b09",
+          "afterSha256": "d3e16b0de0a0bd9aeac4e68d3cf9f49d83bfdeb401f060ff76bfeaec07e01b09",
+          "equal": true
+        }
+      },
+      "answersIdentical": true,
+      "bubbleMeasurementsIdentical": true
+    },
+    {
+      "capture": "tilted_allmarked_fullmarked.jpg",
+      "beforePreprocessingMs": 534.208,
+      "afterPreprocessingMs": 448.569,
+      "byteIdenticalPngs": {
+        "canonical": {
+          "beforeSha256": "037dd9d2b5c0385965c6bd3a50cfd764d23c3b9b79543fcb69cd421b35050b29",
+          "afterSha256": "037dd9d2b5c0385965c6bd3a50cfd764d23c3b9b79543fcb69cd421b35050b29",
+          "equal": true
+        },
+        "normalized": {
+          "beforeSha256": "db8e1ac4beb37eb64108bcc53199243a23c89dfc008142f5186f232e49272f87",
+          "afterSha256": "db8e1ac4beb37eb64108bcc53199243a23c89dfc008142f5186f232e49272f87",
+          "equal": true
+        },
+        "binary": {
+          "beforeSha256": "f5f7ef40e5ece9626d54d346468177a417be37b1a72d52b8132499349ec5c52c",
+          "afterSha256": "f5f7ef40e5ece9626d54d346468177a417be37b1a72d52b8132499349ec5c52c",
+          "equal": true
+        }
+      },
+      "answersIdentical": true,
+      "bubbleMeasurementsIdentical": true
+    },
+    {
+      "capture": "Tilted_mix_strokes.jpg",
+      "beforePreprocessingMs": 552.808,
+      "afterPreprocessingMs": 456.385,
+      "byteIdenticalPngs": {
+        "canonical": {
+          "beforeSha256": "fd7f8c94b0c6797af22457f5d48930ec08c45c7558057888d0329cdb73cc40f3",
+          "afterSha256": "fd7f8c94b0c6797af22457f5d48930ec08c45c7558057888d0329cdb73cc40f3",
+          "equal": true
+        },
+        "normalized": {
+          "beforeSha256": "38f1564741e2f09c118832c20a2e3fb2b1750d0ed43e54200ea1c2afb1987d94",
+          "afterSha256": "38f1564741e2f09c118832c20a2e3fb2b1750d0ed43e54200ea1c2afb1987d94",
+          "equal": true
+        },
+        "binary": {
+          "beforeSha256": "35c8ab13ec784b281a8acfa4d6969c72a1fa12dd57e5e650becc0c9e25553cd0",
+          "afterSha256": "35c8ab13ec784b281a8acfa4d6969c72a1fa12dd57e5e650becc0c9e25553cd0",
+          "equal": true
+        }
+      },
+      "answersIdentical": true,
+      "bubbleMeasurementsIdentical": true
+    },
+    {
+      "capture": "unmarked.jpg",
+      "beforePreprocessingMs": 540.885,
+      "afterPreprocessingMs": 454.905,
+      "byteIdenticalPngs": {
+        "canonical": {
+          "beforeSha256": "bd4ad553d3d645c2cf792394ffda58fa44182c3c1e8003b2e20ecaa5dead041c",
+          "afterSha256": "bd4ad553d3d645c2cf792394ffda58fa44182c3c1e8003b2e20ecaa5dead041c",
+          "equal": true
+        },
+        "normalized": {
+          "beforeSha256": "4972120a9dfcdc287e9b36b66e4141cfe99ac7fa633a45d9982287e880046f31",
+          "afterSha256": "4972120a9dfcdc287e9b36b66e4141cfe99ac7fa633a45d9982287e880046f31",
+          "equal": true
+        },
+        "binary": {
+          "beforeSha256": "a5278fc03ca5e5f0ded3c64fa44e1a73a66ca87f2d52483b1cd09afc29ca4a44",
+          "afterSha256": "a5278fc03ca5e5f0ded3c64fa44e1a73a66ca87f2d52483b1cd09afc29ca4a44",
+          "equal": true
+        }
+      },
+      "answersIdentical": true,
+      "bubbleMeasurementsIdentical": true
+    }
+  ],
+  "beforeMedianPreprocessingMs": 538.771,
+  "afterMedianPreprocessingMs": 454.09849999999994,
+  "timingLimit": "One paired replay per image on one device; not a statistical device benchmark."
+}

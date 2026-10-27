@@ -1,0 +1,52 @@
+{
+  "input": {
+    "file": "blank_tilted.jpg",
+    "sha256": "3659560cc40568a6ddef9eab7b683f8049b9b749a9460bddbd47139d54316b16",
+    "width": 2976,
+    "height": 3968,
+    "captureTimestamp": "2026:10:27 23:34:08",
+    "captureOffset": "+08:00",
+    "orientation": null,
+    "templateId": "tmpl-87811039040f1a9e6600a2dfff09bfeb",
+    "version": 1
+  },
+  "artifactSha256": "422052171b90f79e1d3c19060e41975cece2a9daa07e872ef7e330b06637c392",
+  "fullResolutionDetection": false,
+  "noCornerRefinement": false,
+  "multiPointEstimate": {
+    "error": "EngineError(code: SCAN_DUPLICATE_PAGE_MARKERS, message: A page marker ID was detected more than once.)"
+  },
+  "fourPoint": {
+    "error": "EngineError(code: SCAN_DUPLICATE_PAGE_MARKERS, message: A page marker ID was detected more than once.)",
+    "details": {
+      "detectedMarkerIds": [
+        12,
+        13,
+        13,
+        10,
+        11,
+        0,
+        3,
+        0
+      ]
+    }
+  },
+  "multiPointPreference": {
+    "error": "EngineError(code: SCAN_DUPLICATE_PAGE_MARKERS, message: A page marker ID was detected more than once.)",
+    "details": {
+      "detectedMarkerIds": [
+        12,
+        13,
+        13,
+        10,
+        11,
+        0,
+        3,
+        0
+      ]
+    }
+  },
+  "production": {
+    "error": "EngineError(code: SCAN_DUPLICATE_PAGE_MARKERS, message: A page marker ID was detected more than once.)"
+  }
+}

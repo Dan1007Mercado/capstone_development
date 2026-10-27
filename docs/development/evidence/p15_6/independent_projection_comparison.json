@@ -1,0 +1,23 @@
+{
+  "provenance": "algorithmic printed-outline landmarks; not manual ground truth",
+  "fourPoint": {
+    "mean": 9.452039083355178,
+    "p95": 17.720045146669165,
+    "maximum": 19.924858845171293,
+    "complete": true,
+    "regional": {
+      "top": 6.8085953345047034,
+      "middle": 13.31553379321356
+    }
+  },
+  "rejectedMultiPointDiagnostic": {
+    "mean": 8.830315890195951,
+    "p95": 15.197441450653631,
+    "maximum": 15.440094968550756,
+    "complete": true,
+    "regional": {
+      "top": 8.610954769458216,
+      "middle": 9.150920605120335
+    }
+  }
+}
