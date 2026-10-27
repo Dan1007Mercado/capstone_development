@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/engines/aruco/application/aruco_alignment_engine.dart';
+import 'package:capstone_development/engines/aruco/application/aruco_capture_replay_harness.dart';
 import 'package:capstone_development/engines/aruco/application/marker_correspondence_service.dart';
 import 'package:capstone_development/engines/aruco/domain/aruco_alignment_config.dart';
 import 'package:capstone_development/engines/aruco/domain/alignment_failure_diagnostics.dart';
@@ -653,6 +654,51 @@ void main() {
       HomographyEstimationMethod.fourPoint,
     ]);
   });
+
+  test(
+    'capture replay compares legacy, current four, and current multi paths',
+    () {
+      final page = _page();
+      var disposedBackends = 0;
+      final replay = ArucoCaptureReplayHarness(
+        backendFactory: () => _FakeBackend(_detectionFor(page)),
+        disposeBackend: (_) => disposedBackends++,
+      ).run(Uint8List.fromList([1, 2, 3]), page);
+
+      expect(replay.legacyFourPoint.isSuccess, isTrue);
+      expect(replay.legacyFourPoint.value.fittingResiduals, hasLength(4));
+      expect(replay.legacyFourPoint.value.allCornerResiduals, hasLength(16));
+      expect(replay.currentFourPointCandidate.isSuccess, isTrue);
+      expect(replay.currentMultiPointCandidate.isSuccess, isTrue);
+      expect(
+        replay.currentMultiPointCandidate.value.candidate.method,
+        AlignmentHomographyMethod.multiPoint,
+      );
+      expect(replay.currentMultiPointCandidate.value.homography, isNotNull);
+      expect(replay.productionSelection.isSuccess, isTrue);
+      final repeated = ArucoCaptureReplayHarness(
+        backendFactory: () => _FakeBackend(_detectionFor(page)),
+        disposeBackend: (_) => disposedBackends++,
+      ).run(Uint8List.fromList([1, 2, 3]), page);
+      expect(
+        repeated.currentMultiPointCandidate.value.homography!.values,
+        replay.currentMultiPointCandidate.value.homography!.values,
+      );
+      expect(
+        repeated
+            .currentMultiPointCandidate
+            .value
+            .candidate
+            .commonReprojectionErrors,
+        replay
+            .currentMultiPointCandidate
+            .value
+            .candidate
+            .commonReprojectionErrors,
+      );
+      expect(disposedBackends, 8);
+    },
+  );
 
   test('near-degenerate candidates fail before warping', () {
     final page = _page();

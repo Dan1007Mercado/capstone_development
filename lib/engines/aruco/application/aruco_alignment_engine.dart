@@ -496,6 +496,7 @@ final class ArucoAlignmentEngine {
       totalPointCount: fullCorrespondences.length,
       accepted: rejectionReason == null,
       duration: estimate.duration,
+      homography: estimate.homography,
       fittingResiduals: fitting,
       heldOutValidationResiduals: heldOutValidationResiduals,
       heldOutValidationMethod: heldOutValidationMethod,

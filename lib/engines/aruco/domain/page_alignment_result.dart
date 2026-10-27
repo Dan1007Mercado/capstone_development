@@ -139,6 +139,7 @@ final class HomographyCandidateDiagnostics {
     required this.totalPointCount,
     required this.accepted,
     required this.duration,
+    this.homography,
     this.fittingResiduals,
     this.heldOutValidationResiduals,
     this.heldOutValidationMethod,
@@ -161,6 +162,9 @@ final class HomographyCandidateDiagnostics {
   final int totalPointCount;
   final bool accepted;
   final Duration duration;
+
+  /// Diagnostic estimate only. Production selection still owns warp choice.
+  final HomographyMatrix? homography;
   final ReprojectionStatistics? fittingResiduals;
 
   /// Out-of-sample geometric consistency when it was actually evaluated.

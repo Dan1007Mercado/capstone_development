@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../core/errors/engine_error.dart';
 import '../../core/ids/identifiers.dart';
 import '../../core/result/engine_result.dart';
@@ -15,10 +17,12 @@ final class PublishedScannerArtifact {
   const PublishedScannerArtifact({
     required this.template,
     required this.layout,
+    this.pdfBytes,
   });
 
   final TemplateDefinition template;
   final LayoutDocument layout;
+  final Uint8List? pdfBytes;
 
   TemplateId get templateId => template.id;
   TemplateVersion get templateVersion => template.version;
@@ -104,6 +108,7 @@ final class PublishedScannerResolver {
   ) => PublishedScannerArtifact(
     template: artifact.template,
     layout: artifact.layout,
+    pdfBytes: artifact.pdfBytes,
   );
 
   EngineResult<PublishedScannerArtifact> _notFound(

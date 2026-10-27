@@ -15,6 +15,7 @@ import '../application/real_scanner/scanner_validation_flow.dart';
 import '../application/real_scanner/scanner_validation_session.dart';
 import '../application/real_scanner/scanner_user_feedback.dart';
 import '../application/real_scanner/scanner_debug_report.dart';
+import '../application/real_scanner/failed_scan_capture.dart';
 import '../application/answer_sheet_packets/packet_generation_service.dart';
 import '../application/answer_sheet_packets/packet_models.dart';
 import '../application/answer_sheet_packets/packet_response_repository.dart';
@@ -359,9 +360,28 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        builder: (_) => ScannerDiagnosticsSheet(report: report),
+        builder: (_) => ScannerDiagnosticsSheet(
+          report: report,
+          failedCaptureExporter:
+              _runtime.failedScanCaptureRecorder?.hasCapture == true
+              ? _exportFailedCapture
+              : null,
+        ),
       ),
     );
+  }
+
+  Future<String?> _exportFailedCapture() async {
+    final recorder = _runtime.failedScanCaptureRecorder;
+    final capture = recorder?.capture;
+    if (capture == null) return null;
+    try {
+      final exported = await const FailedScanCaptureExporter().export(capture);
+      if (exported.isFailure) throw StateError(exported.error.toString());
+      return exported.value;
+    } finally {
+      recorder?.clear();
+    }
   }
 
   void _claimPacketResult(ScanResult? result) {
@@ -384,6 +404,7 @@ class _RealScannerCameraScreenState extends State<RealScannerCameraScreen>
     } else if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
+      _runtime.failedScanCaptureRecorder?.clear();
       unawaited(_runtime.coordinator.suspend());
     }
   }
