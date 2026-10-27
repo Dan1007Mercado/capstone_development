@@ -603,6 +603,9 @@ final class ScannerDebugReportBuilder {
             : 'rejected'}',
       )
       ..writeln(
+        '$label acceptance: ${candidate?.acceptance.name ?? 'unavailable'}',
+      )
+      ..writeln(
         '$label rejection reason: '
         '${candidate?.rejectionReason ?? 'unavailable'}',
       )

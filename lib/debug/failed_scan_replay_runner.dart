@@ -11,7 +11,9 @@ import '../engines/aruco/domain/aruco_alignment_config.dart';
 import '../engines/aruco/domain/image_geometry.dart';
 import '../engines/aruco/domain/page_alignment_result.dart';
 import '../engines/aruco/infrastructure/opencv_aruco_vision_backend.dart';
+import '../engines/preprocessing/infrastructure/opencv_preprocessing_backend.dart';
 import '../engines/recognition/application/bubble_alignment_evidence.dart';
+import '../engines/scanner/infrastructure/offline_scanner_composition.dart';
 import '../engines/scanner/domain/scanner_config.dart';
 import '../engines/scanner/domain/scanner_config_codec.dart';
 
@@ -116,6 +118,7 @@ _ReplayRun _runOne(
   final four = result.currentFourPointCandidate.valueOrNull;
   final multi = result.currentMultiPointCandidate.valueOrNull;
   final overlays = _renderOverlays(bundle, result, label);
+  final omr = _scanOmr(bundle, config);
   final productionFailure = production.isFailure
       ? AlignmentFailureDiagnostics.findInDetails(production.error.details)
       : null;
@@ -157,6 +160,7 @@ _ReplayRun _runOne(
             ..._error(production.error),
             'alignmentFailureDiagnostics': productionFailure?.toMap(),
           },
+    'productionOmr': omr,
     'overlays': overlays.keys.toList(growable: false),
   };
   String disposition(HomographyCandidateReplay? value) => value == null
@@ -169,13 +173,67 @@ _ReplayRun _runOne(
     overlays: overlays,
     summary:
         '$label four=${disposition(four)}, multi=${disposition(multi)}, '
-        'production=${production.isSuccess ? 'accepted' : production.error.code}',
+        'production=${production.isSuccess ? 'accepted' : production.error.code}, '
+        'omr=${omr['accepted'] == true ? omr['pageState'] : omr['errorCode']}',
   );
+}
+
+Map<String, Object?> _scanOmr(
+  FailedScanReplayBundle bundle,
+  ArucoAlignmentConfig alignment,
+) {
+  final backend = OpenCvArucoVisionBackend();
+  try {
+    final result =
+        OfflineScannerComposition.create(
+          alignmentBackend: backend,
+          preprocessingBackend: const OpenCvPreprocessingBackend(),
+        ).scan(
+          encodedImage: bundle.encodedImage,
+          template: bundle.template,
+          pageLayout: bundle.page,
+          config: _withAlignment(bundle.scannerConfig, alignment),
+        );
+    if (result.isFailure) return _error(result.error);
+    final scan = result.value;
+    return {
+      'accepted': true,
+      'correctness': 'OMR_CORRECTNESS_UNVERIFIED_NO_GROUND_TRUTH',
+      'pageState': scan.pageState.name,
+      'reviewReasons': scan.reviewReasons.map((value) => value.name).toList(),
+      'summary': {
+        'totalQuestions': scan.summary.totalQuestions,
+        'marked': scan.summary.marked,
+        'blank': scan.summary.blank,
+        'multiple': scan.summary.multiple,
+        'ambiguous': scan.summary.ambiguous,
+        'invalid': scan.summary.invalid,
+        'requiredBlank': scan.summary.requiredBlank,
+        'measuredBubbles': scan.summary.measuredBubbles,
+      },
+      'questions': [
+        for (final question in scan.questions)
+          {
+            'questionId': question.questionId.value,
+            'questionNumber': question.questionNumber,
+            'state': question.state.name,
+            'selectedOptionIds': question.selectedOptionIds
+                .map((value) => value.value)
+                .toList(),
+            'numericSelection': question.numericSelection?.completeDigitString,
+            'reason': question.diagnostics.reason.name,
+          },
+      ],
+    };
+  } finally {
+    backend.dispose();
+  }
 }
 
 Map<String, Object?> _candidate(HomographyCandidateReplay value) => {
   'estimated': true,
   'accepted': value.candidate.accepted,
+  'acceptance': value.candidate.acceptance.name,
   'method': value.candidate.method.name,
   'selectedForWarp': value.selectedForWarp,
   'homography': value.homography?.values,
@@ -329,6 +387,17 @@ ArucoAlignmentConfig _withDetectionLimit(
   final alignment = (encoded['alignment'] as Map).cast<String, Object?>();
   alignment['finalMarkerDetectionMaxDimension'] = limit;
   return const ScannerConfigCodec().decode(encoded).alignment;
+}
+
+ScannerConfig _withAlignment(
+  ScannerConfig original,
+  ArucoAlignmentConfig alignment,
+) {
+  final encoded = const ScannerConfigCodec().encode(original);
+  encoded['alignment'] = const ScannerConfigCodec().encode(
+    ScannerConfig(alignment: alignment),
+  )['alignment'];
+  return const ScannerConfigCodec().decode(encoded);
 }
 
 final class _ReplayRun {

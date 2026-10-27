@@ -458,18 +458,48 @@ final class ArucoAlignmentEngine {
       sourceSize: sourceSize,
       config: config,
     );
+    final maximumErrorIsSafe =
+        full.maximum <= effectiveRejectedCornerErrorPixels;
+    final strictInlierRatioIsSafe =
+        inlierCount / full.errors.length >= config.minimumMultipointInlierRatio;
+    final reliable =
+        maskIsValid &&
+        inlierErrorsAreSafe &&
+        stabilityFailure == null &&
+        maximumErrorIsSafe &&
+        perMarkerInliersAreSafe &&
+        strictInlierRatioIsSafe;
+    final localizedUncertaintyIsAcceptable =
+        !reliable &&
+        maskIsValid &&
+        inlierErrorsAreSafe &&
+        stabilityFailure == null &&
+        maximumErrorIsSafe &&
+        method == AlignmentHomographyMethod.multiPoint &&
+        _hasSpatiallyDistributedLocalizedSupport(inliersPerMarker) &&
+        full.median <= effectiveReprojectionErrorPixels &&
+        full.mean <= effectiveInlierReprojectionErrorPixels;
+    final acceptance = reliable
+        ? HomographyCandidateAcceptance.reliable
+        : localizedUncertaintyIsAcceptable
+        ? HomographyCandidateAcceptance.acceptableWithLocalizedUncertainty
+        : HomographyCandidateAcceptance.unsafe;
     String? rejectionReason;
     if (!fitting.mean.isFinite || !full.mean.isFinite) {
       rejectionReason = 'NON_FINITE_REPROJECTION';
     } else if (!maskIsValid) {
       rejectionReason = 'INVALID_INLIER_MASK';
+    } else if (stabilityFailure != null) {
+      rejectionReason = stabilityFailure;
+    } else if (!inlierErrorsAreSafe) {
+      rejectionReason = 'INLIER_REPROJECTION_EXCEEDED';
+    } else if (full.maximum > effectiveRejectedCornerErrorPixels) {
+      rejectionReason = 'REJECTED_CORNER_ERROR_EXCEEDED';
+    } else if (localizedUncertaintyIsAcceptable) {
+      rejectionReason = null;
     } else if (method == AlignmentHomographyMethod.multiPoint &&
         !perMarkerInliersAreSafe) {
       rejectionReason = 'UNSAFE_INLIER_DISTRIBUTION';
-    } else if (!inlierErrorsAreSafe) {
-      rejectionReason = 'INLIER_REPROJECTION_EXCEEDED';
-    } else if (stabilityFailure != null) {
-      rejectionReason = stabilityFailure;
     } else if (method == AlignmentHomographyMethod.fourPoint &&
         (!perMarkerInliersAreSafe ||
             inlierCount / full.errors.length <
@@ -479,12 +509,6 @@ final class ArucoAlignmentEngine {
         inlierCount / fitting.errors.length <
             config.minimumMultipointInlierRatio) {
       rejectionReason = 'INSUFFICIENT_MULTIPOINT_INLIERS';
-    } else if (method == AlignmentHomographyMethod.multiPoint &&
-        full.maximum > effectiveRejectedCornerErrorPixels) {
-      rejectionReason = 'REJECTED_CORNER_ERROR_EXCEEDED';
-    } else if (method == AlignmentHomographyMethod.fourPoint &&
-        full.maximum > effectiveRejectedCornerErrorPixels) {
-      rejectionReason = 'REJECTED_CORNER_ERROR_EXCEEDED';
     }
     return HomographyCandidateDiagnostics(
       method: method,
@@ -495,6 +519,7 @@ final class ArucoAlignmentEngine {
       inlierCount: inlierCount,
       totalPointCount: fullCorrespondences.length,
       accepted: rejectionReason == null,
+      acceptance: acceptance,
       duration: estimate.duration,
       homography: estimate.homography,
       fittingResiduals: fitting,
@@ -512,12 +537,26 @@ final class ArucoAlignmentEngine {
     HomographyCandidateDiagnostics? multiPoint,
     HomographySelectionPolicy policy,
   ) {
-    if (fourPoint?.accepted == true &&
-        multiPoint?.accepted == true &&
-        policy == HomographySelectionPolicy.validatedMultiPointPreference) {
+    if (fourPoint?.accepted == true && multiPoint?.accepted == true) {
+      if (policy == HomographySelectionPolicy.fourPointBaseline) {
+        return const _SelectionDecision(
+          method: AlignmentHomographyMethod.fourPoint,
+          selectionReason: 'FOUR_POINT_VALIDATED_BASELINE',
+          fallbackReason: 'MULTIPOINT_RESERVED_FOR_UNSAFE_BASELINE',
+        );
+      }
+      if (policy == HomographySelectionPolicy.validatedMultiPointPreference &&
+          _candidateRank(multiPoint!) >= _candidateRank(fourPoint!) &&
+          multiPoint.commonScore <= fourPoint.commonScore) {
+        return const _SelectionDecision(
+          method: AlignmentHomographyMethod.multiPoint,
+          selectionReason: 'EMPIRICALLY_VALIDATED_MULTIPOINT_PREFERENCE',
+        );
+      }
       return const _SelectionDecision(
-        method: AlignmentHomographyMethod.multiPoint,
-        selectionReason: 'EMPIRICALLY_VALIDATED_MULTIPOINT_PREFERENCE',
+        method: AlignmentHomographyMethod.fourPoint,
+        selectionReason: 'FOUR_POINT_STRONGER_VALIDATED_CANDIDATE',
+        fallbackReason: 'MULTIPOINT_NOT_DEMONSTRABLY_MORE_ACCURATE',
       );
     }
     if (fourPoint?.accepted == true) {
@@ -539,6 +578,23 @@ final class ArucoAlignmentEngine {
     return const _SelectionDecision(
       selectionReason: 'NO_TRUSTWORTHY_HOMOGRAPHY',
     );
+  }
+
+  int _candidateRank(HomographyCandidateDiagnostics candidate) =>
+      switch (candidate.acceptance) {
+        HomographyCandidateAcceptance.reliable => 2,
+        HomographyCandidateAcceptance.acceptableWithLocalizedUncertainty => 1,
+        HomographyCandidateAcceptance.unsafe => 0,
+      };
+
+  bool _hasSpatiallyDistributedLocalizedSupport(List<int> inliersPerMarker) {
+    if (inliersPerMarker.length != 4) return false;
+    final cornerCount = MarkerCorner.values.length;
+    final localizedMinimum = cornerCount ~/ 2;
+    final reliableMinimum = cornerCount - 1;
+    return inliersPerMarker.every((count) => count >= localizedMinimum) &&
+        inliersPerMarker.where((count) => count >= reliableMinimum).length >=
+            inliersPerMarker.length - 1;
   }
 
   List<MarkerCorrespondence> _fourPointHeldOutCorrespondences(

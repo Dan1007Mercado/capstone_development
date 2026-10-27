@@ -584,6 +584,7 @@ Map<String, Object?> _candidate(
   'method': value.candidate.method.name,
   'homography': value.homography?.values,
   'accepted': value.candidate.accepted,
+  'acceptance': value.candidate.acceptance.name,
   'rejectionReason': value.candidate.rejectionReason,
   'geometryFailure': value.candidate.geometryValidationFailure,
   'residuals': value.candidate.commonReprojectionErrors,

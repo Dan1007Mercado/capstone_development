@@ -168,6 +168,7 @@ final class ArucoCaptureReplayHarness {
       inlierCount: attempt.inlierCount,
       totalPointCount: residuals.length,
       accepted: false,
+      acceptance: HomographyCandidateAcceptance.unsafe,
       duration: attempt.estimationDuration + attempt.validationDuration,
       homography: attempt.homography,
       inliersPerMarker: attempt.inliersPerMarker,

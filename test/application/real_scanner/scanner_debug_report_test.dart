@@ -330,6 +330,7 @@ ScanResult _result() {
     inlierCount: 16,
     totalPointCount: 16,
     accepted: true,
+    acceptance: HomographyCandidateAcceptance.reliable,
     duration: const Duration(milliseconds: 2),
     fittingResiduals: ReprojectionStatistics(List.filled(16, 0.2)),
     inliersPerMarker: const [4, 4, 4, 4],

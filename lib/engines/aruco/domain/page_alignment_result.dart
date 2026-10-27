@@ -92,6 +92,12 @@ enum AlignmentHomographyMethod { fourPoint, multiPoint }
 
 enum HomographyValidationMethod { unusedFittingCorners, leaveOneMarkerOut }
 
+enum HomographyCandidateAcceptance {
+  reliable,
+  acceptableWithLocalizedUncertainty,
+  unsafe,
+}
+
 final class ReprojectionStatistics {
   ReprojectionStatistics(Iterable<double> values)
     : errors = UnmodifiableListView(List.of(values)) {
@@ -138,6 +144,7 @@ final class HomographyCandidateDiagnostics {
     required this.inlierCount,
     required this.totalPointCount,
     required this.accepted,
+    required this.acceptance,
     required this.duration,
     this.homography,
     this.fittingResiduals,
@@ -161,6 +168,7 @@ final class HomographyCandidateDiagnostics {
   final int inlierCount;
   final int totalPointCount;
   final bool accepted;
+  final HomographyCandidateAcceptance acceptance;
   final Duration duration;
 
   /// Diagnostic estimate only. Production selection still owns warp choice.

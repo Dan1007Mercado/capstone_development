@@ -251,6 +251,130 @@ void main() {
     );
   });
 
+  for (final fixture in <(String, List<bool>)>[
+    (
+      'recorded-resolution 12/16 spatial support',
+      const [
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        false,
+      ],
+    ),
+    (
+      'full-resolution 11/16 spatial support',
+      const [
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true,
+        false,
+      ],
+    ),
+  ]) {
+    test('multi-point accepts localized uncertainty with ${fixture.$1}', () {
+      final page = _page();
+      final backend = _FakeBackend(
+        _detectionFor(page),
+        fourPointHomography: HomographyMatrix([1, 0, 2, 0, 1, 0, 0, 0, 1]),
+        multiPointInliers: fixture.$2,
+      );
+
+      final result = ArucoAlignmentEngine(
+        backend: backend,
+      ).align(Uint8List.fromList([1]), page);
+
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      final multi = result.value.diagnostics.multiPointCandidate!;
+      expect(multi.accepted, isTrue);
+      expect(
+        multi.acceptance,
+        HomographyCandidateAcceptance.acceptableWithLocalizedUncertainty,
+      );
+      expect(
+        result.value.diagnostics.selectedHomographyMethod,
+        AlignmentHomographyMethod.multiPoint,
+      );
+    });
+  }
+
+  test('multi-point rejects weak support spread across every marker', () {
+    final page = _page();
+    final result = ArucoAlignmentEngine(
+      backend: _FakeBackend(
+        _detectionFor(page),
+        fourPointHomography: HomographyMatrix([1, 0, 2, 0, 1, 0, 0, 0, 1]),
+        multiPointInliers: const [
+          true,
+          true,
+          false,
+          false,
+          true,
+          true,
+          false,
+          false,
+          true,
+          true,
+          false,
+          false,
+          true,
+          true,
+          false,
+          false,
+        ],
+      ),
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isFailure, isTrue);
+    expect(
+      result.error.details['multiPointRejectionReason'],
+      'UNSAFE_INLIER_DISTRIBUTION',
+    );
+  });
+
+  test('validated policy does not select a higher-error multi-point fit', () {
+    final page = _page();
+    final result = ArucoAlignmentEngine(
+      backend: _FakeBackend(
+        _detectionFor(page),
+        multiPointHomography: HomographyMatrix([1, 0, 0.5, 0, 1, 0, 0, 0, 1]),
+      ),
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.fourPoint,
+    );
+    expect(
+      result.value.diagnostics.selectionReason,
+      'FOUR_POINT_STRONGER_VALIDATED_CANDIDATE',
+    );
+  });
+
   test('validated accuracy policy can prefer a safe multi-point estimate', () {
     final page = _page();
     final backend = _FakeBackend(_detectionFor(page));
