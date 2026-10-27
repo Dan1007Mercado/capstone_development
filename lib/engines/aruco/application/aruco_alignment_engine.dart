@@ -146,7 +146,12 @@ final class ArucoAlignmentEngine {
       EngineResult<BackendHomographyEstimate>? multiPointEstimate;
       HomographyCandidateDiagnostics? multiPointCandidate;
       var multiPointValidationDuration = Duration.zero;
-      if (effectiveConfig.enableMultipointHomography) {
+      // A safe baseline wins under this policy regardless of the multi-point
+      // residuals. Fit the optional candidate only when it can affect selection.
+      if (effectiveConfig.enableMultipointHomography &&
+          (fourPointCandidate?.accepted != true ||
+              effectiveConfig.selectionPolicy ==
+                  HomographySelectionPolicy.validatedMultiPointPreference)) {
         multiPointEstimate = session.estimateHomography(
           sourcePoints: correspondenceSet.allSourcePoints,
           destinationPoints: correspondenceSet.allDestinationPoints,
@@ -582,9 +587,7 @@ final class ArucoAlignmentEngine {
       return _SelectionDecision(
         method: AlignmentHomographyMethod.fourPoint,
         selectionReason: 'FOUR_POINT_VALIDATED_BASELINE',
-        fallbackReason: multiPoint?.accepted == true
-            ? 'MULTIPOINT_RESERVED_FOR_UNSAFE_BASELINE'
-            : multiPoint?.rejectionReason ?? 'MULTIPOINT_UNAVAILABLE',
+        fallbackReason: multiPoint?.rejectionReason,
       );
     }
     if (multiPoint?.accepted == true) {

@@ -41,6 +41,7 @@ final class ArucoCaptureReplayHarness {
     ArucoAlignmentConfig? legacyConfig,
     ArucoAlignmentConfig? currentFourPointConfig,
     ArucoAlignmentConfig? currentMultiPointConfig,
+    ArucoAlignmentConfig? productionConfig,
   }) {
     final legacy = _legacyFourPoint(
       encodedImage,
@@ -61,14 +62,20 @@ final class ArucoCaptureReplayHarness {
       backend: multiBackend,
       encodedImage: encodedImage,
       page: page,
-      config: currentMultiPointConfig ?? ArucoAlignmentConfig(),
+      config:
+          currentMultiPointConfig ??
+          ArucoAlignmentConfig(
+            selectionPolicy:
+                HomographySelectionPolicy.validatedMultiPointPreference,
+          ),
     );
     final productionBackend = backendFactory();
     final production = _runCurrent(
       backend: productionBackend,
       encodedImage: encodedImage,
       page: page,
-      config: currentMultiPointConfig ?? ArucoAlignmentConfig(),
+      config:
+          productionConfig ?? currentMultiPointConfig ?? ArucoAlignmentConfig(),
     );
     return ArucoCaptureReplayResult(
       legacyFourPoint: legacy,

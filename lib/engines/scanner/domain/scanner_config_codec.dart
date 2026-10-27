@@ -34,26 +34,62 @@ final class ScannerConfigCodec {
       alignment: ArucoAlignmentConfig(
         dictionary: ArucoDictionary.values.byName(_string(a, 'dictionary')),
         minimumMarkerSidePixels: _double(a, 'minimumMarkerSidePixels'),
-        minimumRegistrationAreaRatio: _double(a, 'minimumRegistrationAreaRatio'),
-        minimumRegistrationSpacingPixels: _double(a, 'minimumRegistrationSpacingPixels'),
-        maximumExtremePerspectiveRatio: _double(a, 'maximumExtremePerspectiveRatio'),
-        maximumReprojectionErrorPixels: _double(a, 'maximumReprojectionErrorPixels'),
-        maximumRejectedCornerErrorPixels: _double(a, 'maximumRejectedCornerErrorPixels'),
-        maximumLocalizationScaleFactor: _double(a, 'maximumLocalizationScaleFactor'),
-        multipointRansacReprojectionThresholdPixels: _double(a, 'multipointRansacReprojectionThresholdPixels'),
-        minimumMultipointInlierRatio: _double(a, 'minimumMultipointInlierRatio'),
+        minimumRegistrationAreaRatio: _double(
+          a,
+          'minimumRegistrationAreaRatio',
+        ),
+        minimumRegistrationSpacingPixels: _double(
+          a,
+          'minimumRegistrationSpacingPixels',
+        ),
+        maximumExtremePerspectiveRatio: _double(
+          a,
+          'maximumExtremePerspectiveRatio',
+        ),
+        maximumReprojectionErrorPixels: _double(
+          a,
+          'maximumReprojectionErrorPixels',
+        ),
+        maximumRejectedCornerErrorPixels: _double(
+          a,
+          'maximumRejectedCornerErrorPixels',
+        ),
+        maximumLocalizationScaleFactor: _double(
+          a,
+          'maximumLocalizationScaleFactor',
+        ),
+        multipointRansacReprojectionThresholdPixels: _double(
+          a,
+          'multipointRansacReprojectionThresholdPixels',
+        ),
+        minimumMultipointInlierRatio: _double(
+          a,
+          'minimumMultipointInlierRatio',
+        ),
         maximumLocalScaleRatio: _double(a, 'maximumLocalScaleRatio'),
         maximumLocalAnisotropyRatio: _double(a, 'maximumLocalAnisotropyRatio'),
-        maximumPageBoundaryOvershootRatio: _double(a, 'maximumPageBoundaryOvershootRatio'),
+        maximumPageBoundaryOvershootRatio: _double(
+          a,
+          'maximumPageBoundaryOvershootRatio',
+        ),
         multipointMaximumIterations: _int(a, 'multipointMaximumIterations'),
         multipointConfidence: _double(a, 'multipointConfidence'),
         enableMultipointHomography: _bool(a, 'enableMultipointHomography'),
-        selectionPolicy: HomographySelectionPolicy.values.byName(_string(a, 'selectionPolicy')),
-        allowAdditionalUnrelatedMarkers: _bool(a, 'allowAdditionalUnrelatedMarkers'),
-        finalMarkerDetectionMaxDimension: (a['finalMarkerDetectionMaxDimension'] as num?)?.toInt(),
+        selectionPolicy: HomographySelectionPolicy.values.byName(
+          _string(a, 'selectionPolicy'),
+        ),
+        allowAdditionalUnrelatedMarkers: _bool(
+          a,
+          'allowAdditionalUnrelatedMarkers',
+        ),
+        finalMarkerDetectionMaxDimension:
+            (a['finalMarkerDetectionMaxDimension'] as num?)?.toInt(),
       ),
       preprocessing: PreprocessingConfig(
-        enableIlluminationNormalization: _bool(p, 'enableIlluminationNormalization'),
+        enableIlluminationNormalization: _bool(
+          p,
+          'enableIlluminationNormalization',
+        ),
         backgroundKernelSize: _int(p, 'backgroundKernelSize'),
         enableDenoise: _bool(p, 'enableDenoise'),
         denoiseKernelSize: _int(p, 'denoiseKernelSize'),
@@ -74,9 +110,15 @@ final class ScannerConfigCodec {
         excludeBaselineForeground: _bool(m, 'excludeBaselineForeground'),
         excludeNeighborBubbles: _bool(m, 'excludeNeighborBubbles'),
         baselinePercentile: _double(m, 'baselinePercentile'),
-        maximumBaselineForegroundRatio: _double(m, 'maximumBaselineForegroundRatio'),
+        maximumBaselineForegroundRatio: _double(
+          m,
+          'maximumBaselineForegroundRatio',
+        ),
         distributionGridSize: _int(m, 'distributionGridSize'),
-        distributionCellMinimumFillRatio: _double(m, 'distributionCellMinimumFillRatio'),
+        distributionCellMinimumFillRatio: _double(
+          m,
+          'distributionCellMinimumFillRatio',
+        ),
         epsilon: _double(m, 'epsilon'),
       ),
       classification: MarkClassificationConfig(
@@ -99,12 +141,24 @@ final class ScannerConfigCodec {
         coverageDominanceRatio: _double(c, 'coverageDominanceRatio'),
         coverageDominanceGap: _double(c, 'coverageDominanceGap'),
         multipleMarkMinimumCoverage: _double(c, 'multipleMarkMinimumCoverage'),
-        multipleMarkMinimumConfidence: _double(c, 'multipleMarkMinimumConfidence'),
-        maximumBaselineForegroundRatio: _double(c, 'maximumBaselineForegroundRatio'),
-        severeBaselineForegroundRatio: _double(c, 'severeBaselineForegroundRatio'),
+        multipleMarkMinimumConfidence: _double(
+          c,
+          'multipleMarkMinimumConfidence',
+        ),
+        maximumBaselineForegroundRatio: _double(
+          c,
+          'maximumBaselineForegroundRatio',
+        ),
+        severeBaselineForegroundRatio: _double(
+          c,
+          'severeBaselineForegroundRatio',
+        ),
         requireReliableBaseline: _bool(c, 'requireReliableBaseline'),
         minimumValidSampleRatio: _double(c, 'minimumValidSampleRatio'),
-        severeMinimumValidSampleRatio: _double(c, 'severeMinimumValidSampleRatio'),
+        severeMinimumValidSampleRatio: _double(
+          c,
+          'severeMinimumValidSampleRatio',
+        ),
         epsilon: _double(c, 'epsilon'),
       ),
       requiredQuestionPolicy: RequiredQuestionPolicy.values.byName(
@@ -122,7 +176,8 @@ final class ScannerConfigCodec {
     'maximumReprojectionErrorPixels': v.maximumReprojectionErrorPixels,
     'maximumRejectedCornerErrorPixels': v.maximumRejectedCornerErrorPixels,
     'maximumLocalizationScaleFactor': v.maximumLocalizationScaleFactor,
-    'multipointRansacReprojectionThresholdPixels': v.multipointRansacReprojectionThresholdPixels,
+    'multipointRansacReprojectionThresholdPixels':
+        v.multipointRansacReprojectionThresholdPixels,
     'minimumMultipointInlierRatio': v.minimumMultipointInlierRatio,
     'maximumLocalScaleRatio': v.maximumLocalScaleRatio,
     'maximumLocalAnisotropyRatio': v.maximumLocalAnisotropyRatio,
@@ -197,6 +252,8 @@ final class ScannerConfigCodec {
       (v[key] as Map).cast<String, Object?>();
   static String _string(Map<String, Object?> v, String key) => v[key] as String;
   static bool _bool(Map<String, Object?> v, String key) => v[key] as bool;
-  static int _int(Map<String, Object?> v, String key) => (v[key] as num).toInt();
-  static double _double(Map<String, Object?> v, String key) => (v[key] as num).toDouble();
+  static int _int(Map<String, Object?> v, String key) =>
+      (v[key] as num).toInt();
+  static double _double(Map<String, Object?> v, String key) =>
+      (v[key] as num).toDouble();
 }

@@ -321,7 +321,11 @@ Map<String, Object?> _run(
         bundle.page,
         legacyConfig: _withMultipoint(config, false),
         currentFourPointConfig: _withMultipoint(config, false),
-        currentMultiPointConfig: config,
+        currentMultiPointConfig: _withSelectionPolicy(
+          _withMultipoint(config, true),
+          HomographySelectionPolicy.validatedMultiPointPreference,
+        ),
+        productionConfig: config,
       );
   final production = result.productionSelection;
   if (production.isFailure &&
