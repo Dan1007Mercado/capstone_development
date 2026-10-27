@@ -31,6 +31,7 @@ void main() {
         platform: 'android',
       );
 
+      expect(report, contains('Phase: P15.3.1'));
       expect(report, contains('Paper outline detected: YES'));
       expect(
         report,

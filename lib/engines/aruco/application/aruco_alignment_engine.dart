@@ -476,7 +476,11 @@ final class ArucoAlignmentEngine {
         stabilityFailure == null &&
         maximumErrorIsSafe &&
         method == AlignmentHomographyMethod.multiPoint &&
-        _hasSpatiallyDistributedLocalizedSupport(inliersPerMarker) &&
+        _hasSpatiallyDistributedLocalizedSupport(
+          fullCorrespondences,
+          validationInliers,
+          inliersPerMarker,
+        ) &&
         full.median <= effectiveReprojectionErrorPixels &&
         full.mean <= effectiveInlierReprojectionErrorPixels;
     final acceptance = reliable
@@ -587,15 +591,104 @@ final class ArucoAlignmentEngine {
         HomographyCandidateAcceptance.unsafe => 0,
       };
 
-  bool _hasSpatiallyDistributedLocalizedSupport(List<int> inliersPerMarker) {
-    if (inliersPerMarker.length != 4) return false;
+  bool _hasSpatiallyDistributedLocalizedSupport(
+    List<MarkerCorrespondence> correspondences,
+    List<bool> inliers,
+    List<int> inliersPerMarker,
+  ) {
+    if (inliersPerMarker.length != 4 ||
+        correspondences.length != inliers.length) {
+      return false;
+    }
     final cornerCount = MarkerCorner.values.length;
     final localizedMinimum = cornerCount ~/ 2;
     final reliableMinimum = cornerCount - 1;
-    return inliersPerMarker.every((count) => count >= localizedMinimum) &&
-        inliersPerMarker.where((count) => count >= reliableMinimum).length >=
-            inliersPerMarker.length - 1;
+    final minimumDistributedInliers =
+        localizedMinimum * inliersPerMarker.length +
+        (reliableMinimum - localizedMinimum) *
+            (inliersPerMarker.length - 1);
+    final supported = [
+      for (var index = 0; index < correspondences.length; index++)
+        if (inliers[index]) correspondences[index],
+    ];
+    if (inliersPerMarker.any((count) => count < localizedMinimum) ||
+        supported.length < minimumDistributedInliers) {
+      return false;
+    }
+
+    return _hasProportionalHullCoverage(
+          allPoints: [
+            for (final correspondence in correspondences)
+              correspondence.sourcePoint,
+          ],
+          supportedPoints: [
+            for (final correspondence in supported) correspondence.sourcePoint,
+          ],
+        ) &&
+        _hasProportionalHullCoverage(
+          allPoints: [
+            for (final correspondence in correspondences)
+              correspondence.destinationPoint,
+          ],
+          supportedPoints: [
+            for (final correspondence in supported)
+              correspondence.destinationPoint,
+          ],
+        );
   }
+
+  bool _hasProportionalHullCoverage({
+    required List<ImagePoint> allPoints,
+    required List<ImagePoint> supportedPoints,
+  }) {
+    final allArea = _convexHullArea(allPoints);
+    final supportedArea = _convexHullArea(supportedPoints);
+    if (!allArea.isFinite ||
+        !supportedArea.isFinite ||
+        allArea <= 0 ||
+        supportedArea <= 0) {
+      return false;
+    }
+    return supportedArea / allArea >=
+        supportedPoints.length / allPoints.length;
+  }
+
+  double _convexHullArea(List<ImagePoint> points) {
+    if (points.length < 3) return 0;
+    final sorted = List<ImagePoint>.of(points)..sort((first, second) {
+      final xComparison = first.x.compareTo(second.x);
+      return xComparison != 0 ? xComparison : first.y.compareTo(second.y);
+    });
+    final lower = <ImagePoint>[];
+    for (final point in sorted) {
+      while (lower.length >= 2 &&
+          _cross(lower[lower.length - 2], lower.last, point) <= 0) {
+        lower.removeLast();
+      }
+      lower.add(point);
+    }
+    final upper = <ImagePoint>[];
+    for (final point in sorted.reversed) {
+      while (upper.length >= 2 &&
+          _cross(upper[upper.length - 2], upper.last, point) <= 0) {
+        upper.removeLast();
+      }
+      upper.add(point);
+    }
+    final hull = [...lower.take(lower.length - 1), ...upper.take(upper.length - 1)];
+    if (hull.length < 3) return 0;
+    var twiceArea = 0.0;
+    for (var index = 0; index < hull.length; index++) {
+      final current = hull[index];
+      final next = hull[(index + 1) % hull.length];
+      twiceArea += current.x * next.y - next.x * current.y;
+    }
+    return twiceArea.abs() / 2;
+  }
+
+  double _cross(ImagePoint origin, ImagePoint first, ImagePoint second) =>
+      (first.x - origin.x) * (second.y - origin.y) -
+      (first.y - origin.y) * (second.x - origin.x);
 
   List<MarkerCorrespondence> _fourPointHeldOutCorrespondences(
     MarkerCorrespondenceSet set,

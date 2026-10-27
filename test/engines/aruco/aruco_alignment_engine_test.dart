@@ -253,6 +253,27 @@ void main() {
 
   for (final fixture in <(String, List<bool>)>[
     (
+      'real-camera 12/16 support with two mildly unreliable markers',
+      const [
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        false,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+      ],
+    ),
+    (
       'recorded-resolution 12/16 spatial support',
       const [
         true,
@@ -342,6 +363,40 @@ void main() {
           false,
           true,
           true,
+          false,
+          false,
+        ],
+      ),
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isFailure, isTrue);
+    expect(
+      result.error.details['multiPointRejectionReason'],
+      'UNSAFE_INLIER_DISTRIBUTION',
+    );
+  });
+
+  test('multi-point rejects 12/16 support concentrated in three markers', () {
+    final page = _page();
+    final result = ArucoAlignmentEngine(
+      backend: _FakeBackend(
+        _detectionFor(page),
+        fourPointHomography: HomographyMatrix([1, 0, 2, 0, 1, 0, 0, 0, 1]),
+        multiPointInliers: const [
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          false,
           false,
           false,
         ],
