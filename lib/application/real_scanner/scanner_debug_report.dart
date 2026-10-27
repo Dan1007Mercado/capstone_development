@@ -137,7 +137,7 @@ final class ScannerDebugReportBuilder {
     final buffer = StringBuffer()
       ..writeln('SCANNER DEBUG REPORT')
       ..writeln('App: Capstone OMR')
-      ..writeln('Phase: P15.3.1')
+      ..writeln('Phase: P15.4')
       ..writeln('Platform: $platform')
       ..writeln()
       ..writeln('CURRENT STATE')

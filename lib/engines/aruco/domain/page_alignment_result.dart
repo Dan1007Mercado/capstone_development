@@ -226,8 +226,7 @@ final class PageAlignmentDiagnostics {
     this.detectionScaleX = 1,
     this.detectionScaleY = 1,
     this.selectedHomographyMethod = AlignmentHomographyMethod.fourPoint,
-    this.selectionPolicy =
-        HomographySelectionPolicy.validatedMultiPointPreference,
+    this.selectionPolicy = HomographySelectionPolicy.fourPointBaseline,
     this.fourPointCandidate,
     this.multiPointCandidate,
     this.fourPointHomographyDuration = Duration.zero,

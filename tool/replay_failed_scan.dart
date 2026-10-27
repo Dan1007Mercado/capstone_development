@@ -35,7 +35,10 @@ void main(List<String> arguments) {
   try {
     final bundleBytes = File(parsed.bundlePath!).readAsBytesSync();
     final bundle = const FailedScanReplayBundleCodec().decode(bundleBytes);
-    final baseConfig = bundle.scannerConfig.alignment;
+    final baseConfig = _withSelectionPolicy(
+      bundle.scannerConfig.alignment,
+      HomographySelectionPolicy.fourPointBaseline,
+    );
     final groundTruth = parsed.groundTruthPath == null
         ? const <BubbleGroundTruthAnnotation>[]
         : _loadGroundTruth(parsed.groundTruthPath!);
@@ -49,7 +52,7 @@ void main(List<String> arguments) {
     final recordedRun = _run(
       bundle,
       baseConfig,
-      label: 'recorded-config',
+      label: 'p15.4-four-point-baseline',
       groundTruth: groundTruth,
       expected: expected,
       outputDirectory: parsed.outputDirectory,
@@ -720,6 +723,18 @@ ArucoAlignmentConfig _withDetectionLimit(
   );
   final alignment = (encoded['alignment'] as Map).cast<String, Object?>();
   alignment['finalMarkerDetectionMaxDimension'] = limit;
+  return const ScannerConfigCodec().decode(encoded).alignment;
+}
+
+ArucoAlignmentConfig _withSelectionPolicy(
+  ArucoAlignmentConfig value,
+  HomographySelectionPolicy policy,
+) {
+  final encoded = const ScannerConfigCodec().encode(
+    ScannerConfig(alignment: value),
+  );
+  final alignment = (encoded['alignment'] as Map).cast<String, Object?>();
+  alignment['selectionPolicy'] = policy.name;
   return const ScannerConfigCodec().decode(encoded).alignment;
 }
 

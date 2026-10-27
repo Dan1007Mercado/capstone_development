@@ -29,7 +29,7 @@ final class ArucoAlignmentConfig {
     double multipointConfidence = 0.995,
     bool enableMultipointHomography = true,
     HomographySelectionPolicy selectionPolicy =
-        HomographySelectionPolicy.validatedMultiPointPreference,
+        HomographySelectionPolicy.fourPointBaseline,
     bool allowAdditionalUnrelatedMarkers = true,
     int? finalMarkerDetectionMaxDimension = 1400,
   }) {

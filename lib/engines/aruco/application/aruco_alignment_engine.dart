@@ -443,6 +443,10 @@ final class ArucoAlignmentEngine {
         : const <int>[];
     final perMarkerInliersAreSafe =
         maskIsValid && inliersPerMarker.every((count) => count >= 3);
+    final fittingErrorsAreSafe =
+        fitting.errors.isNotEmpty &&
+        fitting.errors.every((error) => error.isFinite) &&
+        fitting.maximum <= effectiveReprojectionErrorPixels;
     final inlierErrorsAreSafe =
         method == AlignmentHomographyMethod.fourPoint ||
         (maskIsValid &&
@@ -462,13 +466,20 @@ final class ArucoAlignmentEngine {
         full.maximum <= effectiveRejectedCornerErrorPixels;
     final strictInlierRatioIsSafe =
         inlierCount / full.errors.length >= config.minimumMultipointInlierRatio;
-    final reliable =
+    final fourPointIsReliable =
+        method == AlignmentHomographyMethod.fourPoint &&
+        estimatorMaskIsValid &&
+        fittingErrorsAreSafe &&
+        stabilityFailure == null;
+    final multiPointIsReliable =
+        method == AlignmentHomographyMethod.multiPoint &&
         maskIsValid &&
         inlierErrorsAreSafe &&
         stabilityFailure == null &&
         maximumErrorIsSafe &&
         perMarkerInliersAreSafe &&
         strictInlierRatioIsSafe;
+    final reliable = fourPointIsReliable || multiPointIsReliable;
     final localizedUncertaintyIsAcceptable =
         !reliable &&
         maskIsValid &&
@@ -489,26 +500,31 @@ final class ArucoAlignmentEngine {
         ? HomographyCandidateAcceptance.acceptableWithLocalizedUncertainty
         : HomographyCandidateAcceptance.unsafe;
     String? rejectionReason;
-    if (!fitting.mean.isFinite || !full.mean.isFinite) {
+    if (!fitting.mean.isFinite ||
+        (method == AlignmentHomographyMethod.multiPoint &&
+            !full.mean.isFinite)) {
       rejectionReason = 'NON_FINITE_REPROJECTION';
-    } else if (!maskIsValid) {
+    } else if (!estimatorMaskIsValid ||
+        (method == AlignmentHomographyMethod.multiPoint && !maskIsValid)) {
       rejectionReason = 'INVALID_INLIER_MASK';
     } else if (stabilityFailure != null) {
       rejectionReason = stabilityFailure;
-    } else if (!inlierErrorsAreSafe) {
+    } else if (method == AlignmentHomographyMethod.fourPoint &&
+        !fittingErrorsAreSafe) {
+      rejectionReason = 'FITTING_REPROJECTION_EXCEEDED';
+    } else if (method == AlignmentHomographyMethod.multiPoint &&
+        !inlierErrorsAreSafe) {
       rejectionReason = 'INLIER_REPROJECTION_EXCEEDED';
-    } else if (full.maximum > effectiveRejectedCornerErrorPixels) {
+    } else if (method == AlignmentHomographyMethod.multiPoint &&
+        full.maximum > effectiveRejectedCornerErrorPixels) {
       rejectionReason = 'REJECTED_CORNER_ERROR_EXCEEDED';
+    } else if (method == AlignmentHomographyMethod.fourPoint) {
+      rejectionReason = null;
     } else if (localizedUncertaintyIsAcceptable) {
       rejectionReason = null;
     } else if (method == AlignmentHomographyMethod.multiPoint &&
         !perMarkerInliersAreSafe) {
       rejectionReason = 'UNSAFE_INLIER_DISTRIBUTION';
-    } else if (method == AlignmentHomographyMethod.fourPoint &&
-        (!perMarkerInliersAreSafe ||
-            inlierCount / full.errors.length <
-                config.minimumMultipointInlierRatio)) {
-      rejectionReason = 'FULL_CORNER_CONSISTENCY_EXCEEDED';
     } else if (method == AlignmentHomographyMethod.multiPoint &&
         inlierCount / fitting.errors.length <
             config.minimumMultipointInlierRatio) {
@@ -550,11 +566,10 @@ final class ArucoAlignmentEngine {
         );
       }
       if (policy == HomographySelectionPolicy.validatedMultiPointPreference &&
-          _candidateRank(multiPoint!) >= _candidateRank(fourPoint!) &&
-          multiPoint.commonScore <= fourPoint.commonScore) {
+          multiPoint!.acceptance == HomographyCandidateAcceptance.reliable) {
         return const _SelectionDecision(
           method: AlignmentHomographyMethod.multiPoint,
-          selectionReason: 'EMPIRICALLY_VALIDATED_MULTIPOINT_PREFERENCE',
+          selectionReason: 'EXTERNALLY_VALIDATED_MULTIPOINT_PREFERENCE',
         );
       }
       return const _SelectionDecision(
@@ -584,13 +599,6 @@ final class ArucoAlignmentEngine {
     );
   }
 
-  int _candidateRank(HomographyCandidateDiagnostics candidate) =>
-      switch (candidate.acceptance) {
-        HomographyCandidateAcceptance.reliable => 2,
-        HomographyCandidateAcceptance.acceptableWithLocalizedUncertainty => 1,
-        HomographyCandidateAcceptance.unsafe => 0,
-      };
-
   bool _hasSpatiallyDistributedLocalizedSupport(
     List<MarkerCorrespondence> correspondences,
     List<bool> inliers,
@@ -605,8 +613,7 @@ final class ArucoAlignmentEngine {
     final reliableMinimum = cornerCount - 1;
     final minimumDistributedInliers =
         localizedMinimum * inliersPerMarker.length +
-        (reliableMinimum - localizedMinimum) *
-            (inliersPerMarker.length - 1);
+        (reliableMinimum - localizedMinimum) * (inliersPerMarker.length - 1);
     final supported = [
       for (var index = 0; index < correspondences.length; index++)
         if (inliers[index]) correspondences[index],
@@ -649,16 +656,16 @@ final class ArucoAlignmentEngine {
         supportedArea <= 0) {
       return false;
     }
-    return supportedArea / allArea >=
-        supportedPoints.length / allPoints.length;
+    return supportedArea / allArea >= supportedPoints.length / allPoints.length;
   }
 
   double _convexHullArea(List<ImagePoint> points) {
     if (points.length < 3) return 0;
-    final sorted = List<ImagePoint>.of(points)..sort((first, second) {
-      final xComparison = first.x.compareTo(second.x);
-      return xComparison != 0 ? xComparison : first.y.compareTo(second.y);
-    });
+    final sorted = List<ImagePoint>.of(points)
+      ..sort((first, second) {
+        final xComparison = first.x.compareTo(second.x);
+        return xComparison != 0 ? xComparison : first.y.compareTo(second.y);
+      });
     final lower = <ImagePoint>[];
     for (final point in sorted) {
       while (lower.length >= 2 &&
@@ -675,7 +682,10 @@ final class ArucoAlignmentEngine {
       }
       upper.add(point);
     }
-    final hull = [...lower.take(lower.length - 1), ...upper.take(upper.length - 1)];
+    final hull = [
+      ...lower.take(lower.length - 1),
+      ...upper.take(upper.length - 1),
+    ];
     if (hull.length < 3) return 0;
     var twiceArea = 0.0;
     for (var index = 0; index < hull.length; index++) {

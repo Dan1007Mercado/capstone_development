@@ -31,7 +31,7 @@ void main() {
         platform: 'android',
       );
 
-      expect(report, contains('Phase: P15.3.1'));
+      expect(report, contains('Phase: P15.4'));
       expect(report, contains('Paper outline detected: YES'));
       expect(
         report,
@@ -388,9 +388,11 @@ ScanResult _result() {
         sourceSize: ImageSize(width: 3000, height: 4000),
         detectionSize: ImageSize(width: 1050, height: 1400),
         selectedHomographyMethod: AlignmentHomographyMethod.multiPoint,
+        selectionPolicy:
+            HomographySelectionPolicy.validatedMultiPointPreference,
         fourPointCandidate: candidate,
         multiPointCandidate: candidate,
-        selectionReason: 'EMPIRICALLY_VALIDATED_MULTIPOINT_PREFERENCE',
+        selectionReason: 'EXTERNALLY_VALIDATED_MULTIPOINT_PREFERENCE',
         effectiveReprojectionErrorPixels: 1.5,
         effectiveRansacReprojectionThresholdPixels: 2.25,
       ),

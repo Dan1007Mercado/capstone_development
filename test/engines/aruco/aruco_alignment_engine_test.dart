@@ -96,11 +96,11 @@ void main() {
     expect(result.value.correspondences, hasLength(16));
     expect(
       result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.multiPoint,
+      AlignmentHomographyMethod.fourPoint,
     );
     expect(
       result.value.diagnostics.selectionPolicy,
-      HomographySelectionPolicy.validatedMultiPointPreference,
+      HomographySelectionPolicy.fourPointBaseline,
     );
     expect(result.value.diagnostics.fourPointCandidate, isNotNull);
     expect(result.value.diagnostics.multiPointCandidate, isNotNull);
@@ -241,13 +241,13 @@ void main() {
     );
     expect(
       result.value.diagnostics.fallbackReason,
-      'FULL_CORNER_CONSISTENCY_EXCEEDED',
+      'FITTING_REPROJECTION_EXCEEDED',
     );
     expect(backend.session!.estimationMethods, hasLength(2));
     expect(backend.session!.warpCount, 1);
     expect(
       result.value.diagnostics.fourPointCandidate!.rejectionReason,
-      'FULL_CORNER_CONSISTENCY_EXCEEDED',
+      'FITTING_REPROJECTION_EXCEEDED',
     );
   });
 
@@ -410,25 +410,28 @@ void main() {
     );
   });
 
-  test('validated policy does not select a higher-error multi-point fit', () {
-    final page = _page();
-    final result = ArucoAlignmentEngine(
-      backend: _FakeBackend(
-        _detectionFor(page),
-        multiPointHomography: HomographyMatrix([1, 0, 0.5, 0, 1, 0, 0, 0, 1]),
-      ),
-    ).align(Uint8List.fromList([1]), page);
+  test(
+    'default baseline does not select from multi-point fitting residuals',
+    () {
+      final page = _page();
+      final result = ArucoAlignmentEngine(
+        backend: _FakeBackend(
+          _detectionFor(page),
+          multiPointHomography: HomographyMatrix([1, 0, 0.5, 0, 1, 0, 0, 0, 1]),
+        ),
+      ).align(Uint8List.fromList([1]), page);
 
-    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
-    expect(
-      result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.fourPoint,
-    );
-    expect(
-      result.value.diagnostics.selectionReason,
-      'FOUR_POINT_STRONGER_VALIDATED_CANDIDATE',
-    );
-  });
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      expect(
+        result.value.diagnostics.selectedHomographyMethod,
+        AlignmentHomographyMethod.fourPoint,
+      );
+      expect(
+        result.value.diagnostics.selectionReason,
+        'FOUR_POINT_VALIDATED_BASELINE',
+      );
+    },
+  );
 
   test('validated accuracy policy can prefer a safe multi-point estimate', () {
     final page = _page();
@@ -449,7 +452,7 @@ void main() {
     );
     expect(
       result.value.diagnostics.selectionReason,
-      'EMPIRICALLY_VALIDATED_MULTIPOINT_PREFERENCE',
+      'EXTERNALLY_VALIDATED_MULTIPOINT_PREFERENCE',
     );
     expect(backend.session!.estimationMethods, hasLength(2));
     expect(backend.session!.warpCount, 1);
@@ -513,7 +516,7 @@ void main() {
     );
     expect(
       diagnostics.fourPoint.rejectionReason,
-      'FULL_CORNER_CONSISTENCY_EXCEEDED',
+      'FITTING_REPROJECTION_EXCEEDED',
     );
     expect(diagnostics.fourPoint.homography, isNotNull);
     expect(diagnostics.fourPoint.cornerResiduals, hasLength(16));
@@ -584,27 +587,33 @@ void main() {
     expect(backend.session!.warpCount, 1);
   });
 
-  test('multi-point fitting residual is not reported as held-out evidence', () {
-    final page = _page();
-    final backend = _FakeBackend(_detectionFor(page));
+  test(
+    'multi-point fitting residual is not independent selection evidence',
+    () {
+      final page = _page();
+      final backend = _FakeBackend(_detectionFor(page));
 
-    final result = ArucoAlignmentEngine(
-      backend: backend,
-    ).align(Uint8List.fromList([1]), page);
+      final result = ArucoAlignmentEngine(
+        backend: backend,
+      ).align(Uint8List.fromList([1]), page);
 
-    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
-    final multi = result.value.diagnostics.multiPointCandidate!;
-    expect(multi.fittingResiduals!.maximum, 0);
-    expect(multi.heldOutValidationResiduals, isNull);
-    expect(multi.heldOutValidationMethod, isNull);
-    expect(multi.accepted, isTrue);
-    expect(multi.rejectionReason, isNull);
-    expect(
-      result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.multiPoint,
-    );
-    expect(result.value.diagnostics.fallbackReason, isNull);
-  });
+      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+      final multi = result.value.diagnostics.multiPointCandidate!;
+      expect(multi.fittingResiduals!.maximum, 0);
+      expect(multi.heldOutValidationResiduals, isNull);
+      expect(multi.heldOutValidationMethod, isNull);
+      expect(multi.accepted, isTrue);
+      expect(multi.rejectionReason, isNull);
+      expect(
+        result.value.diagnostics.selectedHomographyMethod,
+        AlignmentHomographyMethod.fourPoint,
+      );
+      expect(
+        result.value.diagnostics.fallbackReason,
+        'MULTIPOINT_RESERVED_FOR_UNSAFE_BASELINE',
+      );
+    },
+  );
 
   for (final fixture in <(String, HomographyMatrix)>[
     ('uniform scale', HomographyMatrix([0.62, 0, 40, 0, 0.62, 55, 0, 0, 1])),
@@ -736,84 +745,87 @@ void main() {
     );
   });
 
-  test(
-    'four-point fallback tolerates one bounded independent corner outlier',
-    () {
-      final page = _page();
-      final detection = _detectionFor(page);
-      final marker = detection.markers.first;
-      final perturbed = ArucoDetection(
-        sourceSize: detection.sourceSize,
-        markers: [
-          DetectedMarker(
-            id: marker.id,
-            topLeft: marker.corner(MarkerCorner.topLeft),
-            topRight: marker.corner(MarkerCorner.topRight),
-            bottomRight: marker.corner(MarkerCorner.bottomRight),
-            bottomLeft: ImagePoint(
-              marker.corner(MarkerCorner.bottomLeft).x + 2,
-              marker.corner(MarkerCorner.bottomLeft).y,
-            ),
+  test('four-point baseline tolerates optional marker-corner disagreement', () {
+    final page = _page();
+    final detection = _detectionFor(page);
+    final marker = detection.markers.first;
+    final perturbed = ArucoDetection(
+      sourceSize: detection.sourceSize,
+      markers: [
+        DetectedMarker(
+          id: marker.id,
+          topLeft: ImagePoint(
+            marker.corner(MarkerCorner.topLeft).x - 12,
+            marker.corner(MarkerCorner.topLeft).y - 12,
           ),
-          ...detection.markers.skip(1),
-        ],
-      );
-
-      final result = ArucoAlignmentEngine(
-        backend: _FakeBackend(perturbed),
-        config: ArucoAlignmentConfig(enableMultipointHomography: false),
-      ).align(Uint8List.fromList([1]), page);
-
-      expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
-      final candidate = result.value.diagnostics.fourPointCandidate!;
-      expect(candidate.inlierCount, 15);
-      expect(candidate.inliersPerMarker, contains(3));
-      expect(candidate.maxCommonReprojectionError, closeTo(2, 1e-9));
-    },
-  );
-
-  test(
-    'four-point fallback rejects insufficient support within one marker',
-    () {
-      final page = _page();
-      final detection = _detectionFor(page);
-      final marker = detection.markers.first;
-      final perturbed = ArucoDetection(
-        sourceSize: detection.sourceSize,
-        markers: [
-          DetectedMarker(
-            id: marker.id,
-            topLeft: marker.corner(MarkerCorner.topLeft),
-            topRight: marker.corner(MarkerCorner.topRight),
-            bottomRight: ImagePoint(
-              marker.corner(MarkerCorner.bottomRight).x + 2,
-              marker.corner(MarkerCorner.bottomRight).y,
-            ),
-            bottomLeft: ImagePoint(
-              marker.corner(MarkerCorner.bottomLeft).x + 2,
-              marker.corner(MarkerCorner.bottomLeft).y,
-            ),
+          topRight: ImagePoint(
+            marker.corner(MarkerCorner.topRight).x,
+            marker.corner(MarkerCorner.topRight).y - 12,
           ),
-          ...detection.markers.skip(1),
-        ],
-      );
+          bottomRight: marker.corner(MarkerCorner.bottomRight),
+          bottomLeft: ImagePoint(
+            marker.corner(MarkerCorner.bottomLeft).x - 12,
+            marker.corner(MarkerCorner.bottomLeft).y,
+          ),
+        ),
+        ...detection.markers.skip(1),
+      ],
+    );
 
-      final result = ArucoAlignmentEngine(
-        backend: _FakeBackend(perturbed),
-        config: ArucoAlignmentConfig(enableMultipointHomography: false),
-      ).align(Uint8List.fromList([1]), page);
+    final result = ArucoAlignmentEngine(
+      backend: _FakeBackend(perturbed),
+      config: ArucoAlignmentConfig(enableMultipointHomography: false),
+    ).align(Uint8List.fromList([1]), page);
 
-      expect(result.isFailure, isTrue);
-      expect(
-        result.error.details['fourPointRejectionReason'],
-        'FULL_CORNER_CONSISTENCY_EXCEEDED',
-      );
-      expect(result.error.details['detectedCorners'], hasLength(16));
-      expect(result.error.details['expectedCorners'], hasLength(16));
-      expect(result.error.details['fourPointResiduals'], hasLength(16));
-      expect(result.error.details['stageTimingsMs'], isA<Map>());
-    },
-  );
+    expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
+    final candidate = result.value.diagnostics.fourPointCandidate!;
+    expect(candidate.accepted, isTrue);
+    expect(candidate.fittingResiduals!.maximum, 0);
+    expect(
+      candidate.maxCommonReprojectionError,
+      greaterThan(result.value.diagnostics.effectiveRejectedCornerErrorPixels!),
+    );
+  });
+
+  test('four-point rejects an inaccurate fitted registration point', () {
+    final page = _page();
+    final detection = _detectionFor(page);
+    final marker = detection.markers.first;
+    final perturbed = ArucoDetection(
+      sourceSize: detection.sourceSize,
+      markers: [
+        DetectedMarker(
+          id: marker.id,
+          topLeft: marker.corner(MarkerCorner.topLeft),
+          topRight: marker.corner(MarkerCorner.topRight),
+          bottomRight: ImagePoint(
+            marker.corner(MarkerCorner.bottomRight).x + 2,
+            marker.corner(MarkerCorner.bottomRight).y,
+          ),
+          bottomLeft: ImagePoint(
+            marker.corner(MarkerCorner.bottomLeft).x + 2,
+            marker.corner(MarkerCorner.bottomLeft).y,
+          ),
+        ),
+        ...detection.markers.skip(1),
+      ],
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: _FakeBackend(perturbed),
+      config: ArucoAlignmentConfig(enableMultipointHomography: false),
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isFailure, isTrue);
+    expect(
+      result.error.details['fourPointRejectionReason'],
+      'FITTING_REPROJECTION_EXCEEDED',
+    );
+    expect(result.error.details['detectedCorners'], hasLength(16));
+    expect(result.error.details['expectedCorners'], hasLength(16));
+    expect(result.error.details['fourPointResiduals'], hasLength(16));
+    expect(result.error.details['stageTimingsMs'], isA<Map>());
+  });
 
   test('four-point remains operational when multi-point is disabled', () {
     final page = _page();
@@ -917,10 +929,7 @@ void main() {
       final four = replay.currentFourPointCandidate.value;
       final multi = replay.currentMultiPointCandidate.value;
       expect(four.candidate.accepted, isFalse);
-      expect(
-        four.candidate.rejectionReason,
-        'FULL_CORNER_CONSISTENCY_EXCEEDED',
-      );
+      expect(four.candidate.rejectionReason, 'FITTING_REPROJECTION_EXCEEDED');
       expect(four.homography, isNotNull);
       expect(four.candidate.commonReprojectionErrors, hasLength(16));
       expect(
@@ -952,7 +961,7 @@ void main() {
     expect(replay.currentFourPointCandidate.value.candidate.accepted, isFalse);
     expect(
       replay.currentFourPointCandidate.value.candidate.rejectionReason,
-      'FULL_CORNER_CONSISTENCY_EXCEEDED',
+      'FITTING_REPROJECTION_EXCEEDED',
     );
     expect(replay.currentMultiPointCandidate.value.candidate.accepted, isTrue);
     expect(replay.currentMultiPointCandidate.value.failureAttempt, isNull);
