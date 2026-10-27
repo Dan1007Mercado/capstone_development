@@ -5,6 +5,17 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val prepareDebugFailedScanReplayAsset by tasks.registering(Copy::class) {
+    val replayBundle = rootProject.file("../talaanscan_failed_capture.zip")
+    from(replayBundle)
+    into(layout.buildDirectory.dir("generated/debugFailedScanReplayAssets"))
+    doFirst {
+        check(replayBundle.isFile) {
+            "Missing debug replay bundle: ${replayBundle.absolutePath}"
+        }
+    }
+}
+
 android {
     namespace = "com.example.capstone_development"
     compileSdk = flutter.compileSdkVersion
@@ -37,6 +48,14 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    sourceSets.getByName("debug").assets.srcDir(
+        layout.buildDirectory.dir("generated/debugFailedScanReplayAssets"),
+    )
+}
+
+tasks.matching { it.name == "mergeDebugAssets" }.configureEach {
+    dependsOn(prepareDebugFailedScanReplayAsset)
 }
 
 flutter {

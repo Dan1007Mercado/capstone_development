@@ -28,6 +28,7 @@ import '../engines/scanner/domain/scan_result.dart';
 import '../engines/template/application/template_publication_service.dart';
 import '../engines/template/domain/template_question.dart';
 import 'real_scanner_roi_diagnostics_screen.dart';
+import 'failed_scan_replay_screen.dart';
 import 'scanner_diagnostics_sheet.dart';
 import 'scanner_detection_overlay.dart';
 
@@ -142,6 +143,14 @@ class _RealScannerSelectionScreenState
     );
   }
 
+  void _openBundledFailedScanReplay() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const FailedScanReplayScreen(autoStart: true),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
@@ -216,6 +225,13 @@ class _RealScannerSelectionScreenState
               SelectableText('${error.code}: ${error.message}'),
             ],
             const Spacer(),
+            OutlinedButton.icon(
+              key: const Key('open-bundled-failed-scan-replay'),
+              onPressed: _openBundledFailedScanReplay,
+              icon: const Icon(Icons.replay),
+              label: const Text('Replay Bundled Failed Scan'),
+            ),
+            const SizedBox(height: 8),
             OutlinedButton.icon(
               key: const Key('open-roi-diagnostics'),
               onPressed: selected == null ? null : _openRoiDiagnostics,

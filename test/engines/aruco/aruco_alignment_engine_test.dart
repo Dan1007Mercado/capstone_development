@@ -700,6 +700,85 @@ void main() {
     },
   );
 
+  test(
+    'capture replay preserves both rejected candidates from failure diagnostics',
+    () {
+      final page = _page();
+      final replay = ArucoCaptureReplayHarness(
+        backendFactory: () => _FakeBackend(
+          _detectionFor(page),
+          fourPointHomography: HomographyMatrix([1, 0, 2, 0, 1, 0, 0, 0, 1]),
+          multiPointHomography: HomographyMatrix([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+          multiPointInliers: const [
+            false,
+            false,
+            false,
+            false,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+            true,
+          ],
+        ),
+      ).run(Uint8List.fromList([1, 2, 3]), page);
+
+      expect(replay.productionSelection.isFailure, isTrue);
+      expect(
+        replay.productionSelection.error.code,
+        'ARUCO_REPROJECTION_FAILED',
+      );
+      final four = replay.currentFourPointCandidate.value;
+      final multi = replay.currentMultiPointCandidate.value;
+      expect(four.candidate.accepted, isFalse);
+      expect(
+        four.candidate.rejectionReason,
+        'FULL_CORNER_CONSISTENCY_EXCEEDED',
+      );
+      expect(four.homography, isNotNull);
+      expect(four.candidate.commonReprojectionErrors, hasLength(16));
+      expect(
+        four.failureAttempt!.effectiveReprojectionThresholdPixels,
+        greaterThan(0),
+      );
+      expect(multi.candidate.accepted, isFalse);
+      expect(multi.candidate.rejectionReason, 'UNSAFE_INLIER_DISTRIBUTION');
+      expect(multi.homography, isNotNull);
+      expect(multi.candidate.inlierMask, hasLength(16));
+      expect(multi.candidate.inliersPerMarker, contains(0));
+      expect(
+        multi.failureAttempt!.effectiveRansacThresholdPixels,
+        greaterThan(0),
+      );
+    },
+  );
+
+  test('capture replay keeps rejected and accepted candidates separate', () {
+    final page = _page();
+    final replay = ArucoCaptureReplayHarness(
+      backendFactory: () => _FakeBackend(
+        _detectionFor(page),
+        fourPointHomography: HomographyMatrix([1, 0, 2, 0, 1, 0, 0, 0, 1]),
+      ),
+    ).run(Uint8List.fromList([1, 2, 3]), page);
+
+    expect(replay.productionSelection.isSuccess, isTrue);
+    expect(replay.currentFourPointCandidate.value.candidate.accepted, isFalse);
+    expect(
+      replay.currentFourPointCandidate.value.candidate.rejectionReason,
+      'FULL_CORNER_CONSISTENCY_EXCEEDED',
+    );
+    expect(replay.currentMultiPointCandidate.value.candidate.accepted, isTrue);
+    expect(replay.currentMultiPointCandidate.value.failureAttempt, isNull);
+  });
+
   test('near-degenerate candidates fail before warping', () {
     final page = _page();
     final degenerate = HomographyMatrix([1, 0, 0, 0, 0, 0, 0, 0, 1]);
@@ -916,6 +995,7 @@ final class _FakeBackend implements ArucoVisionBackend {
     HomographyMatrix? homography,
     HomographyMatrix? fourPointHomography,
     HomographyMatrix? multiPointHomography,
+    this.multiPointInliers,
     this.openTimings = const ArucoBackendOpenTimings(),
     this.failingMethods = const {},
   }) : fourPointHomography =
@@ -930,6 +1010,7 @@ final class _FakeBackend implements ArucoVisionBackend {
   final ArucoDetection detection;
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
+  final List<bool>? multiPointInliers;
   final ArucoBackendOpenTimings openTimings;
   final Set<HomographyEstimationMethod> failingMethods;
   bool opened = false;
@@ -945,6 +1026,7 @@ final class _FakeBackend implements ArucoVisionBackend {
       detection,
       fourPointHomography,
       multiPointHomography,
+      multiPointInliers,
       openTimings,
       failingMethods,
     );
@@ -957,6 +1039,7 @@ final class _FakeSession implements ArucoImageSession {
     this.detection,
     this.fourPointHomography,
     this.multiPointHomography,
+    this.multiPointInliers,
     this.openTimings,
     this.failingMethods,
   );
@@ -971,6 +1054,7 @@ final class _FakeSession implements ArucoImageSession {
   final ArucoBackendOpenTimings openTimings;
   final HomographyMatrix fourPointHomography;
   final HomographyMatrix multiPointHomography;
+  final List<bool>? multiPointInliers;
   final Set<HomographyEstimationMethod> failingMethods;
   bool disposed = false;
   int warpCount = 0;
@@ -1004,7 +1088,11 @@ final class _FakeSession implements ArucoImageSession {
     return EngineResult.success(
       BackendHomographyEstimate(
         homography: selectedHomography,
-        inliers: List<bool>.filled(sourcePoints.length, true),
+        inliers:
+            method == HomographyEstimationMethod.multiPointRansac &&
+                multiPointInliers != null
+            ? multiPointInliers!
+            : List<bool>.filled(sourcePoints.length, true),
       ),
     );
   }

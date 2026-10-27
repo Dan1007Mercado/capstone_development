@@ -433,23 +433,28 @@ List<String> _writeOverlays(
   ArucoAlignmentConfig config,
 ) {
   final decoded = image.decodeImage(bundle.encodedImage);
-  if (decoded == null || result.legacyFourPoint.isFailure) return const [];
+  if (decoded == null) return const [];
   final directory = Directory(outputDirectory)..createSync(recursive: true);
   final overlays = <String>[];
   void render(String method, HomographyMatrix homography) {
     final canvas = image.Image.from(decoded);
     final inverse = homography.inverse();
-    final legacy = result.legacyFourPoint.value;
-    final built = const MarkerCorrespondenceService().build(
-      detection: ArucoDetection(
-        sourceSize: ImageSize(width: decoded.width, height: decoded.height),
-        markers: legacy.detectedMarkers,
-      ),
-      page: bundle.page,
-      config: config,
-    );
-    if (built.isSuccess) {
-      for (final correspondence in built.value.allCornerCorrespondences) {
+    final legacy = result.legacyFourPoint.valueOrNull;
+    final built = legacy == null
+        ? null
+        : const MarkerCorrespondenceService().build(
+            detection: ArucoDetection(
+              sourceSize: ImageSize(
+                width: decoded.width,
+                height: decoded.height,
+              ),
+              markers: legacy.detectedMarkers,
+            ),
+            page: bundle.page,
+            config: config,
+          );
+    if (built?.isSuccess == true) {
+      for (final correspondence in built!.value.allCornerCorrespondences) {
         final observed = correspondence.sourcePoint;
         final predicted = inverse.project(correspondence.destinationPoint);
         image.drawLine(
@@ -484,6 +489,46 @@ List<String> _writeOverlays(
           color: image.ColorRgb8(255, 255, 255),
         );
       }
+    } else {
+      for (final marker in bundle.page.markerRegions) {
+        final bounds = marker.normalizedMarkerBounds;
+        final canonicalCorners = [
+          ImagePoint(
+            bounds.left.value * bundle.page.canonicalPageSpec.widthPixels,
+            bounds.top.value * bundle.page.canonicalPageSpec.heightPixels,
+          ),
+          ImagePoint(
+            bounds.right.value * bundle.page.canonicalPageSpec.widthPixels,
+            bounds.top.value * bundle.page.canonicalPageSpec.heightPixels,
+          ),
+          ImagePoint(
+            bounds.right.value * bundle.page.canonicalPageSpec.widthPixels,
+            bounds.bottom.value * bundle.page.canonicalPageSpec.heightPixels,
+          ),
+          ImagePoint(
+            bounds.left.value * bundle.page.canonicalPageSpec.widthPixels,
+            bounds.bottom.value * bundle.page.canonicalPageSpec.heightPixels,
+          ),
+        ];
+        for (final corner in canonicalCorners) {
+          final projected = inverse.project(corner);
+          image.drawCircle(
+            canvas,
+            x: projected.x.round(),
+            y: projected.y.round(),
+            radius: 5,
+            color: image.ColorRgb8(0, 255, 255),
+          );
+          image.drawString(
+            canvas,
+            '${marker.markerId}',
+            font: image.arial14,
+            x: projected.x.round() + 8,
+            y: projected.y.round() + 8,
+            color: image.ColorRgb8(255, 255, 255),
+          );
+        }
+      }
     }
     for (final center in result.canonicalBubbleCenters) {
       final projected = inverse.project(center);
@@ -501,17 +546,31 @@ List<String> _writeOverlays(
     overlays.add(path);
   }
 
-  render('legacy_four_point', result.legacyFourPoint.value.homography);
+  void renderIfProjectable(String method, HomographyMatrix homography) {
+    try {
+      render(method, homography);
+    } on StateError {
+      // Rejected numerical estimates remain in JSON but cannot safely produce
+      // source-space projections.
+    }
+  }
+
+  if (result.legacyFourPoint.valueOrNull?.homography case final homography?) {
+    renderIfProjectable('legacy_four_point', homography);
+  }
   if (result.currentFourPointCandidate.valueOrNull?.homography
       case final homography?) {
-    render('current_four_point', homography);
+    renderIfProjectable('current_four_point', homography);
   }
   if (result.currentMultiPointCandidate.valueOrNull?.homography
       case final homography?) {
-    render('current_16_point_ransac', homography);
+    renderIfProjectable('current_16_point_ransac', homography);
   }
   if (result.productionSelection.isSuccess) {
-    render('production_selected', result.productionSelection.value.homography);
+    renderIfProjectable(
+      'production_selected',
+      result.productionSelection.value.homography,
+    );
   }
   return overlays;
 }
@@ -534,6 +593,17 @@ Map<String, Object?> _candidate(
   'selectedForWarp': value.selectedForWarp,
   'actualSelectionReason': value.actualSelectionReason,
   'actualFallbackReason': value.actualFallbackReason,
+  'estimationStatus': value.failureAttempt?.estimationStatus.name,
+  'validationStatus': value.failureAttempt?.validationStatus.name,
+  'effectiveThresholds': value.failureAttempt == null
+      ? null
+      : {
+          'reprojectionPixels':
+              value.failureAttempt!.effectiveReprojectionThresholdPixels,
+          'ransacPixels': value.failureAttempt!.effectiveRansacThresholdPixels,
+          'rejectedCornerPixels':
+              value.failureAttempt!.effectiveRejectedCornerThresholdPixels,
+        },
   'durationMs': value.candidate.duration.inMicroseconds / 1000,
   'bubbleEvidence': _evidence(value.bubbleEvidence),
   'groundTruth': value.homography == null

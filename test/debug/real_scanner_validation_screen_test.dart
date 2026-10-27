@@ -378,6 +378,10 @@ void main() {
     final diagnostics = tester.widget<OutlinedButton>(
       find.byKey(const Key('open-roi-diagnostics')),
     );
+    expect(
+      find.byKey(const Key('open-bundled-failed-scan-replay')),
+      findsOneWidget,
+    );
     expect(diagnostics.onPressed, isNotNull);
   });
 

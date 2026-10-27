@@ -6,6 +6,7 @@ import '../../../core/result/engine_result.dart';
 import '../../layout/domain/page_layout.dart';
 import '../../recognition/application/bubble_alignment_evidence.dart';
 import '../domain/aruco_alignment_config.dart';
+import '../domain/alignment_failure_diagnostics.dart';
 import '../domain/aruco_vision_backend.dart';
 import '../domain/detected_marker.dart';
 import '../domain/image_geometry.dart';
@@ -97,7 +98,32 @@ final class ArucoCaptureReplayHarness {
     AlignmentHomographyMethod method,
     PageLayout page,
   ) {
-    if (result.isFailure) return EngineResult.failure(result.error);
+    if (result.isFailure) {
+      final failure = AlignmentFailureDiagnostics.findInDetails(
+        result.error.details,
+      );
+      if (failure == null) return EngineResult.failure(result.error);
+      final attempt = method == AlignmentHomographyMethod.fourPoint
+          ? failure.fourPoint
+          : failure.multiPoint;
+      final homography = attempt.homography;
+      if (homography == null ||
+          attempt.estimationStatus != HomographyEstimationStatus.succeeded) {
+        return EngineResult.failure(result.error);
+      }
+      return EngineResult.success(
+        HomographyCandidateReplay(
+          candidate: _rejectedCandidate(attempt),
+          selectedForWarp: false,
+          homography: homography,
+          canonicalPage: null,
+          bubbleEvidence: null,
+          actualSelectionReason: failure.selectionReason,
+          actualFallbackReason: null,
+          failureAttempt: attempt,
+        ),
+      );
+    }
     final alignment = result.value;
     final candidate = method == AlignmentHomographyMethod.fourPoint
         ? alignment.diagnostics.fourPointCandidate
@@ -122,9 +148,53 @@ final class ArucoCaptureReplayHarness {
             : null,
         actualSelectionReason: alignment.diagnostics.selectionReason,
         actualFallbackReason: alignment.diagnostics.fallbackReason,
+        failureAttempt: null,
       ),
     );
   }
+
+  HomographyCandidateDiagnostics _rejectedCandidate(
+    HomographyAttemptDiagnostics attempt,
+  ) {
+    final residuals = attempt.cornerResiduals;
+    return HomographyCandidateDiagnostics(
+      method: attempt.method,
+      commonReprojectionErrors: residuals,
+      meanCommonReprojectionError: attempt.meanResidual ?? _mean(residuals),
+      medianCommonReprojectionError:
+          attempt.medianResidual ?? _median(residuals),
+      maxCommonReprojectionError:
+          attempt.maximumResidual ?? _maximum(residuals),
+      inlierCount: attempt.inlierCount,
+      totalPointCount: residuals.length,
+      accepted: false,
+      duration: attempt.estimationDuration + attempt.validationDuration,
+      homography: attempt.homography,
+      inliersPerMarker: attempt.inliersPerMarker,
+      inlierMask: attempt.inlierMask,
+      geometryValidationFailure: attempt.geometryValidationResult == 'passed'
+          ? null
+          : attempt.geometryValidationResult,
+      rejectionReason: attempt.rejectionReason ?? attempt.estimationFailureCode,
+    );
+  }
+
+  double _mean(List<double> values) => values.isEmpty
+      ? 0
+      : values.reduce((left, right) => left + right) / values.length;
+
+  double _median(List<double> values) {
+    if (values.isEmpty) return 0;
+    final sorted = List<double>.of(values)..sort();
+    final middle = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+
+  double _maximum(List<double> values) => values.isEmpty
+      ? 0
+      : values.reduce((left, right) => left > right ? left : right);
 
   EngineResult<LegacyFourPointReplay> _legacyFourPoint(
     Uint8List encodedImage,
@@ -281,6 +351,7 @@ final class HomographyCandidateReplay {
     required this.bubbleEvidence,
     required this.actualSelectionReason,
     required this.actualFallbackReason,
+    required this.failureAttempt,
   });
 
   final HomographyCandidateDiagnostics candidate;
@@ -290,6 +361,7 @@ final class HomographyCandidateReplay {
   final BubbleAlignmentEvidence? bubbleEvidence;
   final String? actualSelectionReason;
   final String? actualFallbackReason;
+  final HomographyAttemptDiagnostics? failureAttempt;
 }
 
 final class LegacyFourPointReplay {
