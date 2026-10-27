@@ -108,7 +108,8 @@ _ReplayRun _runOne(
         bundle.page,
         legacyConfig: _withMultipoint(config, false),
         currentFourPointConfig: _withMultipoint(config, false),
-        currentMultiPointConfig: config,
+        currentMultiPointConfig: _withMultipoint(config, true),
+        productionConfig: config,
       );
   final production = result.productionSelection;
   if (production.isFailure &&
@@ -374,6 +375,10 @@ ArucoAlignmentConfig _withMultipoint(ArucoAlignmentConfig value, bool enabled) {
   );
   final alignment = (encoded['alignment'] as Map).cast<String, Object?>();
   alignment['enableMultipointHomography'] = enabled;
+  if (enabled) {
+    alignment['selectionPolicy'] =
+        HomographySelectionPolicy.validatedMultiPointPreference.name;
+  }
   return const ScannerConfigCodec().decode(encoded).alignment;
 }
 

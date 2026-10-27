@@ -87,11 +87,11 @@ void main() {
     });
     expect(
       result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.multiPoint,
+      AlignmentHomographyMethod.fourPoint,
     );
     expect(
       result.value.diagnostics.maxReprojectionError,
-      result.value.diagnostics.multiPointCandidate!.maxCommonReprojectionError,
+      result.value.diagnostics.fourPointCandidate!.maxCommonReprojectionError,
     );
     expect(
       result.value.diagnostics.maxReprojectionError,
@@ -486,7 +486,7 @@ void main() {
     });
     expect(
       result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.multiPoint,
+      AlignmentHomographyMethod.fourPoint,
     );
     expect(
       result.value.diagnostics.maxReprojectionError,
@@ -527,7 +527,7 @@ void main() {
     expect(result.value.diagnostics.reprojectionScaleFactor, greaterThan(1));
     expect(
       result.value.diagnostics.selectedHomographyMethod,
-      AlignmentHomographyMethod.multiPoint,
+      AlignmentHomographyMethod.fourPoint,
     );
   });
 

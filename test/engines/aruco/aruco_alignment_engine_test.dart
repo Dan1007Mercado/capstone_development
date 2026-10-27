@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:capstone_development/application/real_scanner/failed_scan_replay_bundle.dart';
 import 'package:capstone_development/core/errors/engine_error.dart';
 import 'package:capstone_development/core/result/engine_result.dart';
 import 'package:capstone_development/engines/aruco/application/aruco_alignment_engine.dart';
@@ -103,7 +105,13 @@ void main() {
       HomographySelectionPolicy.fourPointBaseline,
     );
     expect(result.value.diagnostics.fourPointCandidate, isNotNull);
-    expect(result.value.diagnostics.multiPointCandidate, isNotNull);
+    expect(result.value.diagnostics.multiPointCandidate, isNull);
+    expect(
+      result.value.diagnostics.multiPointHomographyDuration,
+      Duration.zero,
+    );
+    expect(result.value.diagnostics.multiPointEstimationFailureCode, isNull);
+    expect(result.value.diagnostics.fallbackReason, isNull);
     expect(result.value.diagnostics.reprojectionErrors, everyElement(0));
     expect(result.value.diagnostics.meanReprojectionError, 0);
     expect(result.value.diagnostics.maxReprojectionError, 0);
@@ -124,21 +132,8 @@ void main() {
       result.value.diagnostics.fourPointCandidate!.heldOutValidationMethod,
       HomographyValidationMethod.unusedFittingCorners,
     );
-    expect(
-      result.value.diagnostics.multiPointCandidate!.fittingResiduals!.errors,
-      hasLength(16),
-    );
-    expect(
-      result.value.diagnostics.multiPointCandidate!.heldOutValidationMethod,
-      isNull,
-    );
-    expect(
-      result.value.diagnostics.multiPointCandidate!.heldOutValidationResiduals,
-      isNull,
-    );
     expect(backend.session!.estimationMethods, [
       HomographyEstimationMethod.fourPoint,
-      HomographyEstimationMethod.multiPointRansac,
     ]);
     expect(backend.session!.warpCount, 1);
     expect(backend.session!.disposed, isTrue);
@@ -189,7 +184,7 @@ void main() {
   });
 
   test(
-    'validated four-point remains baseline despite lower multi residual',
+    'safe baseline skips an optional fit even if it could have a lower residual',
     () {
       final page = _page();
       final backend = _FakeBackend(
@@ -210,10 +205,10 @@ void main() {
         result.value.diagnostics.selectedHomographyMethod,
         AlignmentHomographyMethod.fourPoint,
       );
-      expect(
-        result.value.diagnostics.multiPointCandidate!.commonScore,
-        lessThan(result.value.diagnostics.fourPointCandidate!.commonScore),
-      );
+      expect(result.value.diagnostics.multiPointCandidate, isNull);
+      expect(backend.session!.estimationMethods, [
+        HomographyEstimationMethod.fourPoint,
+      ]);
       expect(
         result.value.diagnostics.selectionReason,
         'FOUR_POINT_VALIDATED_BASELINE',
@@ -250,6 +245,143 @@ void main() {
       'FITTING_REPROJECTION_EXCEEDED',
     );
   });
+
+  test('failed four-point estimator still attempts enabled multi-point', () {
+    final page = _page();
+    final backend = _FakeBackend(
+      _detectionFor(page),
+      failingMethods: const {HomographyEstimationMethod.fourPoint},
+    );
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+    expect(result.isSuccess, isTrue);
+    expect(
+      result.value.diagnostics.selectedHomographyMethod,
+      AlignmentHomographyMethod.multiPoint,
+    );
+    expect(
+      result.value.diagnostics.fourPointEstimationFailureCode,
+      'ARUCO_HOMOGRAPHY_FAILED',
+    );
+    expect(backend.session!.estimationMethods, [
+      HomographyEstimationMethod.fourPoint,
+      HomographyEstimationMethod.multiPointRansac,
+    ]);
+    expect(backend.session!.warpCount, 1);
+    expect(backend.session!.disposed, isTrue);
+  });
+
+  test('disabled multi-point cannot rescue an unsafe baseline', () {
+    final page = _page();
+    final backend = _FakeBackend(
+      _detectionFor(page),
+      fourPointHomography: HomographyMatrix([1, 0, 2, 0, 1, 0, 0, 0, 1]),
+    );
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+      config: ArucoAlignmentConfig(enableMultipointHomography: false),
+    ).align(Uint8List.fromList([1]), page);
+    expect(result.isFailure, isTrue);
+    final diagnostics = AlignmentFailureDiagnostics.findInDetails(
+      result.error.details,
+    )!;
+    expect(
+      diagnostics.multiPoint.validationStatus,
+      HomographyValidationStatus.notRun,
+    );
+    expect(backend.session!.estimationMethods, [
+      HomographyEstimationMethod.fourPoint,
+    ]);
+    expect(backend.session!.warpCount, 0);
+    expect(backend.session!.disposed, isTrue);
+  });
+
+  test(
+    'recorded failed-capture correspondences preserve the safe baseline',
+    () {
+      // Re-evaluates stored detections and estimates, not JPEG decoding, native
+      // detection, actual warping, or answer accuracy.
+      final bundle = const FailedScanReplayBundleCodec().decode(
+        File('talaanscan_failed_capture.zip').readAsBytesSync(),
+      );
+      final recorded = AlignmentFailureDiagnostics.findInDetails(
+        bundle.failure.details,
+      )!;
+      final ids = recorded.detectedRegistrationMarkerIds;
+      ImagePoint corner(int id, MarkerCorner corner) {
+        final point = recorded.detectedCorners.singleWhere(
+          (point) => point['id'] == id && point['corner'] == corner.name,
+        );
+        return ImagePoint(
+          (point['x']! as num).toDouble(),
+          (point['y']! as num).toDouble(),
+        );
+      }
+
+      final detection = ArucoDetection(
+        sourceSize: recorded.sourceSize,
+        markers: [
+          for (final id in ids)
+            DetectedMarker(
+              id: id,
+              topLeft: corner(id, MarkerCorner.topLeft),
+              topRight: corner(id, MarkerCorner.topRight),
+              bottomRight: corner(id, MarkerCorner.bottomRight),
+              bottomLeft: corner(id, MarkerCorner.bottomLeft),
+            ),
+        ],
+      );
+      _FakeBackend backend() => _FakeBackend(
+        detection,
+        fourPointHomography: recorded.fourPoint.homography!,
+        multiPointHomography: recorded.multiPoint.homography!,
+        multiPointInliers: recorded.multiPoint.inlierMask,
+        openTimings: ArucoBackendOpenTimings(
+          detectionSize: recorded.detectionSize,
+          detectionScaleX: recorded.detectionScaleX,
+          detectionScaleY: recorded.detectionScaleY,
+        ),
+      );
+      final baselineBackend = backend();
+      final baseline = ArucoAlignmentEngine(
+        backend: baselineBackend,
+      ).align(bundle.encodedImage, bundle.page);
+      expect(
+        baseline.isSuccess,
+        isTrue,
+        reason: baseline.errorOrNull?.toString(),
+      );
+      expect(
+        baseline.value.homography.values,
+        recorded.fourPoint.homography!.values,
+      );
+      expect(
+        baseline.value.diagnostics.maxReprojectionError,
+        closeTo(recorded.fourPoint.maximumResidual!, 1e-8),
+      );
+      expect(baselineBackend.session!.estimationMethods, [
+        HomographyEstimationMethod.fourPoint,
+      ]);
+      expect(baselineBackend.session!.warpCount, 1);
+      final comparisonBackend = backend();
+      final comparison = ArucoAlignmentEngine(
+        backend: comparisonBackend,
+        config: bundle.scannerConfig.alignment,
+      ).align(bundle.encodedImage, bundle.page);
+      expect(comparison.isSuccess, isTrue);
+      expect(
+        comparison.value.homography.values,
+        baseline.value.homography.values,
+      );
+      expect(
+        comparison.value.diagnostics.multiPointCandidate!.acceptance,
+        HomographyCandidateAcceptance.acceptableWithLocalizedUncertainty,
+      );
+      expect(comparisonBackend.session!.estimationMethods, hasLength(2));
+      expect(comparisonBackend.session!.warpCount, 1);
+    },
+  );
 
   for (final fixture in <(String, List<bool>)>[
     (
@@ -549,6 +681,10 @@ void main() {
 
     final result = ArucoAlignmentEngine(
       backend: backend,
+      config: ArucoAlignmentConfig(
+        selectionPolicy:
+            HomographySelectionPolicy.validatedMultiPointPreference,
+      ),
     ).align(Uint8List.fromList([1]), page);
 
     expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
@@ -595,6 +731,10 @@ void main() {
 
       final result = ArucoAlignmentEngine(
         backend: backend,
+        config: ArucoAlignmentConfig(
+          selectionPolicy:
+              HomographySelectionPolicy.validatedMultiPointPreference,
+        ),
       ).align(Uint8List.fromList([1]), page);
 
       expect(result.isSuccess, isTrue, reason: result.errorOrNull?.toString());
@@ -606,12 +746,9 @@ void main() {
       expect(multi.rejectionReason, isNull);
       expect(
         result.value.diagnostics.selectedHomographyMethod,
-        AlignmentHomographyMethod.fourPoint,
+        AlignmentHomographyMethod.multiPoint,
       );
-      expect(
-        result.value.diagnostics.fallbackReason,
-        'MULTIPOINT_RESERVED_FOR_UNSAFE_BASELINE',
-      );
+      expect(result.value.diagnostics.fallbackReason, isNull);
     },
   );
 
@@ -866,7 +1003,25 @@ void main() {
         AlignmentHomographyMethod.multiPoint,
       );
       expect(replay.currentMultiPointCandidate.value.homography, isNotNull);
+      expect(replay.currentMultiPointCandidate.value.selectedForWarp, isTrue);
+      expect(replay.currentMultiPointCandidate.value.canonicalPage, isNotNull);
+      expect(
+        replay
+            .currentMultiPointCandidate
+            .value
+            .candidate
+            .heldOutValidationResiduals,
+        isNull,
+      );
       expect(replay.productionSelection.isSuccess, isTrue);
+      expect(
+        replay.productionSelection.value.diagnostics.selectedHomographyMethod,
+        AlignmentHomographyMethod.fourPoint,
+      );
+      expect(
+        replay.productionSelection.value.diagnostics.multiPointCandidate,
+        isNull,
+      );
       final repeated = ArucoCaptureReplayHarness(
         backendFactory: () => _FakeBackend(_detectionFor(page)),
         disposeBackend: (_) => disposedBackends++,

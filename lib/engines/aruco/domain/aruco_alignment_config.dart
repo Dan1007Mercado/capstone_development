@@ -140,6 +140,10 @@ final class ArucoAlignmentConfig {
   final double maximumPageBoundaryOvershootRatio;
   final int multipointMaximumIterations;
   final double multipointConfidence;
+
+  /// Allow multi-point fallback when four-point is unsafe, or evaluation under
+  /// [HomographySelectionPolicy.validatedMultiPointPreference]. A safe
+  /// four-point baseline does not pay for an unused multi-point fit.
   final bool enableMultipointHomography;
   final HomographySelectionPolicy selectionPolicy;
   final bool allowAdditionalUnrelatedMarkers;
