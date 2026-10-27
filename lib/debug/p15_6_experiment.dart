@@ -160,6 +160,7 @@ void main(List<String> args) {
         final backend = OpenCvArucoVisionBackend();
         try {
           final stages = OfflineScannerComposition.create(
+            refineBubbleRegistration: false,
             alignmentBackend: backend,
             preprocessingBackend: observed,
           );

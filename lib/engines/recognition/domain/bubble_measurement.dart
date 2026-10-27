@@ -3,6 +3,7 @@ import 'dart:collection';
 import '../../../core/ids/identifiers.dart';
 import '../../aruco/domain/image_geometry.dart';
 import 'canonical_bubble_roi.dart';
+import 'bubble_registration.dart';
 
 enum BubbleRoiClipping { none, partial }
 
@@ -74,8 +75,10 @@ final class BubbleMeasurementSet {
   BubbleMeasurementSet({
     required this.pageId,
     required Iterable<BubbleMeasurement> measurements,
+    this.registration,
   }) : measurements = UnmodifiableListView(List.of(measurements));
 
   final PageId pageId;
   final List<BubbleMeasurement> measurements;
+  final BubbleRegistration? registration;
 }

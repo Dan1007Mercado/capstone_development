@@ -17,6 +17,16 @@ final class CanonicalBubbleRoi {
   final double baselineOuterRadius;
   final double centerExclusionRadius;
 
+  /// Translate every sampling mask together without changing printed geometry.
+  CanonicalBubbleRoi withCenter(ImagePoint value) => CanonicalBubbleRoi(
+    center: value,
+    printedRadius: printedRadius,
+    interiorRadius: interiorRadius,
+    baselineInnerRadius: baselineInnerRadius,
+    baselineOuterRadius: baselineOuterRadius,
+    centerExclusionRadius: centerExclusionRadius,
+  );
+
   bool containsInteriorPixel(int x, int y) {
     final squaredDistance = _squaredDistanceToPixelCenter(x, y);
     return squaredDistance <= interiorRadius * interiorRadius &&

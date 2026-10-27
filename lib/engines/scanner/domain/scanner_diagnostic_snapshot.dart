@@ -95,6 +95,8 @@ final class ScannerDiagnosticSnapshot {
               'totalPages': result.packetIdentity!.totalPages,
             },
       'scanSequenceIndex': scanSequenceIndex,
+      if (measurements.registration != null)
+        'bubbleRegistration': measurements.registration!.toJson(),
       'detectedMarkerIds': result.diagnostics.alignment.detectedMarkerIds,
       'canonicalImage': {
         'width': canonicalSize.width,

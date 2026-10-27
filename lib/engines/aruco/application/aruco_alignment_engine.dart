@@ -53,16 +53,24 @@ final class ArucoAlignmentEngine {
       final expectedIds = page.markerRegions
           .map((marker) => marker.markerId)
           .toSet();
-      final split = roleSplitter.split(session.detection.markers, expectedIds);
-      final registrationIds = split.registrationMarkers
+      var effectiveDetection = session.detection;
+      var split = roleSplitter.split(effectiveDetection.markers, expectedIds);
+      var registrationIds = split.registrationMarkers
           .map((marker) => marker.id)
           .toList(growable: false);
       if (registrationIds.toSet().length != registrationIds.length) {
-        return _failure(
-          'SCAN_DUPLICATE_PAGE_MARKERS',
-          'A page marker ID was detected more than once.',
-          {'detectedMarkerIds': detectedIds},
+        final resolved = _resolveSingleDuplicate(
+          session: session,
+          detection: effectiveDetection,
+          page: page,
+          config: effectiveConfig,
         );
+        if (resolved.isFailure) return EngineResult.failure(resolved.error);
+        effectiveDetection = resolved.value;
+        split = roleSplitter.split(effectiveDetection.markers, expectedIds);
+        registrationIds = split.registrationMarkers
+            .map((marker) => marker.id)
+            .toList(growable: false);
       }
       if (registrationIds.length != expectedIds.length ||
           !registrationIds.toSet().containsAll(expectedIds)) {
@@ -78,7 +86,7 @@ final class ArucoAlignmentEngine {
       pageResolutionStopwatch.stop();
       final correspondenceStopwatch = Stopwatch()..start();
       final correspondenceResult = correspondenceService.build(
-        detection: session.detection,
+        detection: effectiveDetection,
         page: page,
         config: effectiveConfig,
       );
@@ -352,7 +360,7 @@ final class ArucoAlignmentEngine {
             expectedMarkerIds: page.markerRegions.map(
               (region) => region.markerId,
             ),
-            detectedMarkerIds: session.detection.markers.map(
+            detectedMarkerIds: effectiveDetection.markers.map(
               (marker) => marker.id,
             ),
             sourceMarkerSideLengths: correspondenceSet.observations.map(
@@ -403,12 +411,139 @@ final class ArucoAlignmentEngine {
             multiPointEstimationFailureCode:
                 multiPointEstimate?.errorOrNull?.code,
           ),
-          detectedMarkers: session.detection.markers,
+          detectedMarkers: effectiveDetection.markers,
         ),
       );
     } finally {
       session.dispose();
     }
+  }
+
+  /// Resolves only the narrow case where one required ID has two detections
+  /// and exactly one complete interpretation passes the normal four-point
+  /// candidate checks. Any other duplicate pattern remains an ambiguity.
+  EngineResult<ArucoDetection> _resolveSingleDuplicate({
+    required ArucoImageSession session,
+    required ArucoDetection detection,
+    required PageLayout page,
+    required ArucoAlignmentConfig config,
+  }) {
+    final expectedIds = page.markerRegions
+        .map((region) => region.markerId)
+        .toSet();
+    final byId = <int, List<DetectedMarker>>{};
+    for (final marker in detection.markers) {
+      if (expectedIds.contains(marker.id)) {
+        byId.putIfAbsent(marker.id, () => []).add(marker);
+      }
+    }
+    final duplicated = byId.entries
+        .where((entry) => entry.value.length > 1)
+        .toList(growable: false);
+    final complete = expectedIds.every((id) => byId[id]?.isNotEmpty == true);
+    if (!complete ||
+        duplicated.length != 1 ||
+        duplicated.single.value.length != 2 ||
+        byId.entries.any(
+          (entry) =>
+              entry.key != duplicated.single.key && entry.value.length != 1,
+        )) {
+      return EngineResult.failure(
+        EngineError(
+          code: 'SCAN_DUPLICATE_PAGE_MARKERS',
+          message: 'A page marker ID was detected more than once.',
+          details: {
+            'detectedMarkerIds': detection.markers
+                .map((marker) => marker.id)
+                .toList(),
+          },
+        ),
+      );
+    }
+    final duplicateId = duplicated.single.key;
+    final accepted = <ArucoDetection>[];
+    final rejectionReasons = <String>[];
+    for (final candidateMarker in duplicated.single.value) {
+      final candidateDetection = ArucoDetection(
+        sourceSize: detection.sourceSize,
+        markers: [
+          for (final marker in detection.markers)
+            if (marker.id != duplicateId || identical(marker, candidateMarker))
+              marker,
+        ],
+      );
+      final correspondence = correspondenceService.build(
+        detection: candidateDetection,
+        page: page,
+        config: config,
+      );
+      if (correspondence.isFailure) {
+        rejectionReasons.add(correspondence.error.code);
+        continue;
+      }
+      final set = correspondence.value;
+      final scale = _reprojectionScaleFactor(
+        page,
+        set,
+        config,
+        detectionScaleX: session.openTimings.detectionScaleX,
+        detectionScaleY: session.openTimings.detectionScaleY,
+      );
+      final fittingThreshold = config.maximumReprojectionErrorPixels * scale;
+      final ransacThreshold = math.min(
+        config.maximumRejectedCornerErrorPixels * scale,
+        config.multipointRansacReprojectionThresholdPixels * scale,
+      );
+      final rejectedCornerThreshold =
+          config.maximumRejectedCornerErrorPixels * scale;
+      final estimate = session.estimateHomography(
+        sourcePoints: set.baselineSourcePoints,
+        destinationPoints: set.baselineDestinationPoints,
+        method: HomographyEstimationMethod.fourPoint,
+        ransacReprojectionThresholdPixels: ransacThreshold,
+        maximumIterations: config.multipointMaximumIterations,
+        confidence: config.multipointConfidence,
+      );
+      if (estimate.isFailure) {
+        rejectionReasons.add(estimate.error.code);
+        continue;
+      }
+      final evaluated = _evaluateCandidate(
+        estimate: estimate.value,
+        method: AlignmentHomographyMethod.fourPoint,
+        fittingCorrespondences: set.baselineCorrespondences,
+        fullCorrespondences: set.allCornerCorrespondences,
+        heldOutValidationResiduals: _residualStatistics(
+          estimate.value.homography,
+          _fourPointHeldOutCorrespondences(set),
+        ),
+        page: page,
+        sourceSize: session.sourceSize,
+        config: config,
+        effectiveReprojectionErrorPixels: fittingThreshold,
+        effectiveInlierReprojectionErrorPixels: ransacThreshold,
+        effectiveRejectedCornerErrorPixels: rejectedCornerThreshold,
+      );
+      if (evaluated.accepted) {
+        accepted.add(candidateDetection);
+        rejectionReasons.add('accepted');
+      } else {
+        rejectionReasons.add(evaluated.rejectionReason ?? 'unsafe');
+      }
+    }
+    if (accepted.length == 1) return EngineResult.success(accepted.single);
+    return EngineResult.failure(
+      EngineError(
+        code: 'SCAN_DUPLICATE_PAGE_MARKERS',
+        message:
+            'A duplicated page marker did not have exactly one valid interpretation.',
+        details: {
+          'duplicateMarkerId': duplicateId,
+          'validInterpretations': accepted.length,
+          'candidateResults': rejectionReasons,
+        },
+      ),
+    );
   }
 
   HomographyCandidateDiagnostics _evaluateCandidate({

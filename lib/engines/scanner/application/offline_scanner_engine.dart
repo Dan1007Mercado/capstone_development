@@ -360,7 +360,9 @@ final class OfflineScannerEngine {
         ScanStage.classification => 'SCAN_CLASSIFICATION_FAILED',
         ScanStage.complete => 'SCAN_RESULT_INVALID',
       },
-      message: 'Offline scanning failed during ${stage.name}.',
+      message: cause.code == 'BUBBLE_REGISTRATION_UNTRUSTWORTHY'
+          ? 'Printed bubbles could not be registered reliably. Flatten the page and scan again.'
+          : 'Offline scanning failed during ${stage.name}.',
       details: {
         'failedStage': stage.name,
         'pageId': page.pageId.value,

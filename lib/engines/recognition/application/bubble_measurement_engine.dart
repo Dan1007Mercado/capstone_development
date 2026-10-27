@@ -8,14 +8,20 @@ import '../../layout/domain/page_layout.dart';
 import '../../preprocessing/domain/preprocessed_page.dart';
 import '../domain/bubble_measurement.dart';
 import '../domain/bubble_measurement_config.dart';
+import '../domain/bubble_registration.dart';
 import '../domain/canonical_bubble_roi.dart';
+import 'bubble_registration_engine.dart';
 import 'canonical_bubble_mapper.dart';
 import 'grayscale_sample_histogram.dart';
 
 final class BubbleMeasurementEngine {
-  const BubbleMeasurementEngine({this.mapper = const CanonicalBubbleMapper()});
+  const BubbleMeasurementEngine({
+    this.mapper = const CanonicalBubbleMapper(),
+    this.registration,
+  });
 
   final CanonicalBubbleMapper mapper;
+  final BubbleRegistrationEngine? registration;
 
   EngineResult<BubbleMeasurementSet> measure(
     PageLayout layout,
@@ -48,7 +54,7 @@ final class BubbleMeasurementEngine {
     }
 
     try {
-      final rois = <CanonicalBubbleRoi>[];
+      var rois = <CanonicalBubbleRoi>[];
       for (final bubble in layout.bubbleRegions) {
         final identityValid =
             bubble.isOptionTarget != bubble.isNumericCellTarget;
@@ -70,6 +76,13 @@ final class BubbleMeasurementEngine {
         rois.add(roi);
       }
 
+      BubbleRegistration? registered;
+      if (registration != null) {
+        final result = registration!.refine(layout, page.grayscale, rois);
+        if (result.isFailure) return EngineResult.failure(result.error);
+        registered = result.value;
+        rois = registered.rois;
+      }
       final baselineNeighbors = _baselineNeighbors(rois);
       final measurements = <BubbleMeasurement>[];
       for (var index = 0; index < layout.bubbleRegions.length; index++) {
@@ -84,7 +97,11 @@ final class BubbleMeasurementEngine {
         measurements.add(result.value);
       }
       return EngineResult.success(
-        BubbleMeasurementSet(pageId: layout.pageId, measurements: measurements),
+        BubbleMeasurementSet(
+          pageId: layout.pageId,
+          measurements: measurements,
+          registration: registered,
+        ),
       );
     } on Object catch (error) {
       return _failure(

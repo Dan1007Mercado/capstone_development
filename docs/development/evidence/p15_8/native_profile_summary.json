@@ -1,0 +1,81 @@
+{
+  "schema": "talaanscan.p15.8.native-profile-summary.v1",
+  "baseCommit": "e8db7510e09e49757c68294b7172691946e44049",
+  "branch": "implementation/p15-8-recognition-recovery",
+  "device": "Infinix X6711",
+  "buildMode": "profile",
+  "artifactSha256": "422052171b90f79e1d3c19060e41975cece2a9daa07e872ef7e330b06637c392",
+  "eligibleQuestionAccuracy": {
+    "baseline": {"correct": 19, "total": 44},
+    "registered": {"correct": 37, "total": 44},
+    "registeredConfidentWrongOptions": 0
+  },
+  "captures": [
+    {
+      "file": "mixstroke_mark.jpg",
+      "sha256": "154fc25330bafdd53d654179698e462736eafff990fa5b6016f624c4493b4eda",
+      "baselineCorrect": 5,
+      "registeredCorrect": 8,
+      "registeredAcceptance": "rescanAmbiguous",
+      "heldOutMeanPixels": 1.46214329236886,
+      "heldOutP95Pixels": 2.715195317322076,
+      "heldOutMaximumPixels": 4.009974205141767,
+      "registrationDurationMs": 16.745
+    },
+    {
+      "file": "tilted_allmarked_fullmarked.jpg",
+      "sha256": "d89a25de09ee94b4fb3732500c2c3fcdf53e7a3d8cf96555cc95834538362311",
+      "baselineCorrect": 5,
+      "registeredCorrect": 11,
+      "registeredAcceptance": "accept",
+      "heldOutMeanPixels": 1.5096355912024775,
+      "heldOutP95Pixels": 2.983373242220928,
+      "heldOutMaximumPixels": 3.133334319564061,
+      "registrationDurationMs": 14.796
+    },
+    {
+      "file": "Tilted_mix_strokes.jpg",
+      "sha256": "9dd88b710429a1d4b70c5111c94d04c815cbf091bc291e30e1a4680c788b29dc",
+      "baselineCorrect": 8,
+      "registeredCorrect": 7,
+      "registeredAcceptance": "rescanAmbiguous",
+      "heldOutMeanPixels": 1.6356371444216795,
+      "heldOutP95Pixels": 2.8758032387644157,
+      "heldOutMaximumPixels": 4.864730688865764,
+      "registrationDurationMs": 14.429
+    },
+    {
+      "file": "unmarked.jpg",
+      "sha256": "3aae6bc4d692c0d64ea01b1131b0984981e44acc8599b80aaa0fe57ebdd18f0b",
+      "baselineCorrect": 1,
+      "registeredCorrect": 11,
+      "registeredAcceptance": "rescanBlankPage",
+      "heldOutMeanPixels": 1.1337590476161392,
+      "heldOutP95Pixels": 2.495778257636811,
+      "heldOutMaximumPixels": 2.715240806923456,
+      "registrationDurationMs": 17.327
+    },
+    {
+      "file": "blank_tilted.jpg",
+      "sha256": "3659560cc40568a6ddef9eab7b683f8049b9b749a9460bddbd47139d54316b16",
+      "baselineAcceptance": "rescanAmbiguous",
+      "registeredFailure": "BUBBLE_REGISTRATION_UNTRUSTWORTHY",
+      "registeredFailureReason": "insufficient distributed outline support"
+    },
+    {
+      "file": "all_marked.jpg",
+      "sha256": "c7d3a0775e2e82421f20626e3ed5426f7fd6169bdcc2f781f177e83156dd93ee",
+      "failure": "SCAN_UNKNOWN_PAGE_MARKERS",
+      "missingRequiredMarkerId": 12,
+      "localRetryDecodedExpectedId": false
+    }
+  ],
+  "duplicateMarkerControl": {
+    "file": "blank_tilted.jpg",
+    "duplicatedId": 13,
+    "candidateCount": 2,
+    "validInterpretations": 1,
+    "rejectedCandidateReason": "PAGE_BOUNDS_IMPLAUSIBLE"
+  },
+  "registrationDurationMedianMs": 15.7705
+}

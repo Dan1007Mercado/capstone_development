@@ -1178,6 +1178,65 @@ void main() {
     expect(result.error.code, 'SCAN_DUPLICATE_PAGE_MARKERS');
     expect(backend.session!.disposed, isTrue);
   });
+
+  test(
+    'final still accepts the sole fully validated duplicate interpretation',
+    () {
+      final page = _page();
+      final detection = _detectionFor(page);
+      final original = detection.markers.first;
+      ImagePoint shifted(ImagePoint point) =>
+          ImagePoint(point.x + 500, point.y + 400);
+      final falseDuplicate = DetectedMarker(
+        id: original.id,
+        topLeft: shifted(original.corner(MarkerCorner.topLeft)),
+        topRight: shifted(original.corner(MarkerCorner.topRight)),
+        bottomRight: shifted(original.corner(MarkerCorner.bottomRight)),
+        bottomLeft: shifted(original.corner(MarkerCorner.bottomLeft)),
+      );
+      final backend = _FakeBackend(
+        ArucoDetection(
+          sourceSize: detection.sourceSize,
+          markers: [...detection.markers, falseDuplicate],
+        ),
+      );
+
+      final result = ArucoAlignmentEngine(
+        backend: backend,
+      ).align(Uint8List.fromList([1]), page);
+
+      expect(result.isSuccess, isTrue);
+      expect(result.value.detectedMarkers, hasLength(4));
+      expect(result.value.detectedMarkers.first.center, original.center);
+    },
+  );
+
+  test('final still rejects two fully validated duplicate interpretations', () {
+    final page = _page();
+    final detection = _detectionFor(page);
+    final original = detection.markers.first;
+    final indistinguishable = DetectedMarker(
+      id: original.id,
+      topLeft: original.corner(MarkerCorner.topLeft),
+      topRight: original.corner(MarkerCorner.topRight),
+      bottomRight: original.corner(MarkerCorner.bottomRight),
+      bottomLeft: original.corner(MarkerCorner.bottomLeft),
+    );
+    final backend = _FakeBackend(
+      ArucoDetection(
+        sourceSize: detection.sourceSize,
+        markers: [...detection.markers, indistinguishable],
+      ),
+    );
+
+    final result = ArucoAlignmentEngine(
+      backend: backend,
+    ).align(Uint8List.fromList([1]), page);
+
+    expect(result.isFailure, isTrue);
+    expect(result.error.code, 'SCAN_DUPLICATE_PAGE_MARKERS');
+    expect(result.error.details['validInterpretations'], 2);
+  });
 }
 
 PageLayout _page() => buildLayout(fullTemplate()).pages.single;
