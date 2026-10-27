@@ -1,0 +1,46 @@
+[
+  {
+    "file": "test\\fixtures\\p15_6\\published_template.pdf",
+    "sha256": "ec6cb2c5dabf1d775a8e5f27da0b7eb5dd12f1b7922109e7bedb99dc88975352",
+    "page": 0,
+    "widthPoints": 595.2755737304688,
+    "heightPoints": 841.8897094726562,
+    "raster": "build\\p157\\published_template.pdf_0.bmp",
+    "widthPixels": 2100,
+    "heightPixels": 2970,
+    "text": "P15.5 experiment - Page 1 of 1\r\nSection 1\r\nLIKERT SCALE 1\u20135\r\n1. 1 2 3 4 5\r\n2. 1 2 3 4 5\r\n3. 1 2 3 4 5\r\nMULTIPLE CHOICE A\u2013B \u2014 MARK ALL THAT APPLY\r\n4. A B\r\nSection 2\r\nSINGLE CHOICE A\u2013B\r\n5. A B\r\nSINGLE CHOICE A\u2013C\r\n6. A B C\r\nSINGLE CHOICE A\u2013B\r\n7. A B\r\n8. A B\r\n9. A B\r\n10. A B\r\n11. A B"
+  },
+  {
+    "file": "test\\fixtures\\p15_7\\packet_print_job.pdf",
+    "sha256": "3fb53d05a73ff8d17f23b03bccdebbe562405d0c8272a5f53fa54839448b39f4",
+    "page": 0,
+    "widthPoints": 595.2755737304688,
+    "heightPoints": 841.8897094726562,
+    "raster": "build\\p157\\packet_print_job.pdf_0.bmp",
+    "widthPixels": 2100,
+    "heightPixels": 2970,
+    "text": "P15.5 experiment - Page 1 of 1\r\nSection 1\r\nLIKERT SCALE 1\u20135\r\n1. 1 2 3 4 5\r\n2. 1 2 3 4 5\r\n3. 1 2 3 4 5\r\nMULTIPLE CHOICE A\u2013B \u2014 MARK ALL THAT APPLY\r\n4. A B\r\nSection 2\r\nSINGLE CHOICE A\u2013B\r\n5. A B\r\nSINGLE CHOICE A\u2013C\r\n6. A B C\r\nSINGLE CHOICE A\u2013B\r\n7. A B\r\n8. A B\r\n9. A B\r\n10. A B\r\n11. A B\r\nPacket P034-2982 Page 1 of 1"
+  },
+  {
+    "file": "test\\fixtures\\p15_7\\packet_print_job.pdf",
+    "sha256": "3fb53d05a73ff8d17f23b03bccdebbe562405d0c8272a5f53fa54839448b39f4",
+    "page": 1,
+    "widthPoints": 595.2755737304688,
+    "heightPoints": 841.8897094726562,
+    "raster": "build\\p157\\packet_print_job.pdf_1.bmp",
+    "widthPixels": 2100,
+    "heightPixels": 2970,
+    "text": "P15.5 experiment - Page 1 of 1\r\nSection 1\r\nLIKERT SCALE 1\u20135\r\n1. 1 2 3 4 5\r\n2. 1 2 3 4 5\r\n3. 1 2 3 4 5\r\nMULTIPLE CHOICE A\u2013B \u2014 MARK ALL THAT APPLY\r\n4. A B\r\nSection 2\r\nSINGLE CHOICE A\u2013B\r\n5. A B\r\nSINGLE CHOICE A\u2013C\r\n6. A B C\r\nSINGLE CHOICE A\u2013B\r\n7. A B\r\n8. A B\r\n9. A B\r\n10. A B\r\n11. A B\r\nPacket P035-A333 Page 1 of 1"
+  },
+  {
+    "file": "test\\fixtures\\p15_7\\packet_print_job.pdf",
+    "sha256": "3fb53d05a73ff8d17f23b03bccdebbe562405d0c8272a5f53fa54839448b39f4",
+    "page": 2,
+    "widthPoints": 595.2755737304688,
+    "heightPoints": 841.8897094726562,
+    "raster": "build\\p157\\packet_print_job.pdf_2.bmp",
+    "widthPixels": 2100,
+    "heightPixels": 2970,
+    "text": "P15.5 experiment - Page 1 of 1\r\nSection 1\r\nLIKERT SCALE 1\u20135\r\n1. 1 2 3 4 5\r\n2. 1 2 3 4 5\r\n3. 1 2 3 4 5\r\nMULTIPLE CHOICE A\u2013B \u2014 MARK ALL THAT APPLY\r\n4. A B\r\nSection 2\r\nSINGLE CHOICE A\u2013B\r\n5. A B\r\nSINGLE CHOICE A\u2013C\r\n6. A B C\r\nSINGLE CHOICE A\u2013B\r\n7. A B\r\n8. A B\r\n9. A B\r\n10. A B\r\n11. A B\r\nPacket P036-1CE4 Page 1 of 1"
+  }
+]

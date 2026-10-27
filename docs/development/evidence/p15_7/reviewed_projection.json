@@ -1,0 +1,185 @@
+{
+  "provenance": "Assistant visual estimates from original source-image outer outlines in source_review_grid.png, with fixed source-coordinate origins and 10-pixel rulers. Not human annotations. No ring-contrast maxima or canonical warped image used for these estimates. Review is approximate, not metrology.",
+  "points": [
+    {
+      "target": "question-1-option-3",
+      "source": [
+        517,
+        675
+      ],
+      "expected": [
+        345.0,
+        510.0
+      ],
+      "fourPoint": [
+        346.39184061414994,
+        511.9491349296618
+      ],
+      "multiPointDiagnostic": [
+        341.77186924355584,
+        507.90714358875533
+      ],
+      "fourDisplacement": 2.3950672786427063,
+      "multiDisplacement": 3.847190681365904
+    },
+    {
+      "target": "question-1-option-7",
+      "source": [
+        791,
+        690
+      ],
+      "expected": [
+        625.0,
+        510.0
+      ],
+      "fourPoint": [
+        624.0583070751777,
+        523.879989015198
+      ],
+      "multiPointDiagnostic": [
+        612.8601510813897,
+        500.4060513339448
+      ],
+      "fourDisplacement": 13.911897089422352,
+      "multiDisplacement": 15.473195622546273
+    },
+    {
+      "target": "question-3-option-17",
+      "source": [
+        518,
+        797
+      ],
+      "expected": [
+        345.0,
+        635.0
+      ],
+      "fourPoint": [
+        347.06275566223286,
+        633.6162923688013
+      ],
+      "multiPointDiagnostic": [
+        342.3575121691225,
+        631.6144437900194
+      ],
+      "fourDisplacement": 2.483869507585149,
+      "multiDisplacement": 4.294733145059603
+    },
+    {
+      "target": "question-3-option-20",
+      "source": [
+        724,
+        811
+      ],
+      "expected": [
+        555.0,
+        635.0
+      ],
+      "fourPoint": [
+        555.7502481469113,
+        645.2894467266971
+      ],
+      "multiPointDiagnostic": [
+        545.5047713338693,
+        629.5377656887813
+      ],
+      "fourDisplacement": 10.316762390570057,
+      "multiDisplacement": 10.954239868323402
+    },
+    {
+      "target": "question-5-option-26",
+      "source": [
+        520,
+        1108
+      ],
+      "expected": [
+        345.0,
+        950.0
+      ],
+      "fourPoint": [
+        348.2151052149725,
+        943.4328220216748
+      ],
+      "multiPointDiagnostic": [
+        343.3075477373333,
+        945.7245964134017
+      ],
+      "fourDisplacement": 7.3119578870739,
+      "multiDisplacement": 4.5982029630827315
+    },
+    {
+      "target": "question-6-option-30",
+      "source": [
+        661,
+        1233
+      ],
+      "expected": [
+        485.0,
+        1067.5
+      ],
+      "fourPoint": [
+        490.57929825690115,
+        1066.2539827191072
+      ],
+      "multiPointDiagnostic": [
+        481.1502762166329,
+        1062.2740596022643
+      ],
+      "fourDisplacement": 5.716741038716361,
+      "multiDisplacement": 6.490826314800633
+    },
+    {
+      "target": "question-9-option-36",
+      "source": [
+        594,
+        1465
+      ],
+      "expected": [
+        415.0,
+        1310.0
+      ],
+      "fourPoint": [
+        422.07033584903803,
+        1297.6680534446045
+      ],
+      "multiPointDiagnostic": [
+        414.3990005974963,
+        1299.8616855495197
+      ],
+      "fourDisplacement": 14.21501160264466,
+      "multiDisplacement": 10.156112454016387
+    },
+    {
+      "target": "question-11-option-39",
+      "source": [
+        524,
+        1584
+      ],
+      "expected": [
+        345.0,
+        1435.0
+      ],
+      "fourPoint": [
+        350.92481712781216,
+        1416.664297660828
+      ],
+      "multiPointDiagnostic": [
+        345.6645974123977,
+        1422.8826694709824
+      ],
+      "fourDisplacement": 19.269183643027926,
+      "multiDisplacement": 12.135542380546019
+    }
+  ],
+  "fourPoint": {
+    "count": 8,
+    "mean": 9.45256130471039,
+    "p95": 19.269183643027926,
+    "maximum": 19.269183643027926
+  },
+  "multiPointDiagnostic": {
+    "count": 8,
+    "mean": 8.49375542871762,
+    "p95": 15.473195622546273,
+    "maximum": 15.473195622546273
+  }
+}

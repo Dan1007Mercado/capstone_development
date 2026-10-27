@@ -1,0 +1,294 @@
+{
+  "provenance": "Thresholded source connected components. Alternating whole question rows held out. Narrow left content strip only; no production model or lens calibration.",
+  "captures": [
+    {
+      "file": "mixstroke_mark.jpg",
+      "fourPoint": {
+        "count": 32,
+        "mean": 6.233866807207152,
+        "p95": 12.687940142304761,
+        "maximum": 13.035682960585813
+      },
+      "multiPointDiagnostic": {
+        "count": 32,
+        "mean": 11.182192211280618,
+        "p95": 19.13443759039341,
+        "maximum": 21.376122006052412
+      },
+      "multiPointAccepted": false,
+      "translationLeaveRowsOut": {
+        "count": 32,
+        "mean": 6.190608578684045,
+        "p95": 11.282507919981573,
+        "maximum": 11.338330585241284
+      },
+      "affineLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.5040664613164676,
+        "p95": 2.845240609501797,
+        "maximum": 4.33715699296892
+      },
+      "quadraticLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.4303131931330142,
+        "p95": 2.939022191688492,
+        "maximum": 3.267883640295114
+      },
+      "bubbleProjectiveLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.5969557377127384,
+        "p95": 2.9289907626400256,
+        "maximum": 4.2035014348834085
+      },
+      "blankAffineTransferred": {
+        "count": 32,
+        "mean": 4.0551904942498,
+        "p95": 6.974367746462055,
+        "maximum": 9.075354261159818
+      }
+    },
+    {
+      "file": "tilted_allmarked_fullmarked.jpg",
+      "fourPoint": {
+        "count": 32,
+        "mean": 9.059928306769809,
+        "p95": 17.00661137509227,
+        "maximum": 17.9153128481217
+      },
+      "multiPointDiagnostic": {
+        "count": 32,
+        "mean": 9.022100722265087,
+        "p95": 16.367846213581537,
+        "maximum": 17.155441764787927
+      },
+      "multiPointAccepted": false,
+      "translationLeaveRowsOut": {
+        "count": 32,
+        "mean": 7.261477506684002,
+        "p95": 16.988112871980466,
+        "maximum": 17.230752492248538
+      },
+      "affineLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.1819226292871523,
+        "p95": 1.991571994110691,
+        "maximum": 2.580863468265206
+      },
+      "quadraticLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.0177176477575103,
+        "p95": 2.2342188278944284,
+        "maximum": 2.411610059231534
+      },
+      "bubbleProjectiveLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.0400593227743067,
+        "p95": 2.363201120635979,
+        "maximum": 2.559497940489127
+      },
+      "blankAffineTransferred": {
+        "count": 32,
+        "mean": 4.872367913906611,
+        "p95": 9.642359929900621,
+        "maximum": 10.163873887323547
+      }
+    },
+    {
+      "file": "Tilted_mix_strokes.jpg",
+      "fourPoint": {
+        "count": 32,
+        "mean": 5.44629995773917,
+        "p95": 11.582060485859026,
+        "maximum": 11.952391900310113
+      },
+      "multiPointDiagnostic": {
+        "count": 32,
+        "mean": 5.414609201851652,
+        "p95": 11.041149034454536,
+        "maximum": 11.39732802858926
+      },
+      "multiPointAccepted": true,
+      "translationLeaveRowsOut": {
+        "count": 32,
+        "mean": 4.921679313811826,
+        "p95": 8.992161308826594,
+        "maximum": 9.444874892882808
+      },
+      "affineLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.568074158856886,
+        "p95": 3.0798532959754836,
+        "maximum": 5.24316391893278
+      },
+      "quadraticLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.3212239621536168,
+        "p95": 2.8927806631662456,
+        "maximum": 3.6367909631492488
+      },
+      "bubbleProjectiveLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.5519424095454823,
+        "p95": 3.1443582540834365,
+        "maximum": 4.901703555295782
+      },
+      "blankAffineTransferred": {
+        "count": 32,
+        "mean": 5.295494877634327,
+        "p95": 9.983906444873778,
+        "maximum": 13.766338685998399
+      }
+    },
+    {
+      "file": "unmarked.jpg",
+      "fourPoint": {
+        "count": 32,
+        "mean": 9.816268756712976,
+        "p95": 18.453293616902226,
+        "maximum": 19.269183643027926
+      },
+      "multiPointDiagnostic": {
+        "count": 32,
+        "mean": 8.611306347662323,
+        "p95": 15.109825983709147,
+        "maximum": 15.111546385635709
+      },
+      "multiPointAccepted": false,
+      "translationLeaveRowsOut": {
+        "count": 32,
+        "mean": 9.389182255202153,
+        "p95": 16.719947520134333,
+        "maximum": 16.787990003571576
+      },
+      "affineLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.1972222670807837,
+        "p95": 2.3366381668150136,
+        "maximum": 2.967250972922994
+      },
+      "quadraticLeaveRowsOut": {
+        "count": 32,
+        "mean": 0.9918502572703412,
+        "p95": 1.9607735610777666,
+        "maximum": 2.1927633366804886
+      },
+      "bubbleProjectiveLeaveRowsOut": {
+        "count": 32,
+        "mean": 1.1495807539923169,
+        "p95": 2.3961407269352413,
+        "maximum": 2.588885024676033
+      },
+      "blankAffineTransferred": {
+        "count": 32,
+        "mean": 1.0682138999326807,
+        "p95": 2.1046088661551994,
+        "maximum": 2.6981755617629823
+      }
+    }
+  ],
+  "pdf": [
+    {
+      "file": "packet_print_job.pdf_0.bmp.measurements.json",
+      "centerDisplacement": {
+        "count": 32,
+        "mean": 0.7071067811865476,
+        "p95": 0.7071067811865476,
+        "maximum": 0.7071067811865476
+      },
+      "outerInkDiameters": [
+        [
+          52,
+          52
+        ],
+        [
+          52,
+          53
+        ]
+      ]
+    },
+    {
+      "file": "packet_print_job.pdf_1.bmp.measurements.json",
+      "centerDisplacement": {
+        "count": 32,
+        "mean": 0.7071067811865476,
+        "p95": 0.7071067811865476,
+        "maximum": 0.7071067811865476
+      },
+      "outerInkDiameters": [
+        [
+          52,
+          52
+        ],
+        [
+          52,
+          53
+        ]
+      ]
+    },
+    {
+      "file": "packet_print_job.pdf_2.bmp.measurements.json",
+      "centerDisplacement": {
+        "count": 32,
+        "mean": 0.7071067811865476,
+        "p95": 0.7071067811865476,
+        "maximum": 0.7071067811865476
+      },
+      "outerInkDiameters": [
+        [
+          52,
+          52
+        ],
+        [
+          52,
+          53
+        ]
+      ]
+    },
+    {
+      "file": "published_template.pdf_0.bmp.measurements.json",
+      "centerDisplacement": {
+        "count": 32,
+        "mean": 0.7071067811865476,
+        "p95": 0.7071067811865476,
+        "maximum": 0.7071067811865476
+      },
+      "outerInkDiameters": [
+        [
+          52,
+          52
+        ],
+        [
+          52,
+          53
+        ]
+      ]
+    }
+  ],
+  "blankAffineCoefficients": [
+    [
+      -1.9082399342488827,
+      -3.2344137256057977,
+      7.279676177984804
+    ],
+    [
+      -1.5422111019968412,
+      45.44883988786859,
+      -22.2668824974531
+    ]
+  ],
+  "jointComparison": {
+    "unmarkedJointProjectiveLeaveRowsOut": {
+      "count": 32,
+      "mean": 9.232676903209143,
+      "p95": 15.788156136307872,
+      "maximum": 16.50159932800459
+    },
+    "bubbleOnlyProjectiveExtrapolationToMarkers": {
+      "count": 32,
+      "mean": 59.26773702373593,
+      "p95": 88.8487287830763,
+      "maximum": 91.3847027144677
+    },
+    "limitation": "Unweighted linear least squares, not an optimal nonlinear fit. Marker measurements remain detector-derived. Bubble strip extrapolation is unstable."
+  }
+}

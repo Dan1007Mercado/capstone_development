@@ -1,0 +1,3481 @@
+{
+  "provenance": "Source-image connected outer-ink bounds at intensity <110; algorithmic proposals, analyst visual review recorded separately; not human ground truth.",
+  "results": [
+    {
+      "file": "mixstroke_mark.jpg",
+      "landmarks": [
+        {
+          "question": "question-1",
+          "target": "question-1-option-3",
+          "expected": [
+            345.0,
+            510.0
+          ],
+          "source": [
+            519.5,
+            718.5
+          ],
+          "sourceInkBounds": [
+            491,
+            691,
+            58,
+            56,
+            2117
+          ],
+          "fourPoint": [
+            344.84164602238485,
+            511.88900516264925
+          ],
+          "residual": [
+            -0.1583539776151497,
+            1.889005162649255
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-4",
+          "expected": [
+            415.0,
+            510.0
+          ],
+          "source": [
+            591.0,
+            720.0
+          ],
+          "sourceInkBounds": [
+            563,
+            692,
+            57,
+            57,
+            886
+          ],
+          "fourPoint": [
+            414.7157520528643,
+            512.9817844567893
+          ],
+          "residual": [
+            -0.2842479471357251,
+            2.9817844567893417
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-5",
+          "expected": [
+            485.0,
+            510.0
+          ],
+          "source": [
+            662.5,
+            723.0
+          ],
+          "sourceInkBounds": [
+            634,
+            695,
+            58,
+            57,
+            877
+          ],
+          "fourPoint": [
+            484.51532253717994,
+            515.4756605291352
+          ],
+          "residual": [
+            -0.4846774628200592,
+            5.475660529135212
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-6",
+          "expected": [
+            555.0,
+            510.0
+          ],
+          "source": [
+            733.5,
+            724.5
+          ],
+          "sourceInkBounds": [
+            706,
+            696,
+            56,
+            58,
+            865
+          ],
+          "fourPoint": [
+            553.772214161879,
+            516.5679437936886
+          ],
+          "residual": [
+            -1.227785838121008,
+            6.567943793688642
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-7",
+          "expected": [
+            625.0,
+            510.0
+          ],
+          "source": [
+            804.0,
+            725.0
+          ],
+          "sourceInkBounds": [
+            776,
+            697,
+            57,
+            57,
+            862
+          ],
+          "fourPoint": [
+            622.4851960124029,
+            516.7275298346989
+          ],
+          "residual": [
+            -2.5148039875971335,
+            6.727529834698885
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-10",
+          "expected": [
+            345.0,
+            572.5
+          ],
+          "source": [
+            519.0,
+            785.5
+          ],
+          "sourceInkBounds": [
+            490,
+            760,
+            59,
+            52,
+            806
+          ],
+          "fourPoint": [
+            343.9386283763948,
+            574.5669072365339
+          ],
+          "residual": [
+            -1.0613716236052255,
+            2.0669072365338934
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-11",
+          "expected": [
+            415.0,
+            572.5
+          ],
+          "source": [
+            590.5,
+            788.5
+          ],
+          "sourceInkBounds": [
+            562,
+            763,
+            58,
+            52,
+            839
+          ],
+          "fourPoint": [
+            413.7919225208893,
+            577.0327492716659
+          ],
+          "residual": [
+            -1.2080774791107274,
+            4.532749271665921
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-12",
+          "expected": [
+            485.0,
+            572.5
+          ],
+          "source": [
+            662.5,
+            790.5
+          ],
+          "sourceInkBounds": [
+            634,
+            765,
+            58,
+            52,
+            814
+          ],
+          "fourPoint": [
+            484.0744435640733,
+            578.5594924563022
+          ],
+          "residual": [
+            -0.9255564359266941,
+            6.059492456302223
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-13",
+          "expected": [
+            555.0,
+            572.5
+          ],
+          "source": [
+            733.5,
+            793.5
+          ],
+          "sourceInkBounds": [
+            705,
+            768,
+            58,
+            52,
+            1643
+          ],
+          "fourPoint": [
+            553.3095875933534,
+            581.0235547501946
+          ],
+          "residual": [
+            -1.690412406646601,
+            8.523554750194648
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-14",
+          "expected": [
+            625.0,
+            572.5
+          ],
+          "source": [
+            805.0,
+            794.0
+          ],
+          "sourceInkBounds": [
+            777,
+            768,
+            57,
+            53,
+            782
+          ],
+          "fourPoint": [
+            622.9848056231624,
+            581.1490914608095
+          ],
+          "residual": [
+            -2.0151943768375986,
+            8.649091460809473
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-17",
+          "expected": [
+            345.0,
+            635.0
+          ],
+          "source": [
+            520.0,
+            849.0
+          ],
+          "sourceInkBounds": [
+            491,
+            821,
+            59,
+            57,
+            928
+          ],
+          "fourPoint": [
+            344.52381926196693,
+            633.9436654550192
+          ],
+          "residual": [
+            -0.47618073803306515,
+            -1.056334544980814
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-18",
+          "expected": [
+            415.0,
+            635.0
+          ],
+          "source": [
+            591.5,
+            852.5
+          ],
+          "sourceInkBounds": [
+            563,
+            825,
+            58,
+            56,
+            962
+          ],
+          "fourPoint": [
+            414.3619187701001,
+            636.8486303649555
+          ],
+          "residual": [
+            -0.6380812298999103,
+            1.8486303649555111
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-19",
+          "expected": [
+            485.0,
+            635.0
+          ],
+          "source": [
+            662.5,
+            854.5
+          ],
+          "sourceInkBounds": [
+            634,
+            827,
+            58,
+            56,
+            908
+          ],
+          "fourPoint": [
+            483.6565648908482,
+            638.3522918314219
+          ],
+          "residual": [
+            -1.3434351091518124,
+            3.352291831421894
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-20",
+          "expected": [
+            555.0,
+            635.0
+          ],
+          "source": [
+            734.5,
+            857.0
+          ],
+          "sourceInkBounds": [
+            706,
+            829,
+            58,
+            57,
+            902
+          ],
+          "fourPoint": [
+            553.8587936383781,
+            640.316249872672
+          ],
+          "residual": [
+            -1.1412063616219257,
+            5.3162498726719605
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-21",
+          "expected": [
+            625.0,
+            635.0
+          ],
+          "source": [
+            806.0,
+            859.0
+          ],
+          "sourceInkBounds": [
+            778,
+            831,
+            57,
+            57,
+            893
+          ],
+          "fourPoint": [
+            623.5117445567436,
+            641.8143357713165
+          ],
+          "residual": [
+            -1.4882554432564348,
+            6.8143357713164505
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-24",
+          "expected": [
+            345.0,
+            752.5
+          ],
+          "source": [
+            522.0,
+            974.0
+          ],
+          "sourceInkBounds": [
+            493,
+            946,
+            59,
+            57,
+            1858
+          ],
+          "fourPoint": [
+            345.7059723446954,
+            750.7685219625512
+          ],
+          "residual": [
+            0.7059723446953967,
+            -1.7314780374488237
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-25",
+          "expected": [
+            415.0,
+            752.5
+          ],
+          "source": [
+            594.0,
+            976.0
+          ],
+          "sourceInkBounds": [
+            566,
+            948,
+            57,
+            57,
+            823
+          ],
+          "fourPoint": [
+            416.01807266865,
+            752.2139728127905
+          ],
+          "residual": [
+            1.0180726686500066,
+            -0.28602718720946996
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-26",
+          "expected": [
+            345.0,
+            950.0
+          ],
+          "source": [
+            523.5,
+            1182.0
+          ],
+          "sourceInkBounds": [
+            495,
+            1154,
+            58,
+            57,
+            2002
+          ],
+          "fourPoint": [
+            345.8860313376912,
+            945.0066657714463
+          ],
+          "residual": [
+            0.886031337691179,
+            -4.993334228553749
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-27",
+          "expected": [
+            415.0,
+            950.0
+          ],
+          "source": [
+            596.0,
+            1185.5
+          ],
+          "sourceInkBounds": [
+            568,
+            1157,
+            57,
+            58,
+            829
+          ],
+          "fourPoint": [
+            416.6385028104592,
+            947.7564044575386
+          ],
+          "residual": [
+            1.6385028104592152,
+            -2.243595542461435
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-28",
+          "expected": [
+            345.0,
+            1067.5
+          ],
+          "source": [
+            525.5,
+            1305.0
+          ],
+          "sourceInkBounds": [
+            497,
+            1277,
+            58,
+            57,
+            835
+          ],
+          "fourPoint": [
+            347.07906340509413,
+            1059.7614064284548
+          ],
+          "residual": [
+            2.079063405094132,
+            -7.738593571545152
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-29",
+          "expected": [
+            415.0,
+            1067.5
+          ],
+          "source": [
+            598.5,
+            1310.0
+          ],
+          "sourceInkBounds": [
+            570,
+            1282,
+            58,
+            57,
+            1678
+          ],
+          "fourPoint": [
+            418.28609746788686,
+            1063.8503966418004
+          ],
+          "residual": [
+            3.2860974678868615,
+            -3.649603358199556
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-30",
+          "expected": [
+            485.0,
+            1067.5
+          ],
+          "source": [
+            670.5,
+            1312.5
+          ],
+          "sourceInkBounds": [
+            642,
+            1285,
+            58,
+            56,
+            795
+          ],
+          "fourPoint": [
+            488.46647175882725,
+            1065.61364025205
+          ],
+          "residual": [
+            3.466471758827254,
+            -1.8863597479501095
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-31",
+          "expected": [
+            345.0,
+            1185.0
+          ],
+          "source": [
+            526.0,
+            1430.0
+          ],
+          "sourceInkBounds": [
+            497,
+            1402,
+            59,
+            57,
+            863
+          ],
+          "fourPoint": [
+            346.79494242165725,
+            1176.3186622296967
+          ],
+          "residual": [
+            1.7949424216572538,
+            -8.681337770303344
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-32",
+          "expected": [
+            415.0,
+            1185.0
+          ],
+          "source": [
+            598.5,
+            1433.5
+          ],
+          "sourceInkBounds": [
+            570,
+            1405,
+            58,
+            58,
+            1810
+          ],
+          "fourPoint": [
+            417.50123566315233,
+            1178.9569603034233
+          ],
+          "residual": [
+            2.501235663152329,
+            -6.04303969657667
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-33",
+          "expected": [
+            345.0,
+            1247.5
+          ],
+          "source": [
+            527.0,
+            1496.5
+          ],
+          "sourceInkBounds": [
+            498,
+            1468,
+            59,
+            58,
+            1857
+          ],
+          "fourPoint": [
+            347.36013802325675,
+            1238.2900175053849
+          ],
+          "residual": [
+            2.360138023256752,
+            -9.209982494615133
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-34",
+          "expected": [
+            415.0,
+            1247.5
+          ],
+          "source": [
+            599.5,
+            1500.5
+          ],
+          "sourceInkBounds": [
+            571,
+            1473,
+            58,
+            56,
+            798
+          ],
+          "fourPoint": [
+            418.0505803460691,
+            1241.3641889015653
+          ],
+          "residual": [
+            3.0505803460691254,
+            -6.135811098434715
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-35",
+          "expected": [
+            345.0,
+            1310.0
+          ],
+          "source": [
+            528.5,
+            1562.5
+          ],
+          "sourceInkBounds": [
+            500,
+            1533,
+            58,
+            60,
+            1640
+          ],
+          "fourPoint": [
+            348.4160578350786,
+            1299.7691510917784
+          ],
+          "residual": [
+            3.416057835078618,
+            -10.23084890822156
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-36",
+          "expected": [
+            415.0,
+            1310.0
+          ],
+          "source": [
+            601.5,
+            1565.0
+          ],
+          "sourceInkBounds": [
+            573,
+            1537,
+            58,
+            57,
+            768
+          ],
+          "fourPoint": [
+            419.59036700734146,
+            1301.4122130027426
+          ],
+          "residual": [
+            4.590367007341456,
+            -8.587786997257354
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-37",
+          "expected": [
+            345.0,
+            1372.5
+          ],
+          "source": [
+            529.0,
+            1627.5
+          ],
+          "sourceInkBounds": [
+            500,
+            1600,
+            59,
+            56,
+            753
+          ],
+          "fourPoint": [
+            348.50228894375874,
+            1360.3050093395225
+          ],
+          "residual": [
+            3.5022889437587423,
+            -12.194990660477515
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-38",
+          "expected": [
+            415.0,
+            1372.5
+          ],
+          "source": [
+            602.0,
+            1632.5
+          ],
+          "sourceInkBounds": [
+            574,
+            1604,
+            57,
+            58,
+            2477
+          ],
+          "fourPoint": [
+            419.6486843806948,
+            1364.2460380147668
+          ],
+          "residual": [
+            4.648684380694817,
+            -8.253961985233218
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-39",
+          "expected": [
+            345.0,
+            1435.0
+          ],
+          "source": [
+            528.5,
+            1694.0
+          ],
+          "sourceInkBounds": [
+            500,
+            1666,
+            58,
+            57,
+            2202
+          ],
+          "fourPoint": [
+            347.6038882352888,
+            1422.227028681351
+          ],
+          "residual": [
+            2.603888235288821,
+            -12.77297131864907
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-40",
+          "expected": [
+            415.0,
+            1435.0
+          ],
+          "source": [
+            602.0,
+            1698.5
+          ],
+          "sourceInkBounds": [
+            574,
+            1671,
+            57,
+            56,
+            752
+          ],
+          "fourPoint": [
+            419.2293073938855,
+            1425.6673060483838
+          ],
+          "residual": [
+            4.229307393885506,
+            -9.332693951616193
+          ]
+        }
+      ]
+    },
+    {
+      "file": "tilted_allmarked_fullmarked.jpg",
+      "landmarks": [
+        {
+          "question": "question-1",
+          "target": "question-1-option-3",
+          "expected": [
+            345.0,
+            510.0
+          ],
+          "source": [
+            811.0,
+            1104.5
+          ],
+          "sourceInkBounds": [
+            785,
+            1083,
+            53,
+            44,
+            1785
+          ],
+          "fourPoint": [
+            343.84506755969886,
+            503.6740742583193
+          ],
+          "residual": [
+            -1.1549324403011383,
+            -6.325925741680692
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-4",
+          "expected": [
+            415.0,
+            510.0
+          ],
+          "source": [
+            877.5,
+            1107.5
+          ],
+          "sourceInkBounds": [
+            851,
+            1086,
+            54,
+            44,
+            639
+          ],
+          "fourPoint": [
+            414.4019679464247,
+            506.4877202255194
+          ],
+          "residual": [
+            -0.5980320535753094,
+            -3.5122797744805894
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-5",
+          "expected": [
+            485.0,
+            510.0
+          ],
+          "source": [
+            944.5,
+            1112.5
+          ],
+          "sourceInkBounds": [
+            918,
+            1091,
+            54,
+            44,
+            636
+          ],
+          "fourPoint": [
+            485.73924985899146,
+            511.71208489294037
+          ],
+          "residual": [
+            0.7392498589914567,
+            1.7120848929403678
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-6",
+          "expected": [
+            555.0,
+            510.0
+          ],
+          "source": [
+            1010.0,
+            1117.0
+          ],
+          "sourceInkBounds": [
+            984,
+            1095,
+            53,
+            45,
+            602
+          ],
+          "fourPoint": [
+            555.5546327104348,
+            516.3585720006793
+          ],
+          "residual": [
+            0.5546327104348165,
+            6.35857200067926
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-7",
+          "expected": [
+            625.0,
+            510.0
+          ],
+          "source": [
+            1075.5,
+            1121.5
+          ],
+          "sourceInkBounds": [
+            1050,
+            1100,
+            52,
+            44,
+            609
+          ],
+          "fourPoint": [
+            625.471107902616,
+            521.0117871995459
+          ],
+          "residual": [
+            0.4711079026160405,
+            11.011787199545893
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-10",
+          "expected": [
+            345.0,
+            572.5
+          ],
+          "source": [
+            806.5,
+            1155.0
+          ],
+          "sourceInkBounds": [
+            780,
+            1134,
+            54,
+            43,
+            619
+          ],
+          "fourPoint": [
+            342.9391151180079,
+            564.2443190258263
+          ],
+          "residual": [
+            -2.060884881992081,
+            -8.255680974173742
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-11",
+          "expected": [
+            415.0,
+            572.5
+          ],
+          "source": [
+            873.5,
+            1158.5
+          ],
+          "sourceInkBounds": [
+            847,
+            1137,
+            54,
+            44,
+            633
+          ],
+          "fourPoint": [
+            413.69551063877896,
+            567.6883211538274
+          ],
+          "residual": [
+            -1.3044893612210444,
+            -4.81167884617264
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-12",
+          "expected": [
+            485.0,
+            572.5
+          ],
+          "source": [
+            940.5,
+            1163.5
+          ],
+          "sourceInkBounds": [
+            914,
+            1142,
+            54,
+            44,
+            627
+          ],
+          "fourPoint": [
+            484.6643251680643,
+            572.9283389438309
+          ],
+          "residual": [
+            -0.33567483193570524,
+            0.42833894383090865
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-13",
+          "expected": [
+            555.0,
+            572.5
+          ],
+          "source": [
+            1007.0,
+            1169.0
+          ],
+          "sourceInkBounds": [
+            981,
+            1148,
+            53,
+            43,
+            1702
+          ],
+          "fourPoint": [
+            555.2307358860264,
+            578.7777663512684
+          ],
+          "residual": [
+            0.23073588602642303,
+            6.277766351268383
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-14",
+          "expected": [
+            625.0,
+            572.5
+          ],
+          "source": [
+            1073.0,
+            1173.5
+          ],
+          "sourceInkBounds": [
+            1047,
+            1152,
+            53,
+            44,
+            596
+          ],
+          "fourPoint": [
+            625.3097595922612,
+            583.4462120449069
+          ],
+          "residual": [
+            0.30975959226122995,
+            10.946212044906929
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-17",
+          "expected": [
+            345.0,
+            635.0
+          ],
+          "source": [
+            804.0,
+            1207.5
+          ],
+          "sourceInkBounds": [
+            777,
+            1185,
+            55,
+            46,
+            679
+          ],
+          "fourPoint": [
+            344.2847705707328,
+            626.5393716489602
+          ],
+          "residual": [
+            -0.7152294292671968,
+            -8.460628351039759
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-18",
+          "expected": [
+            415.0,
+            635.0
+          ],
+          "source": [
+            871.0,
+            1211.0
+          ],
+          "sourceInkBounds": [
+            844,
+            1189,
+            55,
+            45,
+            696
+          ],
+          "fourPoint": [
+            414.6708448329496,
+            630.0176644820225
+          ],
+          "residual": [
+            -0.3291551670503736,
+            -4.9823355179775035
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-19",
+          "expected": [
+            485.0,
+            635.0
+          ],
+          "source": [
+            937.5,
+            1215.0
+          ],
+          "sourceInkBounds": [
+            911,
+            1193,
+            54,
+            45,
+            670
+          ],
+          "fourPoint": [
+            484.6811216648923,
+            634.0971934831255
+          ],
+          "residual": [
+            -0.3188783351076836,
+            -0.9028065168745343
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-20",
+          "expected": [
+            555.0,
+            635.0
+          ],
+          "source": [
+            1005.0,
+            1220.5
+          ],
+          "sourceInkBounds": [
+            979,
+            1199,
+            53,
+            44,
+            651
+          ],
+          "fourPoint": [
+            555.9347859288733,
+            639.9456566124894
+          ],
+          "residual": [
+            0.9347859288733389,
+            4.945656612489415
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-21",
+          "expected": [
+            625.0,
+            635.0
+          ],
+          "source": [
+            1071.5,
+            1226.0
+          ],
+          "sourceInkBounds": [
+            1045,
+            1204,
+            54,
+            45,
+            1816
+          ],
+          "fourPoint": [
+            626.2276553848515,
+            645.8112040693316
+          ],
+          "residual": [
+            1.2276553848514595,
+            10.811204069331552
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-24",
+          "expected": [
+            345.0,
+            752.5
+          ],
+          "source": [
+            798.0,
+            1308.5
+          ],
+          "sourceInkBounds": [
+            771,
+            1286,
+            55,
+            46,
+            607
+          ],
+          "fourPoint": [
+            345.60175085150354,
+            744.5726275005982
+          ],
+          "residual": [
+            0.6017508515035388,
+            -7.927372499401827
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-25",
+          "expected": [
+            415.0,
+            752.5
+          ],
+          "source": [
+            866.5,
+            1312.5
+          ],
+          "sourceInkBounds": [
+            840,
+            1290,
+            54,
+            46,
+            1828
+          ],
+          "fourPoint": [
+            416.87353185880477,
+            748.6815363090167
+          ],
+          "residual": [
+            1.8735318588047676,
+            -3.8184636909833216
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-26",
+          "expected": [
+            345.0,
+            950.0
+          ],
+          "source": [
+            786.0,
+            1480.0
+          ],
+          "sourceInkBounds": [
+            759,
+            1457,
+            55,
+            47,
+            1961
+          ],
+          "fourPoint": [
+            345.9341620804713,
+            939.6800304353814
+          ],
+          "residual": [
+            0.9341620804713102,
+            -10.319969564618646
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-27",
+          "expected": [
+            415.0,
+            950.0
+          ],
+          "source": [
+            855.5,
+            1483.5
+          ],
+          "sourceInkBounds": [
+            829,
+            1460,
+            54,
+            48,
+            654
+          ],
+          "fourPoint": [
+            416.9986117366445,
+            943.3118974490023
+          ],
+          "residual": [
+            1.9986117366444773,
+            -6.688102550997655
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-28",
+          "expected": [
+            345.0,
+            1067.5
+          ],
+          "source": [
+            780.0,
+            1584.0
+          ],
+          "sourceInkBounds": [
+            752,
+            1560,
+            57,
+            49,
+            636
+          ],
+          "fourPoint": [
+            347.4172239283107,
+            1054.842530937396
+          ],
+          "residual": [
+            2.4172239283107047,
+            -12.657469062603923
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-29",
+          "expected": [
+            415.0,
+            1067.5
+          ],
+          "source": [
+            850.5,
+            1588.0
+          ],
+          "sourceInkBounds": [
+            823,
+            1564,
+            56,
+            49,
+            663
+          ],
+          "fourPoint": [
+            418.81207953729563,
+            1059.082439772128
+          ],
+          "residual": [
+            3.812079537295631,
+            -8.417560227871945
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-30",
+          "expected": [
+            485.0,
+            1067.5
+          ],
+          "source": [
+            920.5,
+            1592.5
+          ],
+          "sourceInkBounds": [
+            893,
+            1569,
+            56,
+            48,
+            2018
+          ],
+          "fourPoint": [
+            489.84787417281836,
+            1063.8788212758434
+          ],
+          "residual": [
+            4.847874172818365,
+            -3.621178724156607
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-31",
+          "expected": [
+            345.0,
+            1185.0
+          ],
+          "source": [
+            772.0,
+            1692.0
+          ],
+          "sourceInkBounds": [
+            744,
+            1668,
+            57,
+            49,
+            1918
+          ],
+          "fourPoint": [
+            347.1615861441598,
+            1172.014376865036
+          ],
+          "residual": [
+            2.1615861441597986,
+            -12.985623134964044
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-32",
+          "expected": [
+            415.0,
+            1185.0
+          ],
+          "source": [
+            843.5,
+            1696.0
+          ],
+          "sourceInkBounds": [
+            816,
+            1672,
+            56,
+            49,
+            635
+          ],
+          "fourPoint": [
+            418.81685058958357,
+            1176.3057220824248
+          ],
+          "residual": [
+            3.8168505895835665,
+            -8.694277917575164
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-33",
+          "expected": [
+            345.0,
+            1247.5
+          ],
+          "source": [
+            768.5,
+            1749.0
+          ],
+          "sourceInkBounds": [
+            740,
+            1725,
+            58,
+            49,
+            665
+          ],
+          "fourPoint": [
+            347.7451834007834,
+            1232.8842364136929
+          ],
+          "residual": [
+            2.7451834007833895,
+            -14.61576358630714
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-34",
+          "expected": [
+            415.0,
+            1247.5
+          ],
+          "source": [
+            840.0,
+            1753.5
+          ],
+          "sourceInkBounds": [
+            812,
+            1729,
+            57,
+            50,
+            2093
+          ],
+          "fourPoint": [
+            419.0448221845405,
+            1237.7338999077954
+          ],
+          "residual": [
+            4.0448221845405214,
+            -9.766100092204624
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-35",
+          "expected": [
+            345.0,
+            1310.0
+          ],
+          "source": [
+            764.5,
+            1806.5
+          ],
+          "sourceInkBounds": [
+            737,
+            1782,
+            56,
+            50,
+            582
+          ],
+          "fourPoint": [
+            347.86454004738346,
+            1293.6228484552676
+          ],
+          "residual": [
+            2.864540047383457,
+            -16.377151544732442
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-36",
+          "expected": [
+            415.0,
+            1310.0
+          ],
+          "source": [
+            837.5,
+            1811.5
+          ],
+          "sourceInkBounds": [
+            810,
+            1783,
+            56,
+            58,
+            2084
+          ],
+          "fourPoint": [
+            420.29083898841964,
+            1299.0217133745628
+          ],
+          "residual": [
+            5.290838988419637,
+            -10.97828662543725
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-37",
+          "expected": [
+            345.0,
+            1372.5
+          ],
+          "source": [
+            760.5,
+            1866.0
+          ],
+          "sourceInkBounds": [
+            732,
+            1841,
+            58,
+            51,
+            2162
+          ],
+          "fourPoint": [
+            348.12318025019573,
+            1355.7826265344042
+          ],
+          "residual": [
+            3.1231802501957304,
+            -16.717373465595756
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-38",
+          "expected": [
+            415.0,
+            1372.5
+          ],
+          "source": [
+            833.5,
+            1869.0
+          ],
+          "sourceInkBounds": [
+            806,
+            1845,
+            56,
+            49,
+            596
+          ],
+          "fourPoint": [
+            420.0167902297164,
+            1359.1187584644817
+          ],
+          "residual": [
+            5.016790229716378,
+            -13.381241535518257
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-39",
+          "expected": [
+            345.0,
+            1435.0
+          ],
+          "source": [
+            755.5,
+            1925.5
+          ],
+          "sourceInkBounds": [
+            727,
+            1901,
+            58,
+            50,
+            2139
+          ],
+          "fourPoint": [
+            347.403377077771,
+            1417.2466281211675
+          ],
+          "residual": [
+            2.4033770777709833,
+            -17.753371878832468
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-40",
+          "expected": [
+            415.0,
+            1435.0
+          ],
+          "source": [
+            829.5,
+            1928.5
+          ],
+          "sourceInkBounds": [
+            801,
+            1904,
+            58,
+            50,
+            629
+          ],
+          "fourPoint": [
+            419.8723400230371,
+            1420.6252864293024
+          ],
+          "residual": [
+            4.872340023037111,
+            -14.374713570697622
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Tilted_mix_strokes.jpg",
+      "landmarks": [
+        {
+          "question": "question-1",
+          "target": "question-1-option-3",
+          "expected": [
+            345.0,
+            510.0
+          ],
+          "source": [
+            898.0,
+            1162.5
+          ],
+          "sourceInkBounds": [
+            873,
+            1141,
+            51,
+            44,
+            1480
+          ],
+          "fourPoint": [
+            346.68484447086433,
+            511.7943561605448
+          ],
+          "residual": [
+            1.6848444708643342,
+            1.794356160544794
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-4",
+          "expected": [
+            415.0,
+            510.0
+          ],
+          "source": [
+            960.5,
+            1161.5
+          ],
+          "sourceInkBounds": [
+            936,
+            1140,
+            50,
+            44,
+            574
+          ],
+          "fourPoint": [
+            415.61358478778556,
+            511.80907736645946
+          ],
+          "residual": [
+            0.6135847877855554,
+            1.8090773664594622
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-5",
+          "expected": [
+            485.0,
+            510.0
+          ],
+          "source": [
+            1024.0,
+            1161.5
+          ],
+          "sourceInkBounds": [
+            999,
+            1140,
+            51,
+            44,
+            559
+          ],
+          "fourPoint": [
+            485.69099764935794,
+            513.0475559514144
+          ],
+          "residual": [
+            0.6909976493579393,
+            3.047555951414438
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-6",
+          "expected": [
+            555.0,
+            510.0
+          ],
+          "source": [
+            1086.0,
+            1160.5
+          ],
+          "sourceInkBounds": [
+            1062,
+            1138,
+            49,
+            46,
+            550
+          ],
+          "fourPoint": [
+            554.0630849527072,
+            513.0525275899804
+          ],
+          "residual": [
+            -0.936915047292814,
+            3.0525275899804
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-7",
+          "expected": [
+            625.0,
+            510.0
+          ],
+          "source": [
+            1148.5,
+            1158.5
+          ],
+          "sourceInkBounds": [
+            1124,
+            1137,
+            50,
+            44,
+            555
+          ],
+          "fourPoint": [
+            622.95323626952,
+            511.8629939403665
+          ],
+          "residual": [
+            -2.046763730480052,
+            1.8629939403664935
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-10",
+          "expected": [
+            345.0,
+            572.5
+          ],
+          "source": [
+            894.5,
+            1214.5
+          ],
+          "sourceInkBounds": [
+            869,
+            1195,
+            52,
+            40,
+            524
+          ],
+          "fourPoint": [
+            345.7256084934245,
+            574.0968398862054
+          ],
+          "residual": [
+            0.7256084934244882,
+            1.59683988620543
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-11",
+          "expected": [
+            415.0,
+            572.5
+          ],
+          "source": [
+            958.0,
+            1215.0
+          ],
+          "sourceInkBounds": [
+            933,
+            1195,
+            51,
+            41,
+            550
+          ],
+          "fourPoint": [
+            415.54738265788495,
+            575.922571287971
+          ],
+          "residual": [
+            0.5473826578849526,
+            3.4225712879709818
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-12",
+          "expected": [
+            485.0,
+            572.5
+          ],
+          "source": [
+            1021.0,
+            1215.5
+          ],
+          "sourceInkBounds": [
+            996,
+            1196,
+            51,
+            40,
+            532
+          ],
+          "fourPoint": [
+            484.8034119576477,
+            577.738205416854
+          ],
+          "residual": [
+            -0.196588042352289,
+            5.2382054168540435
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-13",
+          "expected": [
+            555.0,
+            572.5
+          ],
+          "source": [
+            1084.5,
+            1214.5
+          ],
+          "sourceInkBounds": [
+            1060,
+            1194,
+            50,
+            42,
+            1081
+          ],
+          "fourPoint": [
+            554.5338333435024,
+            577.7723399785914
+          ],
+          "residual": [
+            -0.46616665649764855,
+            5.27233997859139
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-14",
+          "expected": [
+            625.0,
+            572.5
+          ],
+          "source": [
+            1147.5,
+            1213.0
+          ],
+          "sourceInkBounds": [
+            1123,
+            1193,
+            50,
+            41,
+            511
+          ],
+          "fourPoint": [
+            623.6981631923128,
+            577.1997958120933
+          ],
+          "residual": [
+            -1.3018368076872093,
+            4.699795812093271
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-17",
+          "expected": [
+            345.0,
+            635.0
+          ],
+          "source": [
+            892.5,
+            1265.0
+          ],
+          "sourceInkBounds": [
+            867,
+            1243,
+            52,
+            45,
+            616
+          ],
+          "fourPoint": [
+            346.3333227980296,
+            634.1441562982411
+          ],
+          "residual": [
+            1.3333227980295987,
+            -0.8558437017588858
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-18",
+          "expected": [
+            415.0,
+            635.0
+          ],
+          "source": [
+            956.0,
+            1266.5
+          ],
+          "sourceInkBounds": [
+            931,
+            1245,
+            51,
+            44,
+            655
+          ],
+          "fourPoint": [
+            415.92918204793824,
+            637.140427337482
+          ],
+          "residual": [
+            0.9291820479382409,
+            2.1404273374820377
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-19",
+          "expected": [
+            485.0,
+            635.0
+          ],
+          "source": [
+            1020.0,
+            1265.5
+          ],
+          "sourceInkBounds": [
+            995,
+            1244,
+            51,
+            44,
+            595
+          ],
+          "fourPoint": [
+            485.9340739773148,
+            637.1840746395114
+          ],
+          "residual": [
+            0.9340739773148243,
+            2.1840746395114365
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-20",
+          "expected": [
+            555.0,
+            635.0
+          ],
+          "source": [
+            1083.0,
+            1265.5
+          ],
+          "sourceInkBounds": [
+            1058,
+            1244,
+            51,
+            44,
+            599
+          ],
+          "fourPoint": [
+            554.883582222656,
+            638.393088320311
+          ],
+          "residual": [
+            -0.11641777734405423,
+            3.3930883203109943
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-21",
+          "expected": [
+            625.0,
+            635.0
+          ],
+          "source": [
+            1146.5,
+            1264.0
+          ],
+          "sourceInkBounds": [
+            1122,
+            1242,
+            50,
+            45,
+            593
+          ],
+          "fourPoint": [
+            624.3192214348353,
+            637.8348827363905
+          ],
+          "residual": [
+            -0.6807785651647009,
+            2.8348827363904547
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-24",
+          "expected": [
+            345.0,
+            752.5
+          ],
+          "source": [
+            888.5,
+            1365.5
+          ],
+          "sourceInkBounds": [
+            863,
+            1343,
+            52,
+            46,
+            1323
+          ],
+          "fourPoint": [
+            347.5070506526623,
+            752.2436092693358
+          ],
+          "residual": [
+            2.507050652662315,
+            -0.2563907306641795
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-25",
+          "expected": [
+            415.0,
+            752.5
+          ],
+          "source": [
+            953.0,
+            1365.5
+          ],
+          "sourceInkBounds": [
+            928,
+            1343,
+            51,
+            46,
+            544
+          ],
+          "fourPoint": [
+            417.57202098879,
+            753.4630166146814
+          ],
+          "residual": [
+            2.5720209887899728,
+            0.9630166146813508
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-26",
+          "expected": [
+            345.0,
+            950.0
+          ],
+          "source": [
+            881.0,
+            1535.0
+          ],
+          "sourceInkBounds": [
+            855,
+            1512,
+            53,
+            47,
+            1467
+          ],
+          "fourPoint": [
+            348.63748886073864,
+            947.293227892022
+          ],
+          "residual": [
+            3.6374888607386424,
+            -2.706772107978054
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-27",
+          "expected": [
+            415.0,
+            950.0
+          ],
+          "source": [
+            947.0,
+            1535.5
+          ],
+          "sourceInkBounds": [
+            922,
+            1513,
+            51,
+            46,
+            578
+          ],
+          "fourPoint": [
+            419.4253155747948,
+            949.0776188660745
+          ],
+          "residual": [
+            4.4253155747948085,
+            -0.9223811339254553
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-28",
+          "expected": [
+            345.0,
+            1067.5
+          ],
+          "source": [
+            877.0,
+            1637.0
+          ],
+          "sourceInkBounds": [
+            851,
+            1614,
+            53,
+            47,
+            573
+          ],
+          "fourPoint": [
+            349.8498132317315,
+            1062.2557896436524
+          ],
+          "residual": [
+            4.849813231731503,
+            -5.244210356347594
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-29",
+          "expected": [
+            415.0,
+            1067.5
+          ],
+          "source": [
+            943.5,
+            1638.5
+          ],
+          "sourceInkBounds": [
+            918,
+            1615,
+            52,
+            48,
+            1239
+          ],
+          "fourPoint": [
+            420.6688059476299,
+            1065.140772219406
+          ],
+          "residual": [
+            5.668805947629892,
+            -2.359227780593983
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-30",
+          "expected": [
+            485.0,
+            1067.5
+          ],
+          "source": [
+            1009.5,
+            1639.0
+          ],
+          "sourceInkBounds": [
+            984,
+            1616,
+            52,
+            47,
+            560
+          ],
+          "fourPoint": [
+            490.88603518341625,
+            1066.897299732859
+          ],
+          "residual": [
+            5.886035183416254,
+            -0.6027002671410173
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-31",
+          "expected": [
+            345.0,
+            1185.0
+          ],
+          "source": [
+            872.5,
+            1742.5
+          ],
+          "sourceInkBounds": [
+            846,
+            1719,
+            54,
+            48,
+            620
+          ],
+          "fourPoint": [
+            350.7012489671064,
+            1179.2963960500742
+          ],
+          "residual": [
+            5.70124896710638,
+            -5.703603949925764
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-32",
+          "expected": [
+            415.0,
+            1185.0
+          ],
+          "source": [
+            939.0,
+            1743.0
+          ],
+          "sourceInkBounds": [
+            913,
+            1719,
+            53,
+            49,
+            1372
+          ],
+          "fourPoint": [
+            420.90918106733113,
+            1181.035062660935
+          ],
+          "residual": [
+            5.909181067331133,
+            -3.9649373390650453
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-33",
+          "expected": [
+            345.0,
+            1247.5
+          ],
+          "source": [
+            870.0,
+            1800.0
+          ],
+          "sourceInkBounds": [
+            844,
+            1776,
+            53,
+            49,
+            1430
+          ],
+          "fourPoint": [
+            351.10981662902674,
+            1242.3049359803529
+          ],
+          "residual": [
+            6.109816629026739,
+            -5.195064019647134
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-34",
+          "expected": [
+            415.0,
+            1247.5
+          ],
+          "source": [
+            937.0,
+            1799.5
+          ],
+          "sourceInkBounds": [
+            911,
+            1776,
+            53,
+            48,
+            587
+          ],
+          "fourPoint": [
+            421.49258595115487,
+            1242.946020073847
+          ],
+          "residual": [
+            6.492585951154865,
+            -4.553979926153033
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-35",
+          "expected": [
+            345.0,
+            1310.0
+          ],
+          "source": [
+            868.0,
+            1856.5
+          ],
+          "sourceInkBounds": [
+            842,
+            1831,
+            53,
+            52,
+            1284
+          ],
+          "fourPoint": [
+            351.9856015563508,
+            1303.6981167000163
+          ],
+          "residual": [
+            6.985601556350787,
+            -6.301883299983729
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-36",
+          "expected": [
+            415.0,
+            1310.0
+          ],
+          "source": [
+            935.5,
+            1855.5
+          ],
+          "sourceInkBounds": [
+            910,
+            1832,
+            52,
+            48,
+            566
+          ],
+          "fourPoint": [
+            422.57064451522797,
+            1303.8014883389012
+          ],
+          "residual": [
+            7.570644515227968,
+            -6.198511661098792
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-37",
+          "expected": [
+            345.0,
+            1372.5
+          ],
+          "source": [
+            865.5,
+            1912.0
+          ],
+          "sourceInkBounds": [
+            839,
+            1888,
+            54,
+            49,
+            551
+          ],
+          "fourPoint": [
+            352.2807411378647,
+            1363.4925068092448
+          ],
+          "residual": [
+            7.280741137864709,
+            -9.007493190755213
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-38",
+          "expected": [
+            415.0,
+            1372.5
+          ],
+          "source": [
+            933.0,
+            1913.5
+          ],
+          "sourceInkBounds": [
+            907,
+            1889,
+            53,
+            50,
+            1982
+          ],
+          "fourPoint": [
+            422.69166303421997,
+            1366.278968937898
+          ],
+          "residual": [
+            7.691663034219971,
+            -6.221031062101929
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-39",
+          "expected": [
+            345.0,
+            1435.0
+          ],
+          "source": [
+            862.5,
+            1970.0
+          ],
+          "sourceInkBounds": [
+            836,
+            1946,
+            54,
+            49,
+            1776
+          ],
+          "fourPoint": [
+            352.18459564659287,
+            1425.4479710252974
+          ],
+          "residual": [
+            7.184595646592868,
+            -9.55202897470258
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-40",
+          "expected": [
+            415.0,
+            1435.0
+          ],
+          "source": [
+            930.0,
+            1971.0
+          ],
+          "sourceInkBounds": [
+            904,
+            1947,
+            53,
+            49,
+            560
+          ],
+          "fourPoint": [
+            422.2695310833703,
+            1427.6786688750108
+          ],
+          "residual": [
+            7.269531083370282,
+            -7.321331124989229
+          ]
+        }
+      ]
+    },
+    {
+      "file": "unmarked.jpg",
+      "landmarks": [
+        {
+          "question": "question-1",
+          "target": "question-1-option-3",
+          "expected": [
+            345.0,
+            510.0
+          ],
+          "source": [
+            517.0,
+            675.0
+          ],
+          "sourceInkBounds": [
+            490,
+            649,
+            55,
+            53,
+            775
+          ],
+          "fourPoint": [
+            346.39184061414994,
+            511.9491349296618
+          ],
+          "residual": [
+            1.3918406141499418,
+            1.9491349296617955
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-4",
+          "expected": [
+            415.0,
+            510.0
+          ],
+          "source": [
+            586.0,
+            680.0
+          ],
+          "sourceInkBounds": [
+            559,
+            654,
+            55,
+            53,
+            816
+          ],
+          "fourPoint": [
+            416.3163716015086,
+            516.1735690761085
+          ],
+          "residual": [
+            1.3163716015085924,
+            6.1735690761084925
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-5",
+          "expected": [
+            485.0,
+            510.0
+          ],
+          "source": [
+            655.0,
+            684.0
+          ],
+          "sourceInkBounds": [
+            628,
+            658,
+            55,
+            53,
+            803
+          ],
+          "fourPoint": [
+            486.24035020051736,
+            519.4001788245787
+          ],
+          "residual": [
+            1.240350200517355,
+            9.400178824578688
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-6",
+          "expected": [
+            555.0,
+            510.0
+          ],
+          "source": [
+            723.0,
+            687.0
+          ],
+          "sourceInkBounds": [
+            696,
+            661,
+            55,
+            53,
+            789
+          ],
+          "fourPoint": [
+            555.1507951041247,
+            521.6401315877738
+          ],
+          "residual": [
+            0.15079510412465424,
+            11.640131587773794
+          ]
+        },
+        {
+          "question": "question-1",
+          "target": "question-1-option-7",
+          "expected": [
+            625.0,
+            510.0
+          ],
+          "source": [
+            791.5,
+            690.0
+          ],
+          "sourceInkBounds": [
+            765,
+            664,
+            54,
+            53,
+            799
+          ],
+          "fourPoint": [
+            624.5650466100934,
+            523.8744534555428
+          ],
+          "residual": [
+            -0.43495338990658183,
+            13.874453455542834
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-10",
+          "expected": [
+            345.0,
+            572.5
+          ],
+          "source": [
+            516.5,
+            735.5
+          ],
+          "sourceInkBounds": [
+            489,
+            709,
+            56,
+            54,
+            763
+          ],
+          "fourPoint": [
+            345.7152805080559,
+            572.3045464781442
+          ],
+          "residual": [
+            0.7152805080559119,
+            -0.19545352185582487
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-11",
+          "expected": [
+            415.0,
+            572.5
+          ],
+          "source": [
+            585.5,
+            743.0
+          ],
+          "sourceInkBounds": [
+            558,
+            719,
+            56,
+            49,
+            737
+          ],
+          "fourPoint": [
+            415.62163109282346,
+            579.0200329169683
+          ],
+          "residual": [
+            0.6216310928234634,
+            6.520032916968262
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-12",
+          "expected": [
+            485.0,
+            572.5
+          ],
+          "source": [
+            654.0,
+            747.0
+          ],
+          "sourceInkBounds": [
+            627,
+            723,
+            55,
+            49,
+            724
+          ],
+          "fourPoint": [
+            485.0277472729728,
+            582.2501577527951
+          ],
+          "residual": [
+            0.027747272972817427,
+            9.750157752795076
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-13",
+          "expected": [
+            555.0,
+            572.5
+          ],
+          "source": [
+            723.0,
+            748.0
+          ],
+          "sourceInkBounds": [
+            696,
+            722,
+            55,
+            53,
+            737
+          ],
+          "fourPoint": [
+            554.9472280693758,
+            582.4828107296839
+          ],
+          "residual": [
+            -0.05277193062420338,
+            9.982810729683933
+          ]
+        },
+        {
+          "question": "question-2",
+          "target": "question-2-option-14",
+          "expected": [
+            625.0,
+            572.5
+          ],
+          "source": [
+            791.5,
+            751.5
+          ],
+          "sourceInkBounds": [
+            765,
+            725,
+            54,
+            54,
+            745
+          ],
+          "fourPoint": [
+            624.3489701119737,
+            585.2141047172552
+          ],
+          "residual": [
+            -0.6510298880263008,
+            12.714104717255168
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-17",
+          "expected": [
+            345.0,
+            635.0
+          ],
+          "source": [
+            517.5,
+            797.5
+          ],
+          "sourceInkBounds": [
+            490,
+            771,
+            56,
+            54,
+            812
+          ],
+          "fourPoint": [
+            346.5546946916687,
+            634.1203638599287
+          ],
+          "residual": [
+            1.5546946916687148,
+            -0.879636140071284
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-18",
+          "expected": [
+            415.0,
+            635.0
+          ],
+          "source": [
+            586.5,
+            803.0
+          ],
+          "sourceInkBounds": [
+            559,
+            777,
+            56,
+            53,
+            844
+          ],
+          "fourPoint": [
+            416.45596233370946,
+            638.838744731063
+          ],
+          "residual": [
+            1.455962333709465,
+            3.8387447310630023
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-19",
+          "expected": [
+            485.0,
+            635.0
+          ],
+          "source": [
+            655.0,
+            807.0
+          ],
+          "sourceInkBounds": [
+            628,
+            781,
+            55,
+            53,
+            807
+          ],
+          "fourPoint": [
+            485.85146606116456,
+            642.0669459930607
+          ],
+          "residual": [
+            0.8514660611645581,
+            7.066945993060699
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-20",
+          "expected": [
+            555.0,
+            635.0
+          ],
+          "source": [
+            724.0,
+            810.5
+          ],
+          "sourceInkBounds": [
+            697,
+            784,
+            55,
+            54,
+            790
+          ],
+          "fourPoint": [
+            555.7519172252852,
+            644.7909725655148
+          ],
+          "residual": [
+            0.7519172252851831,
+            9.790972565514835
+          ]
+        },
+        {
+          "question": "question-3",
+          "target": "question-3-option-21",
+          "expected": [
+            625.0,
+            635.0
+          ],
+          "source": [
+            792.5,
+            814.0
+          ],
+          "sourceInkBounds": [
+            766,
+            788,
+            54,
+            53,
+            781
+          ],
+          "fourPoint": [
+            625.1426089696514,
+            647.5204214497314
+          ],
+          "residual": [
+            0.14260896965140546,
+            12.52042144973143
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-24",
+          "expected": [
+            345.0,
+            752.5
+          ],
+          "source": [
+            518.5,
+            914.0
+          ],
+          "sourceInkBounds": [
+            491,
+            888,
+            56,
+            53,
+            734
+          ],
+          "fourPoint": [
+            347.24079357784063,
+            750.2313229811492
+          ],
+          "residual": [
+            2.240793577840634,
+            -2.2686770188507808
+          ]
+        },
+        {
+          "question": "question-4",
+          "target": "question-4-option-25",
+          "expected": [
+            415.0,
+            752.5
+          ],
+          "source": [
+            587.5,
+            918.5
+          ],
+          "sourceInkBounds": [
+            561,
+            892,
+            54,
+            54,
+            720
+          ],
+          "fourPoint": [
+            417.1243324282884,
+            753.948653126055
+          ],
+          "residual": [
+            2.124332428288426,
+            1.4486531260549782
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-26",
+          "expected": [
+            345.0,
+            950.0
+          ],
+          "source": [
+            520.0,
+            1107.5
+          ],
+          "sourceInkBounds": [
+            493,
+            1081,
+            55,
+            54,
+            712
+          ],
+          "fourPoint": [
+            348.2165097009688,
+            942.9350816587802
+          ],
+          "residual": [
+            3.2165097009687997,
+            -7.064918341219823
+          ]
+        },
+        {
+          "question": "question-5",
+          "target": "question-5-option-27",
+          "expected": [
+            415.0,
+            950.0
+          ],
+          "source": [
+            590.0,
+            1112.5
+          ],
+          "sourceInkBounds": [
+            564,
+            1086,
+            53,
+            54,
+            687
+          ],
+          "fourPoint": [
+            419.07665984807807,
+            947.1322942808767
+          ],
+          "residual": [
+            4.076659848078066,
+            -2.8677057191232507
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-28",
+          "expected": [
+            345.0,
+            1067.5
+          ],
+          "source": [
+            522.0,
+            1222.5
+          ],
+          "sourceInkBounds": [
+            494,
+            1196,
+            57,
+            54,
+            716
+          ],
+          "fourPoint": [
+            349.91801126845684,
+            1057.3597741149222
+          ],
+          "residual": [
+            4.918011268456837,
+            -10.140225885077825
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-29",
+          "expected": [
+            415.0,
+            1067.5
+          ],
+          "source": [
+            592.0,
+            1228.5
+          ],
+          "sourceInkBounds": [
+            565,
+            1202,
+            55,
+            54,
+            751
+          ],
+          "fourPoint": [
+            420.7544168412051,
+            1062.5475627217854
+          ],
+          "residual": [
+            5.7544168412051135,
+            -4.952437278214575
+          ]
+        },
+        {
+          "question": "question-6",
+          "target": "question-6-option-30",
+          "expected": [
+            485.0,
+            1067.5
+          ],
+          "source": [
+            661.5,
+            1233.0
+          ],
+          "sourceInkBounds": [
+            635,
+            1207,
+            54,
+            53,
+            703
+          ],
+          "fourPoint": [
+            491.0853661723666,
+            1066.2484002475971
+          ],
+          "residual": [
+            6.085366172366605,
+            -1.2515997524028535
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-31",
+          "expected": [
+            345.0,
+            1185.0
+          ],
+          "source": [
+            522.5,
+            1338.0
+          ],
+          "sourceInkBounds": [
+            495,
+            1312,
+            56,
+            53,
+            710
+          ],
+          "fourPoint": [
+            350.0992272311483,
+            1172.2315439668773
+          ],
+          "residual": [
+            5.099227231148291,
+            -12.768456033122675
+          ]
+        },
+        {
+          "question": "question-7",
+          "target": "question-7-option-32",
+          "expected": [
+            415.0,
+            1185.0
+          ],
+          "source": [
+            592.5,
+            1343.0
+          ],
+          "sourceInkBounds": [
+            566,
+            1317,
+            54,
+            53,
+            692
+          ],
+          "fourPoint": [
+            420.91785675282676,
+            1176.4201731574844
+          ],
+          "residual": [
+            5.917856752826765,
+            -8.579826842515558
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-33",
+          "expected": [
+            345.0,
+            1247.5
+          ],
+          "source": [
+            523.0,
+            1399.5
+          ],
+          "sourceInkBounds": [
+            496,
+            1374,
+            55,
+            52,
+            684
+          ],
+          "fourPoint": [
+            350.4321919189797,
+            1233.3669446631352
+          ],
+          "residual": [
+            5.432191918979697,
+            -14.1330553368648
+          ]
+        },
+        {
+          "question": "question-8",
+          "target": "question-8-option-34",
+          "expected": [
+            415.0,
+            1247.5
+          ],
+          "source": [
+            593.5,
+            1404.0
+          ],
+          "sourceInkBounds": [
+            567,
+            1378,
+            54,
+            53,
+            677
+          ],
+          "fourPoint": [
+            421.74711666661324,
+            1237.0507037080602
+          ],
+          "residual": [
+            6.747116666613238,
+            -10.449296291939845
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-35",
+          "expected": [
+            345.0,
+            1310.0
+          ],
+          "source": [
+            524.0,
+            1460.0
+          ],
+          "sourceInkBounds": [
+            497,
+            1434,
+            55,
+            53,
+            658
+          ],
+          "fourPoint": [
+            351.27367013687245,
+            1293.4839604582173
+          ],
+          "residual": [
+            6.273670136872454,
+            -16.516039541782675
+          ]
+        },
+        {
+          "question": "question-9",
+          "target": "question-9-option-36",
+          "expected": [
+            415.0,
+            1310.0
+          ],
+          "source": [
+            593.5,
+            1465.5
+          ],
+          "sourceInkBounds": [
+            567,
+            1440,
+            54,
+            52,
+            637
+          ],
+          "fourPoint": [
+            421.5630557211327,
+            1298.1704878457315
+          ],
+          "residual": [
+            6.5630557211326845,
+            -11.829512154268514
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-37",
+          "expected": [
+            345.0,
+            1372.5
+          ],
+          "source": [
+            524.0,
+            1522.0
+          ],
+          "sourceInkBounds": [
+            497,
+            1496,
+            55,
+            53,
+            645
+          ],
+          "fourPoint": [
+            351.09921620996215,
+            1355.0838119286757
+          ],
+          "residual": [
+            6.099216209962151,
+            -17.416188071324314
+          ]
+        },
+        {
+          "question": "question-10",
+          "target": "question-10-option-38",
+          "expected": [
+            415.0,
+            1372.5
+          ],
+          "source": [
+            594.5,
+            1527.0
+          ],
+          "sourceInkBounds": [
+            568,
+            1501,
+            54,
+            53,
+            653
+          ],
+          "fourPoint": [
+            422.39046094631453,
+            1359.2599941372507
+          ],
+          "residual": [
+            7.390460946314533,
+            -13.240005862749285
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-39",
+          "expected": [
+            345.0,
+            1435.0
+          ],
+          "source": [
+            524.0,
+            1584.0
+          ],
+          "sourceInkBounds": [
+            497,
+            1558,
+            55,
+            53,
+            653
+          ],
+          "fourPoint": [
+            350.92481712781216,
+            1416.664297660828
+          ],
+          "residual": [
+            5.924817127812162,
+            -18.33570233917203
+          ]
+        },
+        {
+          "question": "question-11",
+          "target": "question-11-option-40",
+          "expected": [
+            415.0,
+            1435.0
+          ],
+          "source": [
+            594.5,
+            1589.0
+          ],
+          "sourceInkBounds": [
+            568,
+            1563,
+            54,
+            53,
+            620
+          ],
+          "fourPoint": [
+            422.20486058179,
+            1420.8381727935302
+          ],
+          "residual": [
+            7.204860581790001,
+            -14.161827206469752
+          ]
+        }
+      ]
+    }
+  ]
+}

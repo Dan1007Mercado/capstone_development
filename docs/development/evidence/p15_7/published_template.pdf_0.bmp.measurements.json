@@ -1,0 +1,720 @@
+{
+  "width": 2100,
+  "height": 2970,
+  "measurements": [
+    {
+      "target": "question-1-option-3",
+      "expected": [
+        345.0,
+        510.0
+      ],
+      "inkComponents": [
+        [
+          319,
+          484,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        344.5,
+        509.5
+      ]
+    },
+    {
+      "target": "question-1-option-4",
+      "expected": [
+        415.0,
+        510.0
+      ],
+      "inkComponents": [
+        [
+          389,
+          484,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        414.5,
+        509.5
+      ]
+    },
+    {
+      "target": "question-1-option-5",
+      "expected": [
+        485.0,
+        510.0
+      ],
+      "inkComponents": [
+        [
+          459,
+          484,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        484.5,
+        509.5
+      ]
+    },
+    {
+      "target": "question-1-option-6",
+      "expected": [
+        555.0,
+        510.0
+      ],
+      "inkComponents": [
+        [
+          529,
+          484,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        554.5,
+        509.5
+      ]
+    },
+    {
+      "target": "question-1-option-7",
+      "expected": [
+        625.0,
+        510.0
+      ],
+      "inkComponents": [
+        [
+          599,
+          484,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        624.5,
+        509.5
+      ]
+    },
+    {
+      "target": "question-2-option-10",
+      "expected": [
+        345.0,
+        572.5
+      ],
+      "inkComponents": [
+        [
+          319,
+          546,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        344.5,
+        572.0
+      ]
+    },
+    {
+      "target": "question-2-option-11",
+      "expected": [
+        415.0,
+        572.5
+      ],
+      "inkComponents": [
+        [
+          389,
+          546,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        414.5,
+        572.0
+      ]
+    },
+    {
+      "target": "question-2-option-12",
+      "expected": [
+        485.0,
+        572.5
+      ],
+      "inkComponents": [
+        [
+          459,
+          546,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        484.5,
+        572.0
+      ]
+    },
+    {
+      "target": "question-2-option-13",
+      "expected": [
+        555.0,
+        572.5
+      ],
+      "inkComponents": [
+        [
+          529,
+          546,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        554.5,
+        572.0
+      ]
+    },
+    {
+      "target": "question-2-option-14",
+      "expected": [
+        625.0,
+        572.5
+      ],
+      "inkComponents": [
+        [
+          599,
+          546,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        624.5,
+        572.0
+      ]
+    },
+    {
+      "target": "question-3-option-17",
+      "expected": [
+        345.0,
+        635.0
+      ],
+      "inkComponents": [
+        [
+          319,
+          609,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        344.5,
+        634.5
+      ]
+    },
+    {
+      "target": "question-3-option-18",
+      "expected": [
+        415.0,
+        635.0
+      ],
+      "inkComponents": [
+        [
+          389,
+          609,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        414.5,
+        634.5
+      ]
+    },
+    {
+      "target": "question-3-option-19",
+      "expected": [
+        485.0,
+        635.0
+      ],
+      "inkComponents": [
+        [
+          459,
+          609,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        484.5,
+        634.5
+      ]
+    },
+    {
+      "target": "question-3-option-20",
+      "expected": [
+        555.0,
+        635.0
+      ],
+      "inkComponents": [
+        [
+          529,
+          609,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        554.5,
+        634.5
+      ]
+    },
+    {
+      "target": "question-3-option-21",
+      "expected": [
+        625.0,
+        635.0
+      ],
+      "inkComponents": [
+        [
+          599,
+          609,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        624.5,
+        634.5
+      ]
+    },
+    {
+      "target": "question-4-option-24",
+      "expected": [
+        345.0,
+        752.5
+      ],
+      "inkComponents": [
+        [
+          319,
+          726,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        344.5,
+        752.0
+      ]
+    },
+    {
+      "target": "question-4-option-25",
+      "expected": [
+        415.0,
+        752.5
+      ],
+      "inkComponents": [
+        [
+          389,
+          726,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        414.5,
+        752.0
+      ]
+    },
+    {
+      "target": "question-5-option-26",
+      "expected": [
+        345.0,
+        950.0
+      ],
+      "inkComponents": [
+        [
+          319,
+          924,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        344.5,
+        949.5
+      ]
+    },
+    {
+      "target": "question-5-option-27",
+      "expected": [
+        415.0,
+        950.0
+      ],
+      "inkComponents": [
+        [
+          389,
+          924,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        414.5,
+        949.5
+      ]
+    },
+    {
+      "target": "question-6-option-28",
+      "expected": [
+        345.0,
+        1067.5
+      ],
+      "inkComponents": [
+        [
+          319,
+          1041,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        344.5,
+        1067.0
+      ]
+    },
+    {
+      "target": "question-6-option-29",
+      "expected": [
+        415.0,
+        1067.5
+      ],
+      "inkComponents": [
+        [
+          389,
+          1041,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        414.5,
+        1067.0
+      ]
+    },
+    {
+      "target": "question-6-option-30",
+      "expected": [
+        485.0,
+        1067.5
+      ],
+      "inkComponents": [
+        [
+          459,
+          1041,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        484.5,
+        1067.0
+      ]
+    },
+    {
+      "target": "question-7-option-31",
+      "expected": [
+        345.0,
+        1185.0
+      ],
+      "inkComponents": [
+        [
+          319,
+          1159,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        344.5,
+        1184.5
+      ]
+    },
+    {
+      "target": "question-7-option-32",
+      "expected": [
+        415.0,
+        1185.0
+      ],
+      "inkComponents": [
+        [
+          389,
+          1159,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        414.5,
+        1184.5
+      ]
+    },
+    {
+      "target": "question-8-option-33",
+      "expected": [
+        345.0,
+        1247.5
+      ],
+      "inkComponents": [
+        [
+          319,
+          1221,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        344.5,
+        1247.0
+      ]
+    },
+    {
+      "target": "question-8-option-34",
+      "expected": [
+        415.0,
+        1247.5
+      ],
+      "inkComponents": [
+        [
+          389,
+          1221,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        414.5,
+        1247.0
+      ]
+    },
+    {
+      "target": "question-9-option-35",
+      "expected": [
+        345.0,
+        1310.0
+      ],
+      "inkComponents": [
+        [
+          319,
+          1284,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        344.5,
+        1309.5
+      ]
+    },
+    {
+      "target": "question-9-option-36",
+      "expected": [
+        415.0,
+        1310.0
+      ],
+      "inkComponents": [
+        [
+          389,
+          1284,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        414.5,
+        1309.5
+      ]
+    },
+    {
+      "target": "question-10-option-37",
+      "expected": [
+        345.0,
+        1372.5
+      ],
+      "inkComponents": [
+        [
+          319,
+          1346,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        344.5,
+        1372.0
+      ]
+    },
+    {
+      "target": "question-10-option-38",
+      "expected": [
+        415.0,
+        1372.5
+      ],
+      "inkComponents": [
+        [
+          389,
+          1346,
+          52,
+          53,
+          424
+        ]
+      ],
+      "observed": [
+        414.5,
+        1372.0
+      ]
+    },
+    {
+      "target": "question-11-option-39",
+      "expected": [
+        345.0,
+        1435.0
+      ],
+      "inkComponents": [
+        [
+          319,
+          1409,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        344.5,
+        1434.5
+      ]
+    },
+    {
+      "target": "question-11-option-40",
+      "expected": [
+        415.0,
+        1435.0
+      ],
+      "inkComponents": [
+        [
+          389,
+          1409,
+          52,
+          52,
+          416
+        ]
+      ],
+      "observed": [
+        414.5,
+        1434.5
+      ]
+    }
+  ],
+  "markers": [
+    {
+      "id": 10,
+      "expectedBounds": [
+        117.5,
+        117.5,
+        105.0,
+        105.0
+      ],
+      "inkComponents": [
+        [
+          117,
+          117,
+          106,
+          106,
+          8550
+        ]
+      ]
+    },
+    {
+      "id": 11,
+      "expectedBounds": [
+        1877.5,
+        117.5,
+        105.0,
+        105.0
+      ],
+      "inkComponents": [
+        [
+          1877,
+          117,
+          106,
+          106,
+          9162
+        ]
+      ]
+    },
+    {
+      "id": 12,
+      "expectedBounds": [
+        117.5,
+        2747.5,
+        105.0,
+        105.0
+      ],
+      "inkComponents": [
+        [
+          117,
+          2747,
+          106,
+          106,
+          8549
+        ]
+      ]
+    },
+    {
+      "id": 13,
+      "expectedBounds": [
+        1877.5,
+        2747.5,
+        105.0,
+        105.0
+      ],
+      "inkComponents": [
+        [
+          1877,
+          2747,
+          106,
+          106,
+          9162
+        ]
+      ]
+    }
+  ]
+}

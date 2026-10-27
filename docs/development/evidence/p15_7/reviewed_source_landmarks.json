@@ -1,0 +1,16 @@
+{
+  "image": "unmarked.jpg",
+  "sha256": "3aae6bc4d692c0d64ea01b1131b0984981e44acc8599b80aaa0fe57ebdd18f0b",
+  "provenance": "Assistant visual estimates from original source-image outer outlines in source_review_grid.png, with fixed source-coordinate origins and 10-pixel rulers. Not human annotations. No ring-contrast maxima or canonical warped image used for these estimates. Review is approximate, not metrology.",
+  "estimatedSourceUncertaintyPixels": 1.5,
+  "landmarks": [
+    {"target": "question-1-option-3", "source": [517, 675]},
+    {"target": "question-1-option-7", "source": [791, 690]},
+    {"target": "question-3-option-17", "source": [518, 797]},
+    {"target": "question-3-option-20", "source": [724, 811]},
+    {"target": "question-5-option-26", "source": [520, 1108]},
+    {"target": "question-6-option-30", "source": [661, 1233]},
+    {"target": "question-9-option-36", "source": [594, 1465]},
+    {"target": "question-11-option-39", "source": [524, 1584]}
+  ]
+}
